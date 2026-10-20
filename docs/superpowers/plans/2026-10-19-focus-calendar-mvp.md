@@ -100,10 +100,12 @@ Use same-origin `/api/*` routing to Go (Next.js development rewrite; deployment 
 
 **Interfaces:** `Register(ctx, email, password) (User, error)`, `Login(ctx, email, password) (Session, error)`, `Authenticate(ctx, token) (Principal, error)`, `Logout(ctx, sessionID) error`, and `ChangePassword(ctx, principal, oldPassword, newPassword) error` on `auth.Service`; Principal carries user/session ID. Never expose password hashes.
 
-- [ ] Establish `make db-up`, `make migrate`, `make api-dev`, `make test-go`, and `make test-integration`; pin dependency versions and isolate the integration database from development data.
-- [ ] Write failing httptest/PostgreSQL tests: registration/login, duplicate email, wrong password, missing/expired/revoked session, CSRF rejection, generic errors/rate limiting, password change revoking other sessions. Run `make test-go` and `make test-integration`; verify missing behavior fails.
-- [ ] Implement migrations, session middleware, handlers, health/readiness endpoints, graceful shutdown, cookie policy, and account defaults. Add OpenAPI definitions for auth/error responses.
-- [ ] Re-run both commands; verify secrets are absent from responses/log fixtures. Commit `feat: add Go API PostgreSQL and account sessions`.
+- [x] Establish `make db-up`, `make migrate`, `make api-dev`, `make test-go`, and `make test-integration`; pin dependency versions and isolate the integration database from development data.
+- [x] Write failing httptest/PostgreSQL tests: registration/login, duplicate email, wrong password, missing/expired/revoked session, CSRF rejection, generic errors/rate limiting, password change revoking other sessions. Run `make test-go` and `make test-integration`; verify missing behavior fails.
+- [x] Implement migrations, session middleware, handlers, health/readiness endpoints, graceful shutdown, cookie policy, and account defaults. Add OpenAPI definitions for auth/error responses.
+- [x] Re-run both commands; verify secrets are absent from responses/log fixtures. Commit `feat: add Go API PostgreSQL and account sessions`.
+
+**Implementation note (October 20, 2026):** The initial auth handlers and shared HTTP helpers live in `apps/api/internal/server`; SQL migrations are embedded beneath that package so the built binary does not depend on the current working directory. Runtime configuration lives in `internal/config`. The domain-service split remains available as task APIs are added. Evidence is in `docs/verification/backend-auth.md`. Independent review was attempted but could not run because of the reviewer usage limit; this milestone has author verification only.
 
 ## Task 2: Account-Owned Tasks and Atomic Mutations
 

@@ -1,0 +1,236 @@
+openapi: 3.1.0
+info:
+  title: Focus Calendar API
+  version: 0.1.0
+  description: Authentication slice. Task, calendar, focus, and report contracts will be added with their implementations.
+servers:
+  - url: /api/v1
+security:
+  - sessionCookie: []
+paths:
+  /auth/register:
+    post:
+      operationId: register
+      security: []
+      description: Creates an account, default settings, and a seven-day session atomically. Requires the configured Origin and application/json. Limited by email and IP.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/Credentials'
+                - type: object
+                  properties:
+                    timezone:
+                      type: string
+                      default: UTC
+      responses:
+        '201':
+          $ref: '#/components/responses/Session'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/RateLimit'
+        default:
+          $ref: '#/components/responses/Error'
+  /auth/login:
+    post:
+      operationId: login
+      security: []
+      description: Issues a fresh session token. Existing device sessions remain valid. Requires the configured Origin and application/json.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Credentials'
+      responses:
+        '200':
+          $ref: '#/components/responses/Session'
+        '401':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/RateLimit'
+        default:
+          $ref: '#/components/responses/Error'
+  /auth/me:
+    get:
+      operationId: currentUser
+      responses:
+        '200':
+          description: Current account, CSRF token, and settings
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Session'
+                  - type: object
+                    required: [settings]
+                    properties:
+                      settings:
+                        $ref: '#/components/schemas/Settings'
+        default:
+          $ref: '#/components/responses/Error'
+  /auth/logout:
+    post:
+      operationId: logout
+      description: Revokes only the current session and expires its cookie. Requires the configured Origin and application/json.
+      parameters:
+        - $ref: '#/components/parameters/CSRF'
+      responses:
+        '200':
+          $ref: '#/components/responses/OK'
+        default:
+          $ref: '#/components/responses/Error'
+  /auth/password:
+    post:
+      operationId: changePassword
+      description: Verifies the current password and revokes all other sessions. Current session stays valid. Requires the configured Origin and application/json.
+      parameters:
+        - $ref: '#/components/parameters/CSRF'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [oldPassword, newPassword]
+              properties:
+                oldPassword:
+                  type: string
+                  writeOnly: true
+                newPassword:
+                  type: string
+                  minLength: 12
+                  maxLength: 128
+                  writeOnly: true
+      responses:
+        '200':
+          $ref: '#/components/responses/OK'
+        default:
+          $ref: '#/components/responses/Error'
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: focus_session
+  parameters:
+    CSRF:
+      in: header
+      name: X-CSRF-Token
+      required: true
+      schema:
+        type: string
+  schemas:
+    Credentials:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          minLength: 12
+          maxLength: 128
+          writeOnly: true
+    User:
+      type: object
+      required: [id, email]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+    Session:
+      type: object
+      required: [user, csrfToken]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        csrfToken:
+          type: string
+    Settings:
+      type: object
+      required: [timezone, appearance, focusMinutes, shortBreakMinutes, longBreakMinutes, sound, revision]
+      properties:
+        timezone:
+          type: string
+        appearance:
+          type: string
+          enum: [light, dark]
+        focusMinutes:
+          type: integer
+          default: 25
+        shortBreakMinutes:
+          type: integer
+          default: 5
+        longBreakMinutes:
+          type: integer
+          default: 15
+        sound:
+          type: boolean
+          default: true
+        revision:
+          type: integer
+          minimum: 1
+    APIError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            requestId:
+              type: string
+  responses:
+    Session:
+      description: Authenticated; sets focus_session (HttpOnly, SameSite=Lax, Secure with HTTPS, seven-day Max-Age)
+      headers:
+        Set-Cookie:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Session'
+    OK:
+      description: Action completed
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [ok]
+            properties:
+              ok:
+                type: boolean
+                const: true
+    RateLimit:
+      description: Authentication limit reached (10/email, 60/IP within 15 minutes)
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/APIError'
+    Error:
+      description: Error envelope. 401 missing/expired session or invalid credentials; 403 Origin/CSRF; 409 duplicate account; 415 content type; 422 validation; 429 rate limit; 500 internal failure.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/APIError'

@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgres:18.3-alpine
+    environment:
+      POSTGRES_USER: focus
+      POSTGRES_PASSWORD: focus_local_only
+      POSTGRES_DB: focus
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - focus_pg:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U focus -d focus"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+volumes:
+  focus_pg:

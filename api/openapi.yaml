@@ -1,30 +1,35 @@
 openapi: 3.1.0
 info:
   title: Focus Calendar API
-  version: 0.1.0
-  description: Authentication slice. Task, calendar, focus, and report contracts will be added with their implementations.
+  version: 0.2.0
+  description: Account authentication and owned task/group/settings APIs. Calendar,
+    recurrence, timer, and report endpoints are added in later milestones. All mutations
+    require the configured Origin and application/json. Domain mutations additionally
+    require a session CSRF token and Idempotency-Key.
 servers:
-  - url: /api/v1
+- url: /api/v1
 security:
-  - sessionCookie: []
+- sessionCookie: []
 paths:
   /auth/register:
     post:
       operationId: register
       security: []
-      description: Creates an account, default settings, and a seven-day session atomically. Requires the configured Origin and application/json. Limited by email and IP.
+      description: Creates an account, default settings, and a seven-day session atomically.
+        Requires the configured Origin and application/json. Limited by email and
+        IP.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               allOf:
-                - $ref: '#/components/schemas/Credentials'
-                - type: object
-                  properties:
-                    timezone:
-                      type: string
-                      default: UTC
+              - $ref: '#/components/schemas/Credentials'
+              - type: object
+                properties:
+                  timezone:
+                    type: string
+                    default: UTC
       responses:
         '201':
           $ref: '#/components/responses/Session'
@@ -40,7 +45,8 @@ paths:
     post:
       operationId: login
       security: []
-      description: Issues a fresh session token. Existing device sessions remain valid. Requires the configured Origin and application/json.
+      description: Issues a fresh session token. Existing device sessions remain valid.
+        Requires the configured Origin and application/json.
       requestBody:
         required: true
         content:
@@ -66,20 +72,22 @@ paths:
             application/json:
               schema:
                 allOf:
-                  - $ref: '#/components/schemas/Session'
-                  - type: object
-                    required: [settings]
-                    properties:
-                      settings:
-                        $ref: '#/components/schemas/Settings'
+                - $ref: '#/components/schemas/Session'
+                - type: object
+                  required:
+                  - settings
+                  properties:
+                    settings:
+                      $ref: '#/components/schemas/Settings'
         default:
           $ref: '#/components/responses/Error'
   /auth/logout:
     post:
       operationId: logout
-      description: Revokes only the current session and expires its cookie. Requires the configured Origin and application/json.
+      description: Revokes only the current session and expires its cookie. Requires
+        the configured Origin and application/json.
       parameters:
-        - $ref: '#/components/parameters/CSRF'
+      - $ref: '#/components/parameters/CSRF'
       responses:
         '200':
           $ref: '#/components/responses/OK'
@@ -88,9 +96,10 @@ paths:
   /auth/password:
     post:
       operationId: changePassword
-      description: Verifies the current password and revokes all other sessions. Current session stays valid. Requires the configured Origin and application/json.
+      description: Verifies the current password and revokes all other sessions. Current
+        session stays valid. Requires the configured Origin and application/json.
       parameters:
-        - $ref: '#/components/parameters/CSRF'
+      - $ref: '#/components/parameters/CSRF'
       requestBody:
         required: true
         content:
@@ -98,7 +107,9 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [oldPassword, newPassword]
+              required:
+              - oldPassword
+              - newPassword
               properties:
                 oldPassword:
                   type: string
@@ -113,6 +124,280 @@ paths:
           $ref: '#/components/responses/OK'
         default:
           $ref: '#/components/responses/Error'
+  /tasks:
+    get:
+      operationId: listTasks
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskPage'
+        default:
+          $ref: '#/components/responses/Error'
+      description: Owned, non-deleted tasks ordered by UUID. nextCursor is null when
+        exhausted. Title search is literal and case-insensitive. Account time zone
+        defines date filters.
+      parameters:
+      - name: cursor
+        in: query
+        schema:
+          type: string
+          format: uuid
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 50
+      - name: search
+        in: query
+        schema:
+          type: string
+      - name: priority
+        in: query
+        schema:
+          type: string
+          enum:
+          - low
+          - medium
+          - high
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum:
+          - incomplete
+          - complete
+      - name: groupId
+        in: query
+        schema:
+          type: string
+          description: UUID, or none for tasks without a group
+      - name: view
+        in: query
+        schema:
+          type: string
+          enum:
+          - all
+          - today
+          - upcoming
+          - overdue
+          - unscheduled
+          - previously-unfinished
+    post:
+      operationId: createTask
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        default:
+          $ref: '#/components/responses/Error'
+      description: Title-only creation is supported; Pomodoro is optional. Times require
+        a date and both endpoints, and may not cross midnight. New schedules must
+        be today or later. Nonexistent DST wall times are rejected.
+      parameters:
+      - $ref: '#/components/parameters/CSRF'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskInput'
+  /tasks/{id}:
+    parameters:
+    - $ref: '#/components/parameters/ResourceID'
+    get:
+      operationId: getTask
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        default:
+          $ref: '#/components/responses/Error'
+    patch:
+      operationId: updateTask
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        default:
+          $ref: '#/components/responses/Error'
+      description: Partial editable-field update with optimistic concurrency. Foreign
+        and deleted task IDs return 404.
+      parameters:
+      - $ref: '#/components/parameters/CSRF'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskPatch'
+    delete:
+      operationId: deleteTask
+      responses:
+        '200':
+          $ref: '#/components/responses/OK'
+        default:
+          $ref: '#/components/responses/Error'
+      description: Soft-deletes the current task and appends an event. Previous events
+        remain stored.
+      parameters:
+      - $ref: '#/components/parameters/CSRF'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExpectedRevision'
+  /tasks/{id}/completion:
+    parameters:
+    - $ref: '#/components/parameters/ResourceID'
+    post:
+      operationId: completeTask
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        default:
+          $ref: '#/components/responses/Error'
+      description: Completion never requires Pomodoro. Unscheduled completion stays
+        unscheduled. Completing a future task requires moveToToday=true. Reopening
+        invalidates same-day completion events; prior-day events remain valid.
+      parameters:
+      - $ref: '#/components/parameters/CSRF'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompletionInput'
+  /groups:
+    get:
+      operationId: listGroups
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupList'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: createGroup
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+        default:
+          $ref: '#/components/responses/Error'
+      parameters:
+      - $ref: '#/components/parameters/CSRF'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupInput'
+  /groups/{id}:
+    parameters:
+    - $ref: '#/components/parameters/ResourceID'
+    patch:
+      operationId: updateGroup
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+        default:
+          $ref: '#/components/responses/Error'
+      parameters:
+      - $ref: '#/components/parameters/CSRF'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupPatch'
+    delete:
+      operationId: deleteGroup
+      responses:
+        '200':
+          $ref: '#/components/responses/OK'
+        default:
+          $ref: '#/components/responses/Error'
+      description: Clears task membership, increments affected task revisions, and
+        retains task events. Does not delete tasks.
+      parameters:
+      - $ref: '#/components/parameters/CSRF'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExpectedRevision'
+  /settings:
+    get:
+      operationId: getSettings
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+        default:
+          $ref: '#/components/responses/Error'
+    patch:
+      operationId: updateSettings
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+        default:
+          $ref: '#/components/responses/Error'
+      description: Partial update to the current account only. Explicit IANA time
+        zone; light/dark appearance; positive integer durations. Historical catch-up
+        is added in the next milestone.
+      parameters:
+      - $ref: '#/components/parameters/CSRF'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettingsPatch'
 components:
   securitySchemes:
     sessionCookie:
@@ -126,10 +411,30 @@ components:
       required: true
       schema:
         type: string
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 128
+      description: Generate once per intended command. Retry the identical method,
+        request URI, and JSON bytes with the same key. A different request using the
+        key returns 409. Keys are scoped to the account.
+    ResourceID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
   schemas:
     Credentials:
       type: object
-      required: [email, password]
+      required:
+      - email
+      - password
       properties:
         email:
           type: string
@@ -142,7 +447,9 @@ components:
           writeOnly: true
     User:
       type: object
-      required: [id, email]
+      required:
+      - id
+      - email
       properties:
         id:
           type: string
@@ -152,7 +459,9 @@ components:
           format: email
     Session:
       type: object
-      required: [user, csrfToken]
+      required:
+      - user
+      - csrfToken
       properties:
         user:
           $ref: '#/components/schemas/User'
@@ -160,13 +469,22 @@ components:
           type: string
     Settings:
       type: object
-      required: [timezone, appearance, focusMinutes, shortBreakMinutes, longBreakMinutes, sound, revision]
+      required:
+      - timezone
+      - appearance
+      - focusMinutes
+      - shortBreakMinutes
+      - longBreakMinutes
+      - sound
+      - revision
       properties:
         timezone:
           type: string
         appearance:
           type: string
-          enum: [light, dark]
+          enum:
+          - light
+          - dark
         focusMinutes:
           type: integer
           default: 25
@@ -184,11 +502,15 @@ components:
           minimum: 1
     APIError:
       type: object
-      required: [error]
+      required:
+      - error
       properties:
         error:
           type: object
-          required: [code, message, requestId]
+          required:
+          - code
+          - message
+          - requestId
           properties:
             code:
               type: string
@@ -196,9 +518,337 @@ components:
               type: string
             requestId:
               type: string
+    TaskInput:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 300
+        description:
+          type: string
+          maxLength: 10000
+          default: ''
+        groupId:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        priority:
+          type: string
+          enum:
+          - low
+          - medium
+          - high
+          default: medium
+        scheduledDate:
+          type:
+          - string
+          - 'null'
+          format: date
+        startTime:
+          type:
+          - string
+          - 'null'
+          pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+        endTime:
+          type:
+          - string
+          - 'null'
+          pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+        deadline:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        estimatedPomodoros:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+          maximum: 2147483647
+      required:
+      - title
+    TaskPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 300
+        description:
+          type: string
+          maxLength: 10000
+          default: ''
+        groupId:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        priority:
+          type: string
+          enum:
+          - low
+          - medium
+          - high
+          default: medium
+        scheduledDate:
+          type:
+          - string
+          - 'null'
+          format: date
+        startTime:
+          type:
+          - string
+          - 'null'
+          pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+        endTime:
+          type:
+          - string
+          - 'null'
+          pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+        deadline:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        estimatedPomodoros:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+          maximum: 2147483647
+        expectedRevision:
+          type: integer
+          minimum: 1
+      required:
+      - expectedRevision
+      description: Omitted editable fields are retained. Explicit null clears nullable
+        fields. Status is changed only through the completion endpoint.
+    Task:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 300
+        description:
+          type: string
+          maxLength: 10000
+          default: ''
+        groupId:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        priority:
+          type: string
+          enum:
+          - low
+          - medium
+          - high
+          default: medium
+        scheduledDate:
+          type:
+          - string
+          - 'null'
+          format: date
+        startTime:
+          type:
+          - string
+          - 'null'
+          pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+        endTime:
+          type:
+          - string
+          - 'null'
+          pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+        deadline:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        estimatedPomodoros:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+          maximum: 2147483647
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - incomplete
+          - complete
+        revision:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - title
+      - description
+      - groupId
+      - priority
+      - scheduledDate
+      - startTime
+      - endTime
+      - deadline
+      - estimatedPomodoros
+      - id
+      - status
+      - revision
+      - createdAt
+      - updatedAt
+    TaskPage:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+          format: uuid
+      required:
+      - items
+      - nextCursor
+    ExpectedRevision:
+      type: object
+      additionalProperties: false
+      properties:
+        expectedRevision:
+          type: integer
+          minimum: 1
+      required:
+      - expectedRevision
+    CompletionInput:
+      type: object
+      additionalProperties: false
+      properties:
+        complete:
+          type: boolean
+        expectedRevision:
+          type: integer
+          minimum: 1
+        moveToToday:
+          type: boolean
+          default: false
+      required:
+      - complete
+      - expectedRevision
+    GroupInput:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        color:
+          type: string
+          pattern: ^#[0-9a-fA-F]{6}$
+      required:
+      - name
+      - color
+    GroupPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        color:
+          type: string
+          pattern: ^#[0-9a-fA-F]{6}$
+        expectedRevision:
+          type: integer
+          minimum: 1
+      required:
+      - expectedRevision
+    Group:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        color:
+          type: string
+          pattern: ^#[0-9a-fA-F]{6}$
+        id:
+          type: string
+          format: uuid
+        revision:
+          type: integer
+          minimum: 1
+      required:
+      - id
+      - name
+      - color
+      - revision
+    GroupList:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Group'
+      required:
+      - items
+    SettingsPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        timezone:
+          type: string
+        appearance:
+          type: string
+          enum:
+          - light
+          - dark
+        focusMinutes:
+          type: integer
+          default: 25
+          minimum: 1
+          maximum: 2147483647
+        shortBreakMinutes:
+          type: integer
+          default: 5
+          minimum: 1
+          maximum: 2147483647
+        longBreakMinutes:
+          type: integer
+          default: 15
+          minimum: 1
+          maximum: 2147483647
+        sound:
+          type: boolean
+          default: true
+        expectedRevision:
+          type: integer
+          minimum: 1
+      required:
+      - expectedRevision
   responses:
     Session:
-      description: Authenticated; sets focus_session (HttpOnly, SameSite=Lax, Secure with HTTPS, seven-day Max-Age)
+      description: Authenticated; sets focus_session (HttpOnly, SameSite=Lax, Secure
+        with HTTPS, seven-day Max-Age)
       headers:
         Set-Cookie:
           schema:
@@ -213,7 +863,8 @@ components:
         application/json:
           schema:
             type: object
-            required: [ok]
+            required:
+            - ok
             properties:
               ok:
                 type: boolean
@@ -229,7 +880,9 @@ components:
           schema:
             $ref: '#/components/schemas/APIError'
     Error:
-      description: Error envelope. 401 missing/expired session or invalid credentials; 403 Origin/CSRF; 409 duplicate account; 415 content type; 422 validation; 429 rate limit; 500 internal failure.
+      description: Error envelope. 401 missing/expired session or invalid credentials;
+        403 Origin/CSRF; 409 duplicate account; 415 content type; 422 validation;
+        429 rate limit; 500 internal failure.
       content:
         application/json:
           schema:

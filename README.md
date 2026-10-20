@@ -6,7 +6,7 @@ A desktop web task calendar with optional Pomodoro and daily, weekly, and monthl
 
 ## Current implementation
 
-The first backend milestone provides account registration, login, current-account settings, logout, password change, and database migrations. Task/calendar APIs and the Next.js frontend are the next milestones; the prototype is not connected to this API yet.
+The backend provides account registration, login/logout, password changes, task CRUD and completion, group CRUD, account settings, filtering, pagination, and database migrations. Owned writes use account transactions, idempotency keys, and revision checks. Recurrence/history, calendar/report/timer APIs, and the Next.js frontend are the next milestones; the prototype is not connected to this API yet.
 
 ## Local development
 
@@ -24,6 +24,12 @@ The API binds to `127.0.0.1:8080`; PostgreSQL binds to `127.0.0.1:55432`. `GET /
 `APP_ORIGIN` defaults to `http://localhost:3000`, the future Next.js origin. Mutations require an exact matching `Origin` and `Content-Type: application/json`. The Next.js app will proxy `/api/*` to Go so browsers use one origin. Authenticated mutations also require the `X-CSRF-Token` returned by login or `GET /api/v1/auth/me`. The API does not enable cross-origin browser access.
 
 OpenAPI: [`api/openapi.yaml`](api/openapi.yaml).
+
+Task/group/settings writes also require an `Idempotency-Key` (16–128 characters; a fresh UUID per intended action is recommended). Keep the exact method, URI, and JSON bytes when retrying an uncertain request. A successful retry returns the original result; reusing a key for different input returns 409. Edits/deletes/completion require the `expectedRevision` returned by the last read; a stale revision returns 409. Foreign resources return 404.
+
+`PATCH` preserves omitted editable properties. Send `null` to clear nullable task fields; clear both times when clearing a timed task's date. Task completion is a separate command, never a side effect of Pomodoro. The completion endpoint can explicitly move a future task to today. Lists accept `view`, `search`, `priority`, `status`, `groupId`, `cursor`, and `limit` (up to 100); title search is literal and case-insensitive.
+
+The task event log and transactional mutation boundary are ready for historical finalization, but daily snapshots and timezone-change catch-up are not yet implemented. Do not treat current task data as immutable historical reports.
 
 ```sh
 make test-go           # unit tests; deliberately excludes database integration tests

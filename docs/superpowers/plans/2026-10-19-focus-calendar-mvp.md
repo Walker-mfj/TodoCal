@@ -113,9 +113,11 @@ Use same-origin `/api/*` routing to Go (Next.js development rewrite; deployment 
 
 **Interfaces:** `Create(ctx, userID, input TaskInput) (Task,error)`, `Update(ctx,userID,id,input,revision) (Task,error)`, `Complete(ctx,userID,id,complete,moveToToday,revision) (Task,error)`, `Delete(ctx,userID,id,revision) error`; a command wrapper manages idempotency and transaction ownership.
 
-- [ ] Write failing tests: title-only/no-Pomodoro task; whitespace-title and invalid times; unscheduled completion; group deletion; rollback after injected event-write failure; foreign task/group IDs; repeated same-key creation; mismatched-key payload; stale revisions. Run task tests against PostgreSQL and inspect expected failures.
-- [ ] Implement owned SQL queries, event history, task/group/settings endpoints, soft deletion, mutation receipts, and revision conflicts. Use explicit same-account relation checks and constraints.
-- [ ] Run `make test-go` and `make test-integration`; require no cross-account disclosure and atomic rollback. Commit `feat: add account-owned task APIs`.
+- [x] Write failing tests: title-only/no-Pomodoro task; whitespace-title and invalid times; unscheduled completion; group deletion; rollback after injected event-write failure; foreign task/group IDs; repeated same-key creation; mismatched-key payload; stale revisions. Run task tests against PostgreSQL and inspect expected failures.
+- [x] Implement owned SQL queries, event history, task/group/settings endpoints, soft deletion, mutation receipts, and revision conflicts. Use explicit same-account relation checks and constraints.
+- [x] Run `make test-go` and `make test-integration`; require no cross-account disclosure and atomic rollback. Commit `feat: add account-owned task APIs`.
+
+**Implementation note (October 20, 2026):** Task domain functions receive the existing transaction in `internal/tasks`; `internal/account.WithTx` owns account locking and commit. HTTP handlers and mutation receipts live in `internal/server`, with migrations embedded there. Historical catch-up is explicitly reserved for Task 3. Verification and the deferred review finding are recorded in `docs/verification/backend-tasks.md`.
 
 ## Task 3: Recurrence and Daily History
 

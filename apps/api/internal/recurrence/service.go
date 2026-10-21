@@ -240,3 +240,24 @@ func Stop(ctx context.Context, tx pgx.Tx, user, zone, id string, now time.Time, 
 	}
 	return map[string]any{"id": id, "revision": rev + 1, "stoppedAfter": today}, nil
 }
+
+// Get returns the current series metadata without materializing occurrences.
+func Get(ctx context.Context, tx pgx.Tx, user, id string) (Series, error) {
+	var out Series
+	parsed, err := uuid.Parse(id)
+	if err != nil {
+		return out, tasks.Missing()
+	}
+	var raw []byte
+	var group *string
+	err = tx.QueryRow(ctx, `SELECT id::text,template,group_id::text,cadence,interval_days,end_date::text,stopped_after::text,revision,created_at FROM recurrence_series WHERE user_id=$1 AND id=$2`, user, parsed.String()).Scan(&out.ID, &raw, &group, &out.Cadence, &out.IntervalDays, &out.EndDate, &out.StoppedAfter, &out.Revision, &out.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return out, tasks.Missing()
+	}
+	if err != nil {
+		return out, err
+	}
+	err = json.Unmarshal(raw, &out.Task)
+	out.Task.GroupID = group
+	return out, err
+}

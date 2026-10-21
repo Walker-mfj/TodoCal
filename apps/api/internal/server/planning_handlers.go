@@ -96,3 +96,9 @@ func (s *Server) dayDetails(w http.ResponseWriter, r *http.Request) {
 		return planning.DayReport(r.Context(), tx, p.ID, zone, date, now)
 	})
 }
+
+func (s *Server) getSeries(w http.ResponseWriter, r *http.Request) {
+	s.view(w, r, func(tx pgx.Tx, p Principal, zone string, now time.Time) (any, error) {
+		return recurrence.Get(r.Context(), tx, p.ID, r.PathValue("id"))
+	})
+}

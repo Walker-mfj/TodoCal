@@ -1,0 +1,80 @@
+import { it, expect, vi } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { Providers, useSession, useOwnedQuery } from "../src/app/providers";
+import { AuthScreen } from "../src/features/auth/auth-screen";
+const settings = { timezone: "Asia/Tokyo", appearance: "dark", revision: 1 };
+function Harness() {
+  const s = useSession();
+  const data = useOwnedQuery<{ title: string }>("private", "/tasks/test");
+  if (!s.session) return <AuthScreen />;
+  return (
+    <>
+      <span>{s.session.user.email}</span>
+      <span>{data.data?.title}</span>
+      <button onClick={s.logout}>Sign out</button>
+    </>
+  );
+}
+it("registers, loads account theme, and clears private data on logout/account switch", async () => {
+  let user = "";
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+    if (
+      String(url).endsWith("/auth/register") ||
+      String(url).endsWith("/auth/login")
+    ) {
+      user = JSON.parse(init!.body as string).email;
+      return new Response("{}");
+    }
+    if (String(url).endsWith("/auth/logout")) {
+      user = "";
+      return new Response("{}", {
+        headers: { "X-Account-ID": "one@example.com" },
+      });
+    }
+    if (String(url).endsWith("/auth/me"))
+      return user
+        ? new Response(
+            JSON.stringify({
+              user: { id: user, email: user },
+              csrfToken: "csrf",
+              settings,
+            }),
+          )
+        : new Response("{}", { status: 401 });
+    return new Response(
+      JSON.stringify({
+        title: user === "one@example.com" ? "Private one" : "Private two",
+      }),
+      { headers: { "X-Account-ID": user } },
+    );
+  });
+  render(
+    <Providers>
+      <Harness />
+    </Providers>,
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Create an account" }),
+  );
+  fireEvent.change(screen.getByLabelText("Email"), {
+    target: { value: "one@example.com" },
+  });
+  fireEvent.change(screen.getByLabelText("Password"), {
+    target: { value: "strong-password-123" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+  await screen.findByText("Private one");
+  expect(document.documentElement.dataset.mode).toBe("dark");
+  fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+  await screen.findByLabelText("Email");
+  expect(screen.queryByText("Private one")).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Email"), {
+    target: { value: "two@example.com" },
+  });
+  fireEvent.change(screen.getByLabelText("Password"), {
+    target: { value: "strong-password-123" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+  await screen.findByText("Private two");
+  expect(screen.queryByText("Private one")).not.toBeInTheDocument();
+});

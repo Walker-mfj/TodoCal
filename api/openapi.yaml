@@ -423,6 +423,22 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SeriesInput'
+  /series/{id}:
+    parameters:
+    - $ref: '#/components/parameters/ResourceID'
+    get:
+      operationId: getSeries
+      responses:
+        '200':
+          description: Current owned recurrence metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecurrenceSeries'
+        '401':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
   /series/{id}/stop:
     parameters:
     - $ref: '#/components/parameters/ResourceID'

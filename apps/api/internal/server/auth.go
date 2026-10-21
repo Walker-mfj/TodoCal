@@ -196,6 +196,7 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request) (Principal
 		fail(w, 403, "csrf", "Refresh the page and try again")
 		return p, false
 	}
+	w.Header().Set("X-Account-ID", p.ID)
 	return p, true
 }
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {

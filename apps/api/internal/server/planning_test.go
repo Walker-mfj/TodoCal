@@ -374,3 +374,23 @@ func TestWorkerResumesAfterAnInterruptedSweep(t *testing.T) {
 		t.Fatal("skipped account never retried after wrap")
 	}
 }
+
+func TestReadSeriesOwnedAndCurrentRevision(t *testing.T) {
+	s, _ := testServer(t)
+	s.now = func() time.Time { return atDate("2030-10-19") }
+	a, csrf := register(t, s, "series-owner@example.com")
+	b, _ := register(t, s, "series-other@example.com")
+	sr := series(t, s, a, csrf, "weekly", 7, nil)
+	path := "/api/v1/series/" + sr["id"].(string)
+	out := object(t, req(s, "GET", path, nil, a, ""), 200)
+	if out["cadence"] != "weekly" || out["revision"] != float64(1) {
+		t.Fatal(out)
+	}
+	object(t, req(s, "GET", path, nil, b, ""), 404)
+	object(t, req(s, "GET", path, nil, nil, ""), 401)
+	object(t, command(s, "POST", path+"/stop", map[string]any{"expectedRevision": 1}, a, csrf, uuid.NewString()), 200)
+	out = object(t, req(s, "GET", path, nil, a, ""), 200)
+	if out["revision"] != float64(2) || out["stoppedAfter"] == nil {
+		t.Fatal(out)
+	}
+}

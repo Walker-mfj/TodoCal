@@ -41,6 +41,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/auth/me", s.me)
 	mux.HandleFunc("POST /api/v1/auth/logout", s.logout)
 	mux.HandleFunc("POST /api/v1/auth/password", s.password)
+	mux.HandleFunc("GET /api/v1/series/{id}", s.getSeries)
 	mux.HandleFunc("POST /api/v1/series", s.createSeries)
 	mux.HandleFunc("POST /api/v1/series/{id}/stop", s.stopSeries)
 	mux.HandleFunc("GET /api/v1/calendar", s.calendar)

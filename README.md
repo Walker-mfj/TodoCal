@@ -2,15 +2,15 @@
 
 A desktop web task calendar with optional Pomodoro and daily, weekly, and monthly completion analytics.
 
-**Stack:** Next.js frontend (planned), Go REST API, PostgreSQL. The approved visual prototype is in `docs/ui-demo`; it is separate from the production app.
+**Stack:** Next.js frontend, Go REST API, PostgreSQL. The approved visual prototype is in `docs/ui-demo`; it is separate from the production app.
 
 ## Current implementation
 
-The backend provides account registration, login/logout, password changes, task CRUD and completion, group CRUD, account settings, filtering, pagination, and database migrations. Owned writes use account transactions, idempotency keys, and revision checks. Daily/every-N-days/weekly recurrence, calendar ranges, finalized daily plans, and a background catch-up worker are also implemented. Period analytics, timer APIs, and the Next.js frontend remain pending; the prototype is not connected to this API yet.
+The backend provides account registration, login/logout, password changes, task CRUD and completion, group CRUD, account settings, filtering, pagination, and database migrations. Owned writes use account transactions, idempotency keys, and revision checks. Daily/every-N-days/weekly recurrence, calendar ranges, finalized daily plans, and a background catch-up worker are also implemented. The Next.js Clear Week workspace now connects to these APIs: authentication, task/group/settings forms, Day/Week/Month calendar, repeating tasks, account themes, and week/month grids of authoritative daily progress with drilldown. Drag/resize/undo, the Pomodoro timer, and aggregate period analytics/comparisons remain later milestones. The visual prototype remains separate.
 
 ## Local development
 
-Prerequisites: Go 1.26+, Docker with Compose, and `make`. Node is needed when the Next.js frontend is added.
+Prerequisites: Go 1.26+, Node.js 24+, npm, Docker with Compose, and `make`.
 
 ```sh
 cp .env.example .env
@@ -19,9 +19,18 @@ make migrate
 make api-dev
 ```
 
+In a second terminal:
+
+```sh
+cd apps/web && npm ci && cd ../..
+make web-dev
+```
+
+Open **http://localhost:3000** and create an account. Use `localhost`, matching `APP_ORIGIN`, rather than `127.0.0.1` in the browser. The Next.js server binds to loopback. To use a different Go port, set `API_URL=http://127.0.0.1:PORT` for Next.js dev/build; keep Go's `APP_ORIGIN` equal to the browser origin. Rewrites are fixed at build time for `npm run start`.
+
 The API binds to `127.0.0.1:8080`; PostgreSQL binds to `127.0.0.1:55432`. `GET /healthz` checks the process, and `GET /readyz` checks database connectivity. Apply migrations explicitly before starting the API. SIGINT/SIGTERM allows up to ten seconds for in-flight requests to finish.
 
-`APP_ORIGIN` defaults to `http://localhost:3000`, the future Next.js origin. Mutations require an exact matching `Origin` and `Content-Type: application/json`. The Next.js app will proxy `/api/*` to Go so browsers use one origin. Authenticated mutations also require the `X-CSRF-Token` returned by login or `GET /api/v1/auth/me`. The API does not enable cross-origin browser access.
+`APP_ORIGIN` defaults to `http://localhost:3000`, the Next.js origin. Mutations require an exact matching `Origin` and `Content-Type: application/json`. The Next.js app proxies `/api/*` to Go so browsers use one origin. Authenticated mutations also require the `X-CSRF-Token` returned by login or `GET /api/v1/auth/me`. The API does not enable cross-origin browser access.
 
 OpenAPI: [`api/openapi.yaml`](api/openapi.yaml).
 
@@ -31,7 +40,7 @@ Task/group/settings writes also require an `Idempotency-Key` (16–128 character
 
 `GET /api/v1/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD` accepts an end-exclusive range of up to 93 days. `days` contains live/finalized daily progress and entries; `tasks` contains tasks on editable dates. Use the snapshot entries for historical rendering. `GET /api/v1/reports/days/{date}` returns one daily plan; focus-session details are added later.
 
-`POST /api/v1/series` accepts `task`, `cadence` (`daily`, `interval`, `weekly`), optional `intervalDays`, and nullable inclusive `endDate`. Creation generates the first occurrence; calendar reads and catch-up generate only finite ranges. Each occurrence has an independent task ID and immutable `(seriesId, originalOccurrenceDate)` identity. `POST /api/v1/series/{id}/stop` cancels future incomplete occurrences while retaining today's and historical/completed records.
+`POST /api/v1/series` accepts `task`, `cadence` (`daily`, `interval`, `weekly`), optional `intervalDays`, and nullable inclusive `endDate`. Creation generates the first occurrence; calendar reads and catch-up generate only finite ranges. `GET /api/v1/series/{id}` returns current owned metadata and revision for display and safe stopping. Each occurrence has an independent task ID and immutable `(seriesId, originalOccurrenceDate)` identity. `POST /api/v1/series/{id}/stop` cancels future incomplete occurrences while retaining today's and historical/completed records.
 
 Ended days are finalized before domain reads/mutations. Catch-up uses at most 31 calendar days per transaction and a persisted watermark; the user command runs only after all necessary batches finish. A zone change first settles the old zone; forward jumps seal crossed dates at change time, and backward jumps never reopen snapshots. Future DST gaps are skipped with an explicit calendar warning and no missed-task penalty. An overlap resolves to the earlier instant; unfinalized future gap predictions are reevaluated after zone changes.
 
@@ -52,6 +61,24 @@ make build-api        # .local/focus-api
 ```
 
 Integration tests truncate the dedicated `focus_test` database. The runner ignores the development `DATABASE_URL`, and the Go helper refuses database names without an `_test` suffix. Do not run multiple copies of the integration suite against this shared test database simultaneously.
+
+Frontend verification:
+
+```sh
+make generate-api-types  # checked-in OpenAPI -> TypeScript (formatted)
+make test-web            # UI/model/API regression tests
+make typecheck
+make build-web
+make test-e2e            # builds production web, starts isolated local API/web, runs Chrome
+# Optional targeted browser run:
+make test-e2e E2E_ARGS='--grep calendar'
+```
+
+Browser tests use installed Google Chrome, the separate `focus_web_test` database, API port 18080, and web port 3002. They create unique test accounts, do not reset development data, and stop their own servers on exit. The build uses that test API URL; rebuild with the development/production `API_URL` before running `npm run start` manually. Do not run multiple browser suites using the same ports concurrently.
+
+Private query caches are scoped to the account and cleared on session expiry, logout, or account change. Successful authenticated API responses include `X-Account-ID`; the client refuses a response from a different account before caching it. A task editor draft is stored in sessionStorage under its owner ID, including its original revision and an uncertain command's exact payload/idempotency key. Re-authentication can restore only that account's draft; explicit logout removes that account's drafts. Group/settings drafts and uncertain commands are also stored per owner and cleared on explicit logout. Settings conflict recovery offers reapply or discard against the latest revision. Other tabs send invalidation hints, while the API remains authoritative. Visible pages refresh every 15 seconds and on focus/reconnect. Disconnected writes are disabled. The form retains invalid/conflicting input and lets the user discard a conflicting draft and reload.
+
+Calendar times are rendered as account-local wall-clock labels, independent of the browser timezone. Deadline inputs are converted through the account's IANA zone; nonexistent DST times are rejected. Finalized calendar/day details use immutable snapshot entries. Progress grids include all tasks regardless of calendar/list filters; future and no-plan days have no completion percentage.
 
 Compose persists development data in the `focus_pg` volume. `docker compose stop` stops PostgreSQL without deleting data. Local credentials in Compose are development-only. No public service has been deployed.
 

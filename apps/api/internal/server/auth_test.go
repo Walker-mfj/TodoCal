@@ -222,3 +222,17 @@ func TestRegistrationRollsBackAndRedactsDatabaseFailures(t *testing.T) {
 		t.Fatal("failure cannot be correlated")
 	}
 }
+
+func TestAuthenticatedResponsesIdentifyActualAccount(t *testing.T) {
+	s, _ := testServer(t)
+	cookie, _ := register(t, s, "identity-header@example.com")
+	me := req(s, "GET", "/api/v1/auth/me", nil, cookie, "")
+	body := object(t, me, 200)
+	id := body["user"].(map[string]any)["id"].(string)
+	for _, path := range []string{"/api/v1/auth/me", "/api/v1/tasks", "/api/v1/settings"} {
+		response := req(s, "GET", path, nil, cookie, "")
+		if response.Header().Get("X-Account-ID") != id {
+			t.Fatalf("%s missing authenticated identity", path)
+		}
+	}
+}

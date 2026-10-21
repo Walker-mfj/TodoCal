@@ -8,7 +8,7 @@ API_ADDR ?= 127.0.0.1:8080
 
 .PHONY: help db-up migrate api-dev test-go test-integration build-api
 help:
-	@echo 'Commands: db-up migrate api-dev worker-dev worker-once test-go test-integration build-api build-worker'
+	@echo 'Commands: db-up migrate api-dev worker-dev worker-once test-go test-integration build-api build-worker web-dev typecheck test-web build-web test-e2e'
 db-up:
 	docker compose up -d --wait
 migrate:
@@ -31,3 +31,19 @@ worker-once:
 build-worker:
 	mkdir -p .local
 	cd apps/api && go build -o ../../.local/focus-worker ./cmd/worker
+
+.PHONY: web-dev typecheck test-web build-web generate-api-types
+web-dev:
+	cd apps/web && npm run dev
+typecheck:
+	cd apps/web && npm run typecheck
+test-web:
+	cd apps/web && npm test
+build-web:
+	cd apps/web && npm run build
+generate-api-types:
+	cd apps/web && npm run generate:api
+
+.PHONY: test-e2e
+test-e2e:
+	sh scripts/test-e2e.sh $(E2E_ARGS)

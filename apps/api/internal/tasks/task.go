@@ -37,18 +37,20 @@ type Input struct {
 }
 type Task struct {
 	Input
-	ID        string    `json:"id"`
-	Status    string    `json:"status"`
-	Revision  int64     `json:"revision"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	ID                     string    `json:"id"`
+	Status                 string    `json:"status"`
+	Revision               int64     `json:"revision"`
+	CreatedAt              time.Time `json:"createdAt"`
+	UpdatedAt              time.Time `json:"updatedAt"`
+	SeriesID               *string   `json:"seriesId"`
+	OriginalOccurrenceDate *string   `json:"originalOccurrenceDate"`
 }
 
-const Columns = `id::text,title,description,group_id::text,priority,scheduled_date::text,to_char(start_time,'HH24:MI'),to_char(end_time,'HH24:MI'),deadline,estimated_pomodoros,status,revision,created_at,updated_at`
+const Columns = `id::text,title,description,group_id::text,priority,scheduled_date::text,to_char(start_time,'HH24:MI'),to_char(end_time,'HH24:MI'),deadline,estimated_pomodoros,status,revision,created_at,updated_at,series_id::text,original_occurrence_date::text`
 
 func Scan(row pgx.Row) (Task, error) {
 	var t Task
-	err := row.Scan(&t.ID, &t.Title, &t.Description, &t.GroupID, &t.Priority, &t.ScheduledDate, &t.StartTime, &t.EndTime, &t.Deadline, &t.EstimatedPomodoros, &t.Status, &t.Revision, &t.CreatedAt, &t.UpdatedAt)
+	err := row.Scan(&t.ID, &t.Title, &t.Description, &t.GroupID, &t.Priority, &t.ScheduledDate, &t.StartTime, &t.EndTime, &t.Deadline, &t.EstimatedPomodoros, &t.Status, &t.Revision, &t.CreatedAt, &t.UpdatedAt, &t.SeriesID, &t.OriginalOccurrenceDate)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return t, Missing()
 	}
@@ -170,6 +172,9 @@ func Create(ctx context.Context, tx pgx.Tx, user, zone string, now time.Time, in
 	if err := CheckGroup(ctx, tx, user, in.GroupID); err != nil {
 		return Task{}, err
 	}
+	if err := EditableDate(ctx, tx, user, in.ScheduledDate); err != nil {
+		return Task{}, err
+	}
 	t, err := Scan(tx.QueryRow(ctx, `INSERT INTO tasks(user_id,id,title,description,group_id,priority,scheduled_date,start_time,end_time,deadline,estimated_pomodoros,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12) RETURNING `+Columns, user, uuid.NewString(), in.Title, in.Description, in.GroupID, in.Priority, in.ScheduledDate, in.StartTime, in.EndTime, in.Deadline, in.EstimatedPomodoros, now))
 	if err != nil {
 		return t, err
@@ -183,9 +188,19 @@ func Update(ctx context.Context, tx pgx.Tx, user, zone string, now time.Time, ol
 	if err := CheckGroup(ctx, tx, user, in.GroupID); err != nil {
 		return Task{}, err
 	}
+	if !sameDate(old.ScheduledDate, in.ScheduledDate) {
+		if err := EditableDate(ctx, tx, user, in.ScheduledDate); err != nil {
+			return Task{}, err
+		}
+	}
 	t, err := Scan(tx.QueryRow(ctx, `UPDATE tasks SET title=$3,description=$4,group_id=$5,priority=$6,scheduled_date=$7,start_time=$8,end_time=$9,deadline=$10,estimated_pomodoros=$11,revision=revision+1,updated_at=$12 WHERE user_id=$1 AND id=$2 RETURNING `+Columns, user, old.ID, in.Title, in.Description, in.GroupID, in.Priority, in.ScheduledDate, in.StartTime, in.EndTime, in.Deadline, in.EstimatedPomodoros, now))
 	if err != nil {
 		return t, err
+	}
+	if !sameDate(old.ScheduledDate, t.ScheduledDate) {
+		if err = Exception(ctx, tx, user, t, "moved", now); err != nil {
+			return t, err
+		}
 	}
 	return t, Event(ctx, tx, user, zone, "updated", now, &old, t)
 }
@@ -214,6 +229,11 @@ func Complete(ctx context.Context, tx pgx.Tx, user, zone string, now time.Time, 
 	if err = Validate(&in, zone, now, &old); err != nil {
 		return Task{}, err
 	}
+	if !sameDate(old.ScheduledDate, date) {
+		if err = EditableDate(ctx, tx, user, date); err != nil {
+			return Task{}, err
+		}
+	}
 	t, err := Scan(tx.QueryRow(ctx, `UPDATE tasks SET status=$3,scheduled_date=$4,revision=revision+1,updated_at=$5 WHERE user_id=$1 AND id=$2 RETURNING `+Columns, user, old.ID, status, date, now))
 	if err != nil {
 		return t, err
@@ -221,6 +241,11 @@ func Complete(ctx context.Context, tx pgx.Tx, user, zone string, now time.Time, 
 	if !complete {
 		_, err = tx.Exec(ctx, `UPDATE task_events SET invalidated_at=$3 WHERE user_id=$1 AND task_id=$2 AND kind='completed' AND local_date=$4 AND invalidated_at IS NULL`, user, old.ID, now, today)
 		if err != nil {
+			return t, err
+		}
+	}
+	if !sameDate(old.ScheduledDate, t.ScheduledDate) {
+		if err = Exception(ctx, tx, user, t, "moved", now); err != nil {
 			return t, err
 		}
 	}
@@ -234,5 +259,30 @@ func Delete(ctx context.Context, tx pgx.Tx, user, zone string, now time.Time, ol
 	after := old
 	after.Revision++
 	after.UpdatedAt = now
+	if err = Exception(ctx, tx, user, after, "deleted", now); err != nil {
+		return err
+	}
 	return Event(ctx, tx, user, zone, "deleted", now, &old, after)
+}
+
+func sameDate(a, b *string) bool { return (a == nil && b == nil) || (a != nil && b != nil && *a == *b) }
+func EditableDate(ctx context.Context, tx pgx.Tx, user string, date *string) error {
+	if date == nil {
+		return nil
+	}
+	var finalized bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM daily_snapshots WHERE user_id=$1 AND date=$2)`, user, *date).Scan(&finalized); err != nil {
+		return err
+	}
+	if finalized {
+		return Invalid("This daily plan is finalized; choose an editable date")
+	}
+	return nil
+}
+func Exception(ctx context.Context, tx pgx.Tx, user string, t Task, reason string, now time.Time) error {
+	if t.SeriesID == nil {
+		return nil
+	}
+	_, e := tx.Exec(ctx, `INSERT INTO recurrence_exceptions(user_id,series_id,original_occurrence_date,task_id,reason,created_at) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(user_id,series_id,original_occurrence_date) DO UPDATE SET reason=EXCLUDED.reason`, user, t.SeriesID, t.OriginalOccurrenceDate, t.ID, reason, now)
+	return e
 }

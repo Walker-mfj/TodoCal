@@ -1,11 +1,11 @@
 openapi: 3.1.0
 info:
   title: Focus Calendar API
-  version: 0.2.0
-  description: Account authentication and owned task/group/settings APIs. Calendar,
-    recurrence, timer, and report endpoints are added in later milestones. All mutations
-    require the configured Origin and application/json. Domain mutations additionally
-    require a session CSRF token and Idempotency-Key.
+  version: 0.3.0
+  description: Authentication, owned task/group/settings APIs, recurrence, calendar
+    and finalized daily plans. Timer and period-report endpoints are added in later
+    milestones. Mutations require the configured Origin and application/json; domain
+    mutations additionally require CSRF and Idempotency-Key.
 servers:
 - url: /api/v1
 security:
@@ -386,9 +386,10 @@ paths:
                 $ref: '#/components/schemas/Settings'
         default:
           $ref: '#/components/responses/Error'
-      description: Partial update to the current account only. Explicit IANA time
-        zone; light/dark appearance; positive integer durations. Historical catch-up
-        is added in the next milestone.
+      description: Partial update to the current account. Finalizes ended days under
+        the previous time zone first; a forward time-zone jump seals crossed dates
+        using states at change time. Previously finalized days are never reclassified.
+        Schedules retain their local date/time labels.
       parameters:
       - $ref: '#/components/parameters/CSRF'
       - $ref: '#/components/parameters/IdempotencyKey'
@@ -398,6 +399,108 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SettingsPatch'
+  /series:
+    post:
+      operationId: createSeries
+      description: Creates a repeating series and its first occurrence. End date is
+        inclusive. Additional occurrences are generated only for requested finite
+        ranges or ended-day catch-up. Each occurrence is a task with independent state.
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecurrenceSeries'
+        default:
+          $ref: '#/components/responses/Error'
+      parameters:
+      - $ref: '#/components/parameters/CSRF'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SeriesInput'
+  /series/{id}/stop:
+    parameters:
+    - $ref: '#/components/parameters/ResourceID'
+    post:
+      operationId: stopSeries
+      description: Stops future generation and cancels future incomplete occurrences,
+        preserving historical/current occurrences and explicitly completed tasks.
+        Requires the series revision returned by creation; series content editing
+        is outside the MVP.
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoppedSeries'
+        default:
+          $ref: '#/components/responses/Error'
+      parameters:
+      - $ref: '#/components/parameters/CSRF'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExpectedRevision'
+  /calendar:
+    get:
+      operationId: getCalendar
+      description: End-exclusive range of 1–93 days. Catch-up finalizes ended days
+        before reading. tasks contains current, editable-date tasks; days includes
+        full historical snapshots and authoritative unfiltered progress. A nonexistent
+        recurring wall time is skipped with a warning, not counted as a missed task.
+        Such future predictions are reevaluated if the account time zone changes.
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarRange'
+        default:
+          $ref: '#/components/responses/Error'
+      parameters:
+      - in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date
+  /reports/days/{date}:
+    parameters:
+    - in: path
+      name: date
+      required: true
+      schema:
+        type: string
+        format: date
+    get:
+      operationId: getDayReport
+      description: Returns the current or finalized daily plan; a future date has
+        no percentage. Focus-session details are added in the later focus milestone.
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DayReport'
+        default:
+          $ref: '#/components/responses/Error'
 components:
   securitySchemes:
     sessionCookie:
@@ -694,6 +797,16 @@ components:
         updatedAt:
           type: string
           format: date-time
+        seriesId:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        originalOccurrenceDate:
+          type:
+          - string
+          - 'null'
+          format: date
       required:
       - title
       - description
@@ -709,6 +822,8 @@ components:
       - revision
       - createdAt
       - updatedAt
+      - seriesId
+      - originalOccurrenceDate
     TaskPage:
       type: object
       additionalProperties: false
@@ -845,6 +960,212 @@ components:
           minimum: 1
       required:
       - expectedRevision
+    SeriesInput:
+      type: object
+      additionalProperties: false
+      properties:
+        task:
+          allOf:
+          - $ref: '#/components/schemas/TaskInput'
+          - required:
+            - scheduledDate
+            properties:
+              scheduledDate:
+                type: string
+                format: date
+        cadence:
+          type: string
+          enum:
+          - daily
+          - interval
+          - weekly
+        intervalDays:
+          type: integer
+          minimum: 1
+          maximum: 365
+          description: Daily uses 1; weekly uses 7 (may be omitted). Interval cadence
+            requires 2–365.
+        endDate:
+          type:
+          - string
+          - 'null'
+          format: date
+      required:
+      - task
+      - cadence
+    RecurrenceSeries:
+      type: object
+      additionalProperties: false
+      properties:
+        task:
+          allOf:
+          - $ref: '#/components/schemas/TaskInput'
+          - required:
+            - scheduledDate
+            properties:
+              scheduledDate:
+                type: string
+                format: date
+        cadence:
+          type: string
+          enum:
+          - daily
+          - interval
+          - weekly
+        intervalDays:
+          type: integer
+          minimum: 1
+          maximum: 365
+          description: Daily uses 1; weekly uses 7 (may be omitted). Interval cadence
+            requires 2–365.
+        endDate:
+          type:
+          - string
+          - 'null'
+          format: date
+        id:
+          type: string
+          format: uuid
+        revision:
+          type: integer
+          minimum: 1
+        stoppedAfter:
+          type:
+          - string
+          - 'null'
+          format: date
+        createdAt:
+          type: string
+          format: date-time
+      required:
+      - id
+      - task
+      - cadence
+      - intervalDays
+      - endDate
+      - revision
+      - stoppedAfter
+      - createdAt
+    StoppedSeries:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        revision:
+          type: integer
+          minimum: 1
+        stoppedAfter:
+          type: string
+          format: date
+      required:
+      - id
+      - revision
+      - stoppedAfter
+    PlanEntry:
+      type: object
+      additionalProperties: false
+      properties:
+        task:
+          $ref: '#/components/schemas/Task'
+        groupName:
+          type:
+          - string
+          - 'null'
+        groupColor:
+          type:
+          - string
+          - 'null'
+      required:
+      - task
+      - groupName
+      - groupColor
+    DayReport:
+      type: object
+      additionalProperties: false
+      properties:
+        date:
+          type: string
+          format: date
+        timezone:
+          type: string
+        planned:
+          type: integer
+          minimum: 0
+        completed:
+          type: integer
+          minimum: 0
+        percentage:
+          type:
+          - number
+          - 'null'
+          minimum: 0
+          maximum: 100
+        finalized:
+          type: boolean
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanEntry'
+      required:
+      - date
+      - timezone
+      - planned
+      - completed
+      - percentage
+      - finalized
+      - entries
+      description: Today is live unless already finalized in a previous time zone.
+        Past entries are immutable snapshots; future and no-plan percentages are null.
+        A percentage is rounded to one decimal; 100 requires all planned tasks complete.
+        Focus sessions are added with the focus/analytics milestones.
+    CalendarWarning:
+      type: object
+      additionalProperties: false
+      properties:
+        seriesId:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+        reason:
+          type: string
+          enum:
+          - invalid_local_time
+      required:
+      - seriesId
+      - date
+      - reason
+    CalendarRange:
+      type: object
+      additionalProperties: false
+      properties:
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/DayReport'
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/CalendarWarning'
+      required:
+      - from
+      - to
+      - tasks
+      - days
+      - warnings
   responses:
     Session:
       description: Authenticated; sets focus_session (HttpOnly, SameSite=Lax, Secure

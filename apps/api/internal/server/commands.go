@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"focuscalendar/internal/account"
+	"focuscalendar/internal/planning"
 	"focuscalendar/internal/tasks"
 	"github.com/jackc/pgx/v5"
 	"io"
@@ -33,7 +33,7 @@ func parseInput(raw []byte, v any) error {
 			continue
 		}
 		switch key {
-		case "groupId", "scheduledDate", "startTime", "endTime", "deadline", "estimatedPomodoros":
+		case "endDate", "groupId", "scheduledDate", "startTime", "endTime", "deadline", "estimatedPomodoros":
 		default:
 			return tasks.Invalid("Field cannot be null: " + key)
 		}
@@ -69,8 +69,7 @@ func (s *Server) mutate(w http.ResponseWriter, r *http.Request, op operation) {
 	hash := tokenHash(r.Method + "\n" + r.URL.RequestURI() + "\n" + string(raw))
 	var body []byte
 	var status int
-	err = account.WithTx(r.Context(), s.pool, p.ID, func(tx pgx.Tx, zone string) error {
-		now := s.now().UTC()
+	err = planning.WithTx(r.Context(), s.pool, p.ID, s.now, func(tx pgx.Tx, zone string, now time.Time) error {
 		var valid bool
 		if e := tx.QueryRow(r.Context(), `SELECT revoked_at IS NULL AND expires_at>$2 FROM auth_sessions WHERE id=$1 AND user_id=$3`, p.SessionID, now, p.ID).Scan(&valid); e != nil {
 			return e
@@ -89,7 +88,7 @@ func (s *Server) mutate(w http.ResponseWriter, r *http.Request, op operation) {
 		if !errors.Is(e, pgx.ErrNoRows) {
 			return e
 		}
-		// Task 3 inserts chronological history catch-up here, inside this transaction.
+		// History is settled by planning.WithTx before this command executes.
 		out, code, e := op(tx, p, zone, now, raw)
 		if e != nil {
 			return e
@@ -110,13 +109,17 @@ func (s *Server) mutate(w http.ResponseWriter, r *http.Request, op operation) {
 	w.WriteHeader(status)
 	w.Write(append(body, '\n'))
 }
-func (s *Server) view(w http.ResponseWriter, r *http.Request, op func(pgx.Tx, Principal, string) (any, error)) {
+func (s *Server) view(w http.ResponseWriter, r *http.Request, op func(pgx.Tx, Principal, string, time.Time) (any, error)) {
 	p, ok := s.authenticate(w, r)
 	if !ok {
 		return
 	}
 	var out any
-	err := account.WithTx(r.Context(), s.pool, p.ID, func(tx pgx.Tx, zone string) error { var e error; out, e = op(tx, p, zone); return e })
+	err := planning.WithTx(r.Context(), s.pool, p.ID, s.now, func(tx pgx.Tx, zone string, now time.Time) error {
+		var e error
+		out, e = op(tx, p, zone, now)
+		return e
+	})
 	if err != nil {
 		domainError(w, err)
 		return

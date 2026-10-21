@@ -20,7 +20,7 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 	})
 }
 func (s *Server) getTask(w http.ResponseWriter, r *http.Request) {
-	s.view(w, r, func(tx pgx.Tx, p Principal, zone string) (any, error) {
+	s.view(w, r, func(tx pgx.Tx, p Principal, zone string, now time.Time) (any, error) {
 		return tasks.Get(r.Context(), tx, p.ID, r.PathValue("id"))
 	})
 }
@@ -91,7 +91,7 @@ func (s *Server) deleteTask(w http.ResponseWriter, r *http.Request) {
 	})
 }
 func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
-	s.view(w, r, func(tx pgx.Tx, p Principal, zone string) (any, error) {
+	s.view(w, r, func(tx pgx.Tx, p Principal, zone string, now time.Time) (any, error) {
 		q := r.URL.Query()
 		limit := 50
 		if v := q.Get("limit"); v != "" {
@@ -128,7 +128,6 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 		if e != nil {
 			return nil, e
 		}
-		now := s.now().UTC()
 		today := now.In(loc).Format("2006-01-02")
 		rows, e := tx.Query(r.Context(), `SELECT `+tasks.Columns+` FROM tasks WHERE user_id=$1 AND deleted_at IS NULL
  AND ($2='' OR id>NULLIF($2,'')::uuid) AND ($3='' OR strpos(lower(title),lower($3))>0)

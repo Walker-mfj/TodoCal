@@ -125,11 +125,13 @@ Use same-origin `/api/*` routing to Go (Next.js development rewrite; deployment 
 
 **Interfaces:** Transaction-level `Materialize(ctx,tx,userID,from,to) error`, `FinalizeEndedDays(ctx,tx,userID,now) error`, `ProjectDay(ctx,tx,userID,date,cutoff) (DayReport,error)`. API services expose series creation/stop and calendar reads.
 
-- [ ] Write failing tests: daily Oct 19–25 gives seven occurrences; every two days gives 19/21/23/25; weekly through Nov 2 gives 19/26/2; inclusive end; invalid interval; independent completion; deletion/move exception prevents regeneration; finite open-ended generation; stop-series history; inherited deadline offsets.
-- [ ] Add history tests: 3/5=60%, add task→50%, empty day→null; carryover preserves Monday's snapshot; delayed catch-up materializes due occurrences before finalization; DST gap/overlap; changing zone backward leaves snapshots immutable; concurrent worker/API creates one occurrence/snapshot. Run targeted Go/integration tests and verify failures.
-- [ ] Implement server calendar arithmetic and idempotent range materialization. Catch up chronologically in bounded transaction batches, persist a per-account watermark, and block a conflicting mutation until required history is settled. Use the shared account lock for worker and API.
-- [ ] Add a minute-based worker sweep and API fallback; do not require an external scheduler. Skip accounts/dates with no relevant plan data; never pre-generate infinite series.
-- [ ] Run `make test-go` and `make test-integration`; commit `feat: preserve recurring plans and daily history`.
+- [x] Write failing tests: daily Oct 19–25 gives seven occurrences; every two days gives 19/21/23/25; weekly through Nov 2 gives 19/26/2; inclusive end; invalid interval; independent completion; deletion/move exception prevents regeneration; finite open-ended generation; stop-series history; inherited deadline offsets.
+- [x] Add history tests: 3/5=60%, add task→50%, empty day→null; carryover preserves Monday's snapshot; delayed catch-up materializes due occurrences before finalization; DST gap/overlap; changing zone backward leaves snapshots immutable; concurrent worker/API creates one occurrence/snapshot. Run targeted Go/integration tests and verify failures.
+- [x] Implement server calendar arithmetic and idempotent range materialization. Catch up chronologically in bounded transaction batches, persist a per-account watermark, and block a conflicting mutation until required history is settled. Use the shared account lock for worker and API.
+- [x] Add a minute-based worker sweep and API fallback; do not require an external scheduler. Skip accounts/dates with no relevant plan data; never pre-generate infinite series.
+- [x] Run `make test-go` and `make test-integration`; commit `feat: preserve recurring plans and daily history`.
+
+**Implementation note (October 21, 2026):** `internal/planning.WithTx` settles ended days in bounded account transactions before the caller runs. `internal/recurrence` materializes finite ranges and retains occurrence exceptions; `internal/localdate` handles DST gaps/overlaps. Calendar and day-detail endpoints expose live/finalized plans. The worker retains sweep progress between runs and bounds individual account attempts. DST skips, forward-zone transition semantics, and verification evidence are recorded in `docs/verification/backend-history.md`.
 
 ## Task 4: Next.js Clear Week Frontend and API Integration
 

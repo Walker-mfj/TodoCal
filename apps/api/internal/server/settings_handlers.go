@@ -1,6 +1,7 @@
 package server
 
 import (
+	"focuscalendar/internal/planning"
 	"focuscalendar/internal/tasks"
 	"github.com/jackc/pgx/v5"
 	"net/http"
@@ -26,7 +27,9 @@ func readSettings(tx pgx.Tx, r *http.Request, user string) (settings, error) {
 	return out, e
 }
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
-	s.view(w, r, func(tx pgx.Tx, p Principal, zone string) (any, error) { return readSettings(tx, r, p.ID) })
+	s.view(w, r, func(tx pgx.Tx, p Principal, zone string, now time.Time) (any, error) {
+		return readSettings(tx, r, p.ID)
+	})
 }
 func (s *Server) editSettings(w http.ResponseWriter, r *http.Request) {
 	s.mutate(w, r, func(tx pgx.Tx, p Principal, zone string, now time.Time, raw []byte) (any, int, error) {
@@ -57,6 +60,11 @@ func (s *Server) editSettings(w http.ResponseWriter, r *http.Request) {
 		for _, n := range []int{in.FocusMinutes, in.ShortBreakMinutes, in.LongBreakMinutes} {
 			if n < 1 || n > 2147483647 {
 				return nil, 0, tasks.Invalid("Durations must be positive whole minutes")
+			}
+		}
+		if in.Timezone != current.Timezone {
+			if e = planning.BeforeZoneChange(r.Context(), tx, p.ID, current.Timezone, in.Timezone, now); e != nil {
+				return nil, 0, e
 			}
 		}
 		_, e = tx.Exec(r.Context(), `UPDATE settings SET timezone=$2,appearance=$3,focus_minutes=$4,short_break_minutes=$5,long_break_minutes=$6,sound=$7,revision=revision+1 WHERE user_id=$1`, p.ID, in.Timezone, in.Appearance, in.FocusMinutes, in.ShortBreakMinutes, in.LongBreakMinutes, in.Sound)

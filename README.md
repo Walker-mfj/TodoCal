@@ -6,7 +6,7 @@ A desktop web task calendar with optional Pomodoro and daily, weekly, and monthl
 
 ## Current implementation
 
-The backend provides account registration, login/logout, password changes, task CRUD and completion, group CRUD, account settings, filtering, pagination, and database migrations. Owned writes use account transactions, idempotency keys, and revision checks. Recurrence/history, calendar/report/timer APIs, and the Next.js frontend are the next milestones; the prototype is not connected to this API yet.
+The backend provides account registration, login/logout, password changes, task CRUD and completion, group CRUD, account settings, filtering, pagination, and database migrations. Owned writes use account transactions, idempotency keys, and revision checks. Daily/every-N-days/weekly recurrence, calendar ranges, finalized daily plans, and a background catch-up worker are also implemented. Period analytics, timer APIs, and the Next.js frontend remain pending; the prototype is not connected to this API yet.
 
 ## Local development
 
@@ -29,7 +29,21 @@ Task/group/settings writes also require an `Idempotency-Key` (16–128 character
 
 `PATCH` preserves omitted editable properties. Send `null` to clear nullable task fields; clear both times when clearing a timed task's date. Task completion is a separate command, never a side effect of Pomodoro. The completion endpoint can explicitly move a future task to today. Lists accept `view`, `search`, `priority`, `status`, `groupId`, `cursor`, and `limit` (up to 100); title search is literal and case-insensitive.
 
-The task event log and transactional mutation boundary are ready for historical finalization, but daily snapshots and timezone-change catch-up are not yet implemented. Do not treat current task data as immutable historical reports.
+`GET /api/v1/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD` accepts an end-exclusive range of up to 93 days. `days` contains live/finalized daily progress and entries; `tasks` contains tasks on editable dates. Use the snapshot entries for historical rendering. `GET /api/v1/reports/days/{date}` returns one daily plan; focus-session details are added later.
+
+`POST /api/v1/series` accepts `task`, `cadence` (`daily`, `interval`, `weekly`), optional `intervalDays`, and nullable inclusive `endDate`. Creation generates the first occurrence; calendar reads and catch-up generate only finite ranges. Each occurrence has an independent task ID and immutable `(seriesId, originalOccurrenceDate)` identity. `POST /api/v1/series/{id}/stop` cancels future incomplete occurrences while retaining today's and historical/completed records.
+
+Ended days are finalized before domain reads/mutations. Catch-up uses at most 31 calendar days per transaction and a persisted watermark; the user command runs only after all necessary batches finish. A zone change first settles the old zone; forward jumps seal crossed dates at change time, and backward jumps never reopen snapshots. Future DST gaps are skipped with an explicit calendar warning and no missed-task penalty. An overlap resolves to the earlier instant; unfinalized future gap predictions are reevaluated after zone changes.
+
+Run the worker in another terminal:
+
+```sh
+make worker-dev       # one sweep per minute
+make worker-once      # one sweep, useful for local smoke checks
+make build-worker     # .local/focus-worker
+```
+
+The periodic worker retains its account cursor between bounded sweeps and limits individual account attempts to two seconds. Blocked accounts are retried after the cursor wraps, without preventing later accounts from being processed. The API uses the same lock/catch-up code and remains correct when the worker is stopped. Very large single-account batches may require query tuning; production load testing is not part of this milestone.
 
 ```sh
 make test-go           # unit tests; deliberately excludes database integration tests

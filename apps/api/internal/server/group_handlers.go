@@ -47,7 +47,7 @@ func getGroup(tx pgx.Tx, r *http.Request, user string) (group, error) {
 	return g, e
 }
 func (s *Server) listGroups(w http.ResponseWriter, r *http.Request) {
-	s.view(w, r, func(tx pgx.Tx, p Principal, zone string) (any, error) {
+	s.view(w, r, func(tx pgx.Tx, p Principal, zone string, now time.Time) (any, error) {
 		rows, e := tx.Query(r.Context(), `SELECT id::text,name,color,revision FROM groups WHERE user_id=$1 ORDER BY lower(name),id`, p.ID)
 		if e != nil {
 			return nil, e
@@ -153,6 +153,10 @@ func (s *Server) deleteGroup(w http.ResponseWriter, r *http.Request) {
 			if e = tasks.Event(r.Context(), tx, p.ID, zone, "group_cleared", now, &old, next); e != nil {
 				return nil, 0, e
 			}
+		}
+		_, e = tx.Exec(r.Context(), `UPDATE recurrence_series SET group_id=NULL WHERE user_id=$1 AND group_id=$2`, p.ID, g.ID)
+		if e != nil {
+			return nil, 0, e
 		}
 		_, e = tx.Exec(r.Context(), `DELETE FROM groups WHERE user_id=$1 AND id=$2`, p.ID, g.ID)
 		return map[string]bool{"ok": true}, 200, e

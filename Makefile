@@ -8,7 +8,7 @@ API_ADDR ?= 127.0.0.1:8080
 
 .PHONY: help db-up migrate api-dev test-go test-integration build-api
 help:
-	@echo 'Commands: db-up migrate api-dev test-go test-integration build-api'
+	@echo 'Commands: db-up migrate api-dev worker-dev worker-once test-go test-integration build-api build-worker'
 db-up:
 	docker compose up -d --wait
 migrate:
@@ -22,3 +22,12 @@ test-integration:
 build-api:
 	mkdir -p .local
 	cd apps/api && go build -o ../../.local/focus-api ./cmd/api
+
+.PHONY: worker-dev worker-once build-worker
+worker-dev:
+	cd apps/api && go run ./cmd/worker
+worker-once:
+	cd apps/api && go run ./cmd/worker -once
+build-worker:
+	mkdir -p .local
+	cd apps/api && go build -o ../../.local/focus-worker ./cmd/worker

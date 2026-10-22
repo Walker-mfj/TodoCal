@@ -1,4 +1,5 @@
 "use client";
+import { ValidatedForm } from "../../components/validated-form";
 import { useState } from "react";
 import { useSession } from "../../app/providers";
 import { ApiError, errorMessage } from "../../lib/api";
@@ -59,7 +60,7 @@ export function AuthScreen() {
             Connection unavailable. Check that the API is running.
           </p>
         )}
-        <form
+        <ValidatedForm
           onSubmit={async (e) => {
             e.preventDefault();
             setBusy(true);
@@ -106,7 +107,7 @@ export function AuthScreen() {
           <button className="primary wide" disabled={busy}>
             {busy ? "Please wait…" : register ? "Create account" : "Sign in"}
           </button>
-        </form>
+        </ValidatedForm>
         <button
           className="text-button"
           onClick={() => {

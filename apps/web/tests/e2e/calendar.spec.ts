@@ -219,3 +219,65 @@ test("calendar external drop assigns 30 minutes, clear-time drop and uncertain r
   expect(current.scheduledDate).toBe(date);
   expect(current.endTime).toBeNull();
 });
+
+test("new scheduled tasks appear immediately without navigation or polling", async ({
+  page,
+}) => {
+  const { date } = await setup(page);
+  for (const repeat of [false, true]) {
+    await page
+      .getByRole("button", { name: "New task", exact: true })
+      .first()
+      .click();
+    const title = repeat ? "Immediate repeating task" : "Immediate single task";
+    await page.getByLabel("Task title").fill(title);
+    await page.getByLabel("Scheduled date").fill(date);
+    if (repeat)
+      await page
+        .getByRole("combobox", { name: "Repeat", exact: true })
+        .selectOption("daily");
+    await page
+      .getByRole("button", { name: "Create task", exact: true })
+      .click();
+    await expect(page.getByLabel("Task title")).toBeHidden();
+    await expect(
+      page.locator(".fc-event").filter({ hasText: title }).first(),
+    ).toBeVisible({ timeout: 3000 });
+  }
+});
+
+test("creating a task outside the visible week reveals its date and clears hiding filters", async ({
+  page,
+}) => {
+  const { date } = await setup(page);
+  const next = new Date(date + "T12:00:00Z");
+  next.setUTCDate(next.getUTCDate() + 14);
+  await page.getByPlaceholder("Search tasks…").fill("Something else");
+  await page
+    .getByRole("button", { name: "New task", exact: true })
+    .first()
+    .click();
+  await page.getByLabel("Task title").fill("Visible after save");
+  await page.getByLabel("Scheduled date").fill(next.toISOString().slice(0, 10));
+  await page.getByRole("button", { name: "Create task", exact: true }).click();
+  await expect(page.getByLabel("Task title")).toBeHidden();
+  await expect(
+    page.locator(".fc-event").filter({ hasText: "Visible after save" }),
+  ).toBeVisible({ timeout: 3000 });
+});
+
+test("task validation uses an inline message instead of browser tooltips", async ({
+  page,
+}) => {
+  await setup(page);
+  await page
+    .getByRole("button", { name: "New task", exact: true })
+    .first()
+    .click();
+  await page.getByRole("button", { name: "Create task", exact: true }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Task title is required." }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Task title")).toBeFocused();
+  await page.screenshot({ path: "test-results/custom-validation.png" });
+});

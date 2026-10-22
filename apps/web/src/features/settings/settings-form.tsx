@@ -1,4 +1,5 @@
 "use client";
+import { ValidatedForm } from "../../components/validated-form";
 import { useAccountDraft } from "../../lib/use-account-draft";
 import type { Settings } from "../../lib/model";
 import type { Execute } from "../../app/providers";
@@ -28,7 +29,7 @@ export function SettingsForm({
       <p className="eyebrow">MAKE IT YOURS</p>
       <h2>Workspace settings</h2>
       <p className="muted">Your preferences follow you across browsers.</p>
-      <form
+      <ValidatedForm
         onSubmit={(e) => {
           e.preventDefault();
           const { revision, ...body } = draft;
@@ -165,7 +166,7 @@ export function SettingsForm({
               ? "Retry save"
               : "Save settings"}
         </button>
-      </form>
+      </ValidatedForm>
     </section>
   );
 }

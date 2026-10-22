@@ -1,5 +1,5 @@
 "use client";
-import { useMemo } from "react";
+import { useMemo, useEffect, useRef } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -13,6 +13,7 @@ import {
   type Draft,
 } from "../../lib/model";
 export default function Calendar({
+  reveal,
   days,
   groups,
   today,
@@ -24,6 +25,7 @@ export default function Calendar({
   onSchedule,
   onScheduleError,
 }: {
+  reveal?: Partial<Draft> | null;
   days: Day[];
   groups: Group[];
   today: string;
@@ -35,6 +37,13 @@ export default function Calendar({
   onSchedule: (task: Task, schedule: Schedule) => void;
   onScheduleError: (error: unknown) => void;
 }) {
+  const calendarRef = useRef<FullCalendar>(null);
+  useEffect(() => {
+    if (!reveal?.scheduledDate) return;
+    const api = calendarRef.current?.getApi();
+    api?.gotoDate(reveal.scheduledDate);
+    if (reveal.startTime) api?.scrollToTime(reveal.startTime);
+  }, [reveal]);
   const events = useMemo(
     () =>
       days.flatMap((day) =>
@@ -63,6 +72,7 @@ export default function Calendar({
   return (
     <div className="calendar-wrap">
       <FullCalendar
+        ref={calendarRef}
         plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
         initialView="timeGridWeek"
         initialDate={today}

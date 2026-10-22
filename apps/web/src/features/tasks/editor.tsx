@@ -1,4 +1,5 @@
 "use client";
+import { ValidatedForm } from "../../components/validated-form";
 import { useEffect, useRef, useState } from "react";
 import { X, Repeat2 } from "lucide-react";
 import { ApiError, errorMessage, type RequestOptions } from "../../lib/api";
@@ -30,7 +31,7 @@ export function TaskEditor({
   seed?: Partial<Draft>;
   disabled: boolean;
   execute: Execute;
-  onSaved: () => void;
+  onSaved: (created?: Draft) => void;
   onClose: () => void;
 }) {
   const mounted = useRef(false);
@@ -126,7 +127,7 @@ export function TaskEditor({
       await execute(command.path, command.options);
       if (!mounted.current) return;
       sessionStorage.removeItem(storageKey);
-      onSaved();
+      onSaved(task ? undefined : draft);
     } catch (e) {
       setError(errorMessage(e));
       if (e instanceof ApiError && e.status !== 401 && e.status < 500) {
@@ -165,7 +166,7 @@ export function TaskEditor({
           <Repeat2 size={14} /> Changes apply to this occurrence only.
         </p>
       )}
-      <form
+      <ValidatedForm
         onSubmit={(e) => {
           e.preventDefault();
           void save();
@@ -355,7 +356,7 @@ export function TaskEditor({
                 ? "Save changes"
                 : "Create task"}
         </button>
-      </form>
+      </ValidatedForm>
     </aside>
   );
 }

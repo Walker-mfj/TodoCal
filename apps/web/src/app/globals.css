@@ -1200,3 +1200,13 @@ input[type="datetime-local"] {
 .fc-event-resizer {
   min-height: 8px;
 }
+
+.form-validation {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+[aria-invalid="true"] {
+  border-color: #c74949;
+  outline-color: #c74949;
+}

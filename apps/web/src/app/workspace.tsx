@@ -69,6 +69,8 @@ function AccountWorkspace() {
     [view, setView] = useState("all"),
     [cursor, setCursor] = useState(""),
     [message, setMessage] = useState("");
+  const [saveNotice, setSaveNotice] = useState("");
+  const [reveal, setReveal] = useState<Partial<Draft> | null>(null);
   const [range, setRange] = useState(() => ({
     from: DateTime.fromISO(date).startOf("week").toISODate()!,
     to: DateTime.fromISO(date).startOf("week").plus({ weeks: 1 }).toISODate()!,
@@ -140,6 +142,7 @@ function AccountWorkspace() {
         return;
     }
     setPanel(next);
+    setSaveNotice("");
     setMessage("");
   };
   const complete = (task: Task) => {
@@ -327,6 +330,11 @@ function AccountWorkspace() {
             disabled.<button onClick={() => void refresh()}>Reconnect</button>
           </div>
         )}
+        {saveNotice && (
+          <div role="status" className="notice">
+            {saveNotice}
+          </div>
+        )}
         {(message || command.error) && (
           <div role="alert" className="error">
             {message || command.error}
@@ -436,6 +444,7 @@ function AccountWorkspace() {
                 />
               )}
               <Calendar
+                reveal={reveal}
                 days={calendar.data?.days || []}
                 groups={allGroups}
                 today={date}
@@ -683,7 +692,24 @@ function AccountWorkspace() {
           disabled={!connected}
           execute={execute}
           onClose={() => setPanel(null)}
-          onSaved={() => setPanel(null)}
+          onSaved={(created) => {
+            setPanel(null);
+            if (!created) return;
+            if (page === "calendar") {
+              setSearch("");
+              setGroup("");
+              setPriority("");
+              setStatus("");
+              setReveal({ ...created });
+            }
+            setSaveNotice(
+              created.scheduledDate
+                ? page === "calendar"
+                  ? "Task created. Calendar filters cleared to show your new task."
+                  : "Task created."
+                : "Task created in Unscheduled. Add a scheduled date to place it on the calendar.",
+            );
+          }}
         />
       ) : panel?.type === "detail" ? (
         <TaskDetail

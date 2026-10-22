@@ -1,4 +1,5 @@
 "use client";
+import { ValidatedForm } from "../../components/validated-form";
 import { useAccountDraft } from "../../lib/use-account-draft";
 import { useCommand } from "../../lib/use-command";
 import type { Execute } from "../../app/providers";
@@ -74,7 +75,7 @@ export function Groups({
         ))}
       </div>
       <h3>{editing ? "Edit group" : "New group"}</h3>
-      <form
+      <ValidatedForm
         onSubmit={(e) => {
           e.preventDefault();
           void command.run(
@@ -130,7 +131,7 @@ export function Groups({
             Cancel
           </button>
         )}
-      </form>
+      </ValidatedForm>
     </section>
   );
 }

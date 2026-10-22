@@ -7,6 +7,8 @@ import { scheduleFromDrop, type Schedule } from "./interactions";
 import interactionPlugin from "@fullcalendar/interaction";
 import {
   slotDraft,
+  completionRatio,
+  progressLevel,
   type Day,
   type Group,
   type Task,
@@ -24,6 +26,7 @@ export default function Calendar({
   disabled,
   onSchedule,
   onScheduleError,
+  onDay,
 }: {
   reveal?: Partial<Draft> | null;
   days: Day[];
@@ -36,6 +39,7 @@ export default function Calendar({
   disabled: boolean;
   onSchedule: (task: Task, schedule: Schedule) => void;
   onScheduleError: (error: unknown) => void;
+  onDay?: (date: string) => void;
 }) {
   const calendarRef = useRef<FullCalendar>(null);
   useEffect(() => {
@@ -69,6 +73,26 @@ export default function Calendar({
       ),
     [days, groups, filter, disabled],
   );
+  const progress = (date: string) => {
+    const day = days.find((d) => d.date === date);
+    if (!day) return null;
+    return (
+      <button
+        className={`calendar-progress ${progressLevel(completionRatio(day))}`}
+        aria-label={`Daily progress ${date}`}
+        onClick={(event) => {
+          event.stopPropagation();
+          onDay?.(date);
+        }}
+      >
+        {day.percentage === null
+          ? date > today
+            ? "Upcoming"
+            : "No plan"
+          : `${day.percentage === 100 ? "✓ " : ""}${day.percentage}% · ${day.completed}/${day.planned}`}
+      </button>
+    );
+  };
   return (
     <div className="calendar-wrap">
       <FullCalendar
@@ -79,6 +103,20 @@ export default function Calendar({
         now={today + "T12:00:00Z"}
         timeZone="UTC"
         firstDay={1}
+        dayHeaderContent={(arg) => (
+          <div>
+            {arg.text}
+            {arg.view.type !== "dayGridMonth" &&
+              progress(arg.date.toISOString().slice(0, 10))}
+          </div>
+        )}
+        dayCellContent={(arg) => (
+          <div>
+            {arg.dayNumberText}
+            {arg.view.type === "dayGridMonth" &&
+              progress(arg.date.toISOString().slice(0, 10))}
+          </div>
+        )}
         headerToolbar={{
           left: "prev,next today",
           center: "title",

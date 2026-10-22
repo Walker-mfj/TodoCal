@@ -315,7 +315,7 @@ export interface paths {
       };
       cookie?: never;
     };
-    /** @description Returns the current or finalized daily plan; a future date has no percentage. Focus-session details are added in the later focus milestone. */
+    /** @description Returns the current or finalized daily plan; a future date has no percentage. Includes day focus intervals, completed task IDs, and Pomodoros. */
     get: operations["getDayReport"];
     put?: never;
     post?: never;
@@ -359,10 +359,76 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/reports/period": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["getPeriodReport"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    DayFocusEntry: {
+      /** Format: uuid */
+      id: string;
+      taskTitle: string | null;
+      status: string;
+      focusSeconds: number;
+      pomodoros: number;
+    };
+    AnalyticsDay: components["schemas"]["DayReport"] & {
+      focusTimezone: string;
+      completedTasks: number;
+      completedIds: string[];
+      focusSeconds: number;
+      pomodoros: number;
+      focusSessions: components["schemas"]["DayFocusEntry"][];
+    };
+    PeriodMetrics: {
+      planned: number;
+      completed: number;
+      percentage: number | null;
+      completedTasks: number;
+      focusSeconds: number;
+      pomodoros: number;
+      completeDays: number;
+      plannedDays: number;
+    };
+    PeriodReport: {
+      /** @enum {string} */
+      period: "week" | "month";
+      /** Format: date */
+      from: string;
+      /** Format: date */
+      to: string;
+      /** Format: date-time */
+      through: string;
+      timezone: string;
+      metrics: components["schemas"]["PeriodMetrics"];
+      days: components["schemas"]["AnalyticsDay"][];
+      comparison: {
+        /** Format: date */
+        from: string;
+        /** Format: date */
+        to: string;
+        /** Format: date-time */
+        through: string;
+        metrics: components["schemas"]["PeriodMetrics"];
+        percentagePointChange: number | null;
+        focusSecondsChange: number | null;
+      };
+    };
     FocusSession: {
       /** Format: uuid */
       id: string;
@@ -621,6 +687,8 @@ export interface components {
       percentage: number | null;
       finalized: boolean;
       entries: components["schemas"]["PlanEntry"][];
+    } & {
+      [key: string]: unknown;
     };
     CalendarWarning: {
       /** Format: uuid */
@@ -1310,7 +1378,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["DayReport"];
+          "application/json": components["schemas"]["AnalyticsDay"];
         };
       };
       default: components["responses"]["Error"];
@@ -1400,6 +1468,30 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["FocusState"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getPeriodReport: {
+    parameters: {
+      query: {
+        period: "week" | "month";
+        date: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Weighted completion totals, unique completed tasks, focus time, daily detail, and matched prior-period comparison */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PeriodReport"];
         };
       };
       default: components["responses"]["Error"];

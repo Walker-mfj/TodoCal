@@ -1,6 +1,7 @@
 package server
 
 import (
+	"focuscalendar/internal/analytics"
 	"focuscalendar/internal/localdate"
 	"focuscalendar/internal/planning"
 	"focuscalendar/internal/recurrence"
@@ -93,7 +94,7 @@ func (s *Server) dayDetails(w http.ResponseWriter, r *http.Request) {
 		if e := recurrence.Materialize(r.Context(), tx, p.ID, zone, date, localdate.Add(date, 1), now); e != nil {
 			return nil, e
 		}
-		return planning.DayReport(r.Context(), tx, p.ID, zone, date, now)
+		return analytics.DayReport(r.Context(), tx, p.ID, zone, date, now)
 	})
 }
 

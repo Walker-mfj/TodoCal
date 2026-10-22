@@ -1,10 +1,9 @@
 openapi: 3.1.0
 info:
   title: Focus Calendar API
-  version: 0.4.0
+  version: 0.5.0
   description: Authentication, owned task/group/settings APIs, recurrence, calendar
-    finalized daily plans, and account-wide optional timers. Period-report endpoints are added in later
-    milestones. Mutations require the configured Origin and application/json; domain
+    finalized daily plans, and account-wide optional timers. Period reports use authoritative daily plans and focus intervals. Mutations require the configured Origin and application/json; domain
     mutations additionally require CSRF and Idempotency-Key.
 servers:
 - url: /api/v1
@@ -556,14 +555,14 @@ paths:
     get:
       operationId: getDayReport
       description: Returns the current or finalized daily plan; a future date has
-        no percentage. Focus-session details are added in the later focus milestone.
+        no percentage. Includes day focus intervals, completed task IDs, and Pomodoros.
       responses:
         '200':
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DayReport'
+                $ref: '#/components/schemas/AnalyticsDay'
         default:
           $ref: '#/components/responses/Error'
   /focus:
@@ -643,6 +642,27 @@ paths:
                 $ref: '#/components/schemas/FocusState'
         default:
           $ref: '#/components/responses/Error'
+  /reports/period:
+    get:
+      operationId: getPeriodReport
+      parameters:
+      - name: period
+        in: query
+        required: true
+        schema: {type: string, enum: [week, month]}
+      - name: date
+        in: query
+        required: true
+        schema: {type: string, format: date}
+      responses:
+        '200':
+          description: Weighted completion totals, unique completed tasks, focus time, daily detail, and matched prior-period comparison
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PeriodReport'
+        default:
+          $ref: '#/components/responses/Error'
 components:
   securitySchemes:
     sessionCookie:
@@ -675,6 +695,70 @@ components:
         type: string
         format: uuid
   schemas:
+    DayFocusEntry:
+      type: object
+      required: [id, taskTitle, status, focusSeconds, pomodoros]
+      properties:
+        id: {type: string, format: uuid}
+        taskTitle: {type: [string, 'null']}
+        status: {type: string}
+        focusSeconds: {type: number}
+        pomodoros: {type: integer}
+    AnalyticsDay:
+      allOf:
+      - $ref: '#/components/schemas/DayReport'
+      - type: object
+        required: [completedTasks, completedIds, focusTimezone, focusSeconds, pomodoros, focusSessions]
+        properties:
+          focusTimezone: {type: string}
+          completedTasks: {type: integer}
+          completedIds:
+            type: array
+            items: {type: string, format: uuid}
+          focusSeconds: {type: number}
+          pomodoros: {type: integer}
+          focusSessions:
+            type: array
+            items:
+              $ref: '#/components/schemas/DayFocusEntry'
+    PeriodMetrics:
+      type: object
+      required: [planned, completed, percentage, completedTasks, focusSeconds, pomodoros, completeDays, plannedDays]
+      properties:
+        planned: {type: integer}
+        completed: {type: integer}
+        percentage: {type: [number, 'null']}
+        completedTasks: {type: integer}
+        focusSeconds: {type: number}
+        pomodoros: {type: integer}
+        completeDays: {type: integer}
+        plannedDays: {type: integer}
+    PeriodReport:
+      type: object
+      required: [period, from, to, through, timezone, metrics, days, comparison]
+      properties:
+        period: {type: string, enum: [week, month]}
+        from: {type: string, format: date}
+        to: {type: string, format: date}
+        through: {type: string, format: date-time}
+        timezone: {type: string}
+        metrics:
+          $ref: '#/components/schemas/PeriodMetrics'
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnalyticsDay'
+        comparison:
+          type: object
+          required: [from, to, through, metrics, percentagePointChange, focusSecondsChange]
+          properties:
+            from: {type: string, format: date}
+            to: {type: string, format: date}
+            through: {type: string, format: date-time}
+            metrics:
+              $ref: '#/components/schemas/PeriodMetrics'
+            percentagePointChange: {type: [number, 'null']}
+            focusSecondsChange: {type: [number, 'null']}
     FocusSession:
       type: object
       required: [id, taskId, taskTitle, kind, status, targetSeconds, elapsedSeconds, focusSeconds, pomodoros, startedAt, endedAt, runningSince, revision]
@@ -1293,7 +1377,7 @@ components:
       - groupColor
     DayReport:
       type: object
-      additionalProperties: false
+      additionalProperties: true
       properties:
         date:
           type: string

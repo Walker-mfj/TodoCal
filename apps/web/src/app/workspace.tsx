@@ -16,6 +16,13 @@ import {
   X,
   ArrowUpRight,
 } from "lucide-react";
+import {
+  AnalyticsSummary,
+  DayFocusDetails,
+  type PeriodReport,
+  type AnalyticsDay,
+} from "../features/analytics/AnalyticsSummary";
+import { completionRatio } from "../lib/model";
 import { useFocus } from "../features/focus/useFocus";
 import { TimerBar } from "../features/focus/TimerBar";
 import { TimerPanel } from "../features/focus/TimerPanel";
@@ -88,13 +95,26 @@ function AccountWorkspace() {
     reportTo = periodStart
       .plus(period === "week" ? { weeks: 1 } : { months: 1 })
       .toISODate()!;
+  const report = useOwnedQuery<PeriodReport>(
+    "period",
+    `/reports/period?period=${period}&date=${periodDate}`,
+    page === "progress",
+  );
+  useEffect(() => {
+    if (
+      page === "progress" &&
+      panel?.type === "day" &&
+      (panel.date < reportFrom || panel.date >= reportTo)
+    )
+      setPanel({ type: "day", date: reportFrom });
+  }, [page, reportFrom, reportTo, panel]);
   const calendar = useOwnedQuery<CalendarRange>(
     "calendar",
     `/calendar?from=${page === "progress" ? reportFrom : range.from}&to=${page === "progress" ? reportTo : range.to}`,
   );
   const groups = useOwnedQuery<{ items: Group[] }>("groups", "/groups");
   const todayReport = useOwnedQuery<Day>("today", `/reports/days/${date}`);
-  const day = useOwnedQuery<Day>(
+  const day = useOwnedQuery<AnalyticsDay>(
     "day",
     `/reports/days/${panel?.type === "day" ? panel.date : date}`,
     panel?.type === "day",
@@ -485,6 +505,7 @@ function AccountWorkspace() {
                 />
               )}
               <Calendar
+                onDay={(date) => open({ type: "day", date })}
                 reveal={reveal}
                 days={calendar.data?.days || []}
                 groups={allGroups}
@@ -651,6 +672,14 @@ function AccountWorkspace() {
                 </p>
               </div>
               <div className="report-controls">
+                <input
+                  type="date"
+                  aria-label="Report date"
+                  value={periodDate}
+                  onChange={(e) => {
+                    if (e.target.value) setPeriodDate(e.target.value);
+                  }}
+                />
                 <button
                   aria-label="Previous period"
                   onClick={() =>
@@ -683,20 +712,27 @@ function AccountWorkspace() {
                     setPeriod(e.target.value as "week" | "month")
                   }
                 >
-                  <option value="week">Week</option>
-                  <option value="month">Month</option>
+                  <option value="week">Weekly</option>
+                  <option value="month">Monthly</option>
                 </select>
               </div>
             </div>
-            {calendar.error ? (
-              <p className="error">{errorMessage(calendar.error)}</p>
-            ) : calendar.isPending ? (
+            {report.data && (
+              <AnalyticsSummary
+                report={report.data}
+                onDay={(date) => open({ type: "day", date })}
+              />
+            )}
+            {report.error ? (
+              <p className="error">{errorMessage(report.error)}</p>
+            ) : report.isPending ? (
               <p>Loading progress…</p>
             ) : (
               <div className={`report-days ${period}`}>
                 <DayStrip
+                  selectedDate={panel?.type === "day" ? panel.date : undefined}
                   month={period === "month"}
-                  days={calendar.data?.days || []}
+                  days={report.data?.days || []}
                   onOpen={(date) => open({ type: "day", date })}
                 />
               </div>
@@ -797,7 +833,10 @@ function AccountWorkspace() {
           ) : (
             day.data && (
               <>
-                <Ring value={day.data.percentage} />
+                <Ring
+                  value={day.data.percentage}
+                  ratio={completionRatio(day.data)}
+                />
                 <p>
                   {day.data.completed} of {day.data.planned} tasks complete
                 </p>
@@ -808,6 +847,18 @@ function AccountWorkspace() {
                       ? "Planned for the future"
                       : "Live progress · all tasks"}
                 </small>
+                <p className="day-encouragement">
+                  {day.data.percentage === 100
+                    ? "This plan is complete."
+                    : day.data.completed > 0
+                      ? "Each completed task is part of your progress."
+                      : day.data.finalized
+                        ? "A record of your plan for this day."
+                        : panel.date > date
+                          ? "Your plan for this upcoming day."
+                          : "One small step is a good place to start."}
+                </p>
+                <DayFocusDetails day={day.data} />
                 <div className="day-tasks">
                   {day.data.entries.map((e) => (
                     <TaskRow

@@ -329,3 +329,21 @@ func BeforeZoneChange(ctx context.Context, tx pgx.Tx, user, oldZone, newZone str
 	}
 	return nil
 }
+
+// DayAt reconstructs a partial historical comparison without changing its snapshot.
+func DayAt(ctx context.Context, tx pgx.Tx, user, zone, date string, cutoff time.Time) (Day, error) {
+	out := Day{Date: date, Timezone: zone, Finalized: true, Entries: []Entry{}}
+	entries, e := endedEntries(ctx, tx, user, date, cutoff.Add(time.Microsecond))
+	if e != nil {
+		return out, e
+	}
+	out.Entries = entries
+	out.Planned = len(entries)
+	for _, entry := range entries {
+		if entry.Task.Status == "complete" {
+			out.Completed++
+		}
+	}
+	out.Percentage = percentage(out.Planned, out.Completed)
+	return out, nil
+}

@@ -1,20 +1,32 @@
 "use client";
 import { DateTime } from "luxon";
 import type { CSSProperties } from "react";
-import { dateLabel, progressLevel, type Day } from "../../lib/model";
+import {
+  dateLabel,
+  progressLevel,
+  completionRatio,
+  type Day,
+} from "../../lib/model";
 export function Ring({
   value,
   small = false,
+  ratio,
 }: {
   value: number | null;
   small?: boolean;
+  ratio?: number | null;
 }) {
   return (
     <span
-      className={`progress-ring ${progressLevel(value)} ${small ? "small" : ""}`}
+      className={`progress-ring ${progressLevel(ratio === undefined ? value : ratio)} ${small ? "small" : ""}`}
       style={{ "--progress": `${(value || 0) * 3.6}deg` } as CSSProperties}
     >
-      <span>{value === null ? "—" : value === 100 ? "✓" : `${value}%`}</span>
+      <span>{value === null ? "—" : `${value}%`}</span>
+      {value === 100 && (
+        <i className="ring-check" aria-label="Plan complete">
+          ✓
+        </i>
+      )}
     </span>
   );
 }
@@ -38,8 +50,8 @@ export function DailyProgress({
         ? "Look at you, making progress."
         : "A fresh start, at your own pace.";
   return (
-    <section className={`progress-hero ${progressLevel(day.percentage)}`}>
-      <Ring value={day.percentage} />
+    <section className={`progress-hero ${progressLevel(completionRatio(day))}`}>
+      <Ring value={day.percentage} ratio={completionRatio(day)} />
       <div>
         <p className="eyebrow">TODAY · {dateLabel(day.date, "EEE, MMM d")}</p>
         <h2>{title}</h2>
@@ -60,9 +72,9 @@ export function ProgressLegend() {
     <div className="progress-legend" aria-label="Completion levels">
       {[
         ["zero", "0%"],
-        ["starting", "1–49%"],
-        ["building", "50–79%"],
-        ["strong", "80–99%"],
+        ["starting", ">0–<50%"],
+        ["building", "50–<80%"],
+        ["strong", "80–<100%"],
         ["complete", "100%"],
         ["empty", "No plan / future"],
       ].map(([level, label]) => (
@@ -78,13 +90,21 @@ export function DayStrip({
   days,
   onOpen,
   month = false,
+  selectedDate,
 }: {
   days: Day[];
   month?: boolean;
+  selectedDate?: string;
   onOpen: (date: string) => void;
 }) {
   return (
     <div className="day-strip">
+      {month &&
+        ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
+          <span key={d} className="weekday-heading">
+            {d}
+          </span>
+        ))}
       {month &&
         days.length > 0 &&
         Array.from(
@@ -94,13 +114,22 @@ export function DayStrip({
       {days.map((d) => (
         <button
           key={d.date}
-          className={`day-progress ${progressLevel(d.percentage)}`}
+          className={`day-progress ${progressLevel(completionRatio(d))}`}
+          aria-pressed={selectedDate === d.date}
           onClick={() => onOpen(d.date)}
           aria-label={`${dateLabel(d.date)}: ${d.percentage === null ? "No completion percentage" : `${d.percentage}% complete`}`}
         >
           <span>{dateLabel(d.date, "EEE d")}</span>
-          <Ring value={d.percentage} small />
-          <small>{d.planned ? `${d.completed}/${d.planned}` : "No plan"}</small>
+          <Ring value={d.percentage} ratio={completionRatio(d)} small />
+          <small>
+            {d.date > DateTime.now().setZone(d.timezone).toISODate()!
+              ? "Upcoming"
+              : d.percentage === 100
+                ? "Plan complete"
+                : d.planned
+                  ? `${d.completed}/${d.planned}`
+                  : "No plan"}
+          </small>
         </button>
       ))}
     </div>

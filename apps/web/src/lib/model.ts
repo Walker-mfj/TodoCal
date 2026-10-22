@@ -137,3 +137,13 @@ export function progressLevel(value: number | null) {
             ? "strong"
             : "complete";
 }
+
+export function completionRatio(day: {
+  planned: number;
+  completed: number;
+  percentage: number | null;
+}) {
+  return day.percentage === null || day.planned === 0
+    ? null
+    : (day.completed * 100) / day.planned;
+}

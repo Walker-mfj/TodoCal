@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: Focus Calendar API
-  version: 0.3.0
+  version: 0.4.0
   description: Authentication, owned task/group/settings APIs, recurrence, calendar
-    and finalized daily plans. Timer and period-report endpoints are added in later
+    finalized daily plans, and account-wide optional timers. Period-report endpoints are added in later
     milestones. Mutations require the configured Origin and application/json; domain
     mutations additionally require CSRF and Idempotency-Key.
 servers:
@@ -566,6 +566,83 @@ paths:
                 $ref: '#/components/schemas/DayReport'
         default:
           $ref: '#/components/responses/Error'
+  /focus:
+    get:
+      operationId: getFocusState
+      description: Settles an expired session and returns the account timer. No automatic next session.
+      responses:
+        '200':
+          description: Authoritative timer state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FocusState'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: startFocus
+      parameters:
+      - $ref: '#/components/parameters/CSRF'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [kind]
+              properties:
+                kind:
+                  type: string
+                  enum: [focus, short_break, long_break]
+                taskId:
+                  type: [string, 'null']
+                  format: uuid
+      responses:
+        '201':
+          description: Timer started; duration captured from current settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FocusState'
+        default:
+          $ref: '#/components/responses/Error'
+  /focus/{id}/{action}:
+    post:
+      operationId: changeFocus
+      description: Server timestamps only. Ending a terminal session is a no-op. Stale pause/resume/end revisions are rejected for active sessions.
+      parameters:
+      - $ref: '#/components/parameters/ResourceID'
+      - $ref: '#/components/parameters/CSRF'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - name: action
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [pause, resume, end]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expectedRevision]
+              properties:
+                expectedRevision:
+                  type: integer
+                  minimum: 1
+      responses:
+        '200':
+          description: Authoritative timer state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FocusState'
+        default:
+          $ref: '#/components/responses/Error'
 components:
   securitySchemes:
     sessionCookie:
@@ -598,6 +675,38 @@ components:
         type: string
         format: uuid
   schemas:
+    FocusSession:
+      type: object
+      required: [id, taskId, taskTitle, kind, status, targetSeconds, elapsedSeconds, focusSeconds, pomodoros, startedAt, endedAt, runningSince, revision]
+      properties:
+        id: {type: string, format: uuid}
+        taskId: {type: [string, 'null'], format: uuid}
+        taskTitle: {type: [string, 'null']}
+        kind: {type: string, enum: [focus, short_break, long_break]}
+        status: {type: string, enum: [running, paused, completed, ended]}
+        targetSeconds: {type: integer}
+        elapsedSeconds: {type: integer}
+        focusSeconds: {type: integer}
+        pomodoros: {type: integer, enum: [0, 1]}
+        startedAt: {type: string, format: date-time}
+        endedAt: {type: [string, 'null'], format: date-time}
+        runningSince: {type: [string, 'null'], format: date-time}
+        revision: {type: integer}
+    FocusState:
+      type: object
+      required: [active, last, nextKind, completedFocusSessions, serverNow]
+      properties:
+        active:
+          anyOf:
+          - $ref: '#/components/schemas/FocusSession'
+          - type: 'null'
+        last:
+          anyOf:
+          - $ref: '#/components/schemas/FocusSession'
+          - type: 'null'
+        nextKind: {type: string, enum: [focus, short_break, long_break]}
+        completedFocusSessions: {type: integer}
+        serverNow: {type: string, format: date-time}
     Credentials:
       type: object
       required:

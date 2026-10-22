@@ -33,7 +33,7 @@ func parseInput(raw []byte, v any) error {
 			continue
 		}
 		switch key {
-		case "endDate", "groupId", "scheduledDate", "startTime", "endTime", "deadline", "estimatedPomodoros":
+		case "taskId", "endDate", "groupId", "scheduledDate", "startTime", "endTime", "deadline", "estimatedPomodoros":
 		default:
 			return tasks.Invalid("Field cannot be null: " + key)
 		}

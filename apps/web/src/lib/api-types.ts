@@ -325,10 +325,76 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/focus": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Settles an expired session and returns the account timer. No automatic next session. */
+    get: operations["getFocusState"];
+    put?: never;
+    post: operations["startFocus"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/focus/{id}/{action}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Server timestamps only. Ending a terminal session is a no-op. Stale pause/resume/end revisions are rejected for active sessions. */
+    post: operations["changeFocus"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    FocusSession: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      taskId: string | null;
+      taskTitle: string | null;
+      /** @enum {string} */
+      kind: "focus" | "short_break" | "long_break";
+      /** @enum {string} */
+      status: "running" | "paused" | "completed" | "ended";
+      targetSeconds: number;
+      elapsedSeconds: number;
+      focusSeconds: number;
+      /** @enum {integer} */
+      pomodoros: 0 | 1;
+      /** Format: date-time */
+      startedAt: string;
+      /** Format: date-time */
+      endedAt: string | null;
+      /** Format: date-time */
+      runningSince: string | null;
+      revision: number;
+    };
+    FocusState: {
+      active: components["schemas"]["FocusSession"] | null;
+      last: components["schemas"]["FocusSession"] | null;
+      /** @enum {string} */
+      nextKind: "focus" | "short_break" | "long_break";
+      completedFocusSessions: number;
+      /** Format: date-time */
+      serverNow: string;
+    };
     Credentials: {
       /** Format: email */
       email: string;
@@ -1245,6 +1311,95 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["DayReport"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getFocusState: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Authoritative timer state */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FocusState"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  startFocus: {
+    parameters: {
+      query?: never;
+      header: {
+        "X-CSRF-Token": components["parameters"]["CSRF"];
+        /** @description Generate once per intended command. Retry the identical method, request URI, and JSON bytes with the same key. A different request using the key returns 409. Keys are scoped to the account. */
+        "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          /** @enum {string} */
+          kind: "focus" | "short_break" | "long_break";
+          /** Format: uuid */
+          taskId?: string | null;
+        };
+      };
+    };
+    responses: {
+      /** @description Timer started; duration captured from current settings */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FocusState"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  changeFocus: {
+    parameters: {
+      query?: never;
+      header: {
+        "X-CSRF-Token": components["parameters"]["CSRF"];
+        /** @description Generate once per intended command. Retry the identical method, request URI, and JSON bytes with the same key. A different request using the key returns 409. Keys are scoped to the account. */
+        "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["ResourceID"];
+        action: "pause" | "resume" | "end";
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          expectedRevision: number;
+        };
+      };
+    };
+    responses: {
+      /** @description Authoritative timer state */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FocusState"];
         };
       };
       default: components["responses"]["Error"];

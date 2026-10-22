@@ -22,6 +22,7 @@ export function TaskDetail({
   onCurrent,
   onComplete,
   onDeleted,
+  onFocus,
 }: {
   task: Task;
   historical: boolean;
@@ -33,6 +34,7 @@ export function TaskDetail({
   onCurrent: () => void;
   onComplete: (task: Task) => void;
   onDeleted: () => void;
+  onFocus?: () => void;
 }) {
   const series = useOwnedQuery<components["schemas"]["RecurrenceSeries"]>(
     "series",
@@ -112,6 +114,11 @@ export function TaskDetail({
               {task.status === "complete" ? "Mark incomplete" : "Mark complete"}
             </button>
             <button onClick={onEdit}>Edit task</button>
+            {onFocus && (
+              <button disabled={disabled} onClick={onFocus}>
+                Focus on this task
+              </button>
+            )}
           </div>
           {task.seriesId && (
             <section className="series-summary">

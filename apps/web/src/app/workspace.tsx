@@ -16,6 +16,9 @@ import {
   X,
   ArrowUpRight,
 } from "lucide-react";
+import { useFocus } from "../features/focus/useFocus";
+import { TimerBar } from "../features/focus/TimerBar";
+import { TimerPanel } from "../features/focus/TimerPanel";
 import { useSession, useOwnedQuery } from "./providers";
 import { AuthScreen } from "../features/auth/auth-screen";
 import { TaskEditor } from "../features/tasks/editor";
@@ -59,6 +62,9 @@ export default function Workspace() {
 function AccountWorkspace() {
   const { session, connected, execute, read, refresh, logout } = useSession();
   const account = session!;
+  const focus = useFocus();
+  const [showFocus, setShowFocus] = useState(false);
+  const [focusTask, setFocusTask] = useState<Task | null>(null);
   const date = today(account.settings.timezone);
   const [page, setPage] = useState("calendar"),
     [panel, setPanel] = useState<Panel>(null),
@@ -208,6 +214,15 @@ function AccountWorkspace() {
           <Plus size={17} />
           New task
         </button>
+        <button
+          className="focus-open"
+          onClick={() => {
+            setFocusTask(null);
+            setShowFocus(true);
+          }}
+        >
+          Focus timer
+        </button>
         <nav aria-label="Main navigation">
           {navigation.map(([key, label, Icon]) => (
             <button
@@ -329,6 +344,32 @@ function AccountWorkspace() {
             You’re disconnected. Saved data may be out of date; changes are
             disabled.<button onClick={() => void refresh()}>Reconnect</button>
           </div>
+        )}
+        <TimerBar focus={focus} onOpen={() => setShowFocus(true)} />
+        {focus.command.error && (
+          <div role="alert" className="error">
+            {focus.command.error}
+          </div>
+        )}
+        {focus.command.uncertain && (
+          <div className="notice">
+            A timer action is unconfirmed.{" "}
+            <button
+              disabled={!connected || focus.command.busy}
+              onClick={focus.retry}
+            >
+              Retry timer action
+            </button>
+          </div>
+        )}
+        {showFocus && (
+          <TimerPanel
+            focus={focus}
+            task={focusTask}
+            settings={account.settings}
+            onClose={() => setShowFocus(false)}
+            onFree={() => setFocusTask(null)}
+          />
         )}
         {saveNotice && (
           <div role="status" className="notice">
@@ -728,6 +769,10 @@ function AccountWorkspace() {
           onEdit={() => open({ type: "edit", task: panel.task })}
           onCurrent={() => void openCurrent(panel.task)}
           onComplete={complete}
+          onFocus={() => {
+            setFocusTask(panel.task);
+            setShowFocus(true);
+          }}
           onDeleted={() => setPanel(null)}
         />
       ) : panel?.type === "day" ? (

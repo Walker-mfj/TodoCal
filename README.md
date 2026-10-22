@@ -6,7 +6,7 @@ A desktop web task calendar with optional Pomodoro and daily, weekly, and monthl
 
 ## Current implementation
 
-The backend provides account registration, login/logout, password changes, task CRUD and completion, group CRUD, account settings, filtering, pagination, and database migrations. Owned writes use account transactions, idempotency keys, and revision checks. Daily/every-N-days/weekly recurrence, calendar ranges, finalized daily plans, and a background catch-up worker are also implemented. The Next.js Clear Week workspace now connects to these APIs: authentication, task/group/settings forms, Day/Week/Month calendar, repeating tasks, account themes, and week/month grids of authoritative daily progress with drilldown. Drag/resize/undo, the Pomodoro timer, and aggregate period analytics/comparisons remain later milestones. The visual prototype remains separate.
+The backend provides account registration, login/logout, password changes, task CRUD and completion, group CRUD, account settings, filtering, pagination, and database migrations. Owned writes use account transactions, idempotency keys, and revision checks. Daily/every-N-days/weekly recurrence, calendar ranges, finalized daily plans, and a background catch-up worker are also implemented. The Next.js Clear Week workspace now connects to these APIs: authentication, task/group/settings forms, Day/Week/Month calendar, repeating tasks, account themes, and week/month grids of authoritative daily progress with drilldown. Calendar drag/drop, edge resizing, external task scheduling, and server-authoritative 10-second Undo are implemented. The Pomodoro timer and aggregate period analytics/comparisons remain later milestones. The visual prototype remains separate.
 
 ## Local development
 
@@ -95,3 +95,5 @@ Compose persists development data in the `focus_pg` volume. `docker compose stop
 - [Specification](docs/specs/2026-10-19-focus-calendar-mvp.md)
 - [Implementation plan](docs/superpowers/plans/2026-10-19-focus-calendar-mvp.md)
 - [Approved UI](docs/ui-demo/design-decision.md)
+
+Calendar gestures snap changed edges to 15 minutes; form inputs retain minute precision. External drops default to 30 minutes, untimed drops clear the time, and Month moves preserve existing times. Failed saves restore the previous event; uncertain commands retain their exact retry key. Undo is owner-scoped, expires on the server, and refuses to overwrite a concurrent edit.

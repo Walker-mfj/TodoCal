@@ -126,6 +126,44 @@ export interface paths {
     patch: operations["updateTask"];
     trace?: never;
   };
+  "/tasks/{id}/schedule": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["ResourceID"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Atomically change only the schedule and issue an owned 10-second undo token bound to the resulting revision. All three nullable schedule fields are required. Finalized target dates are rejected. */
+    post: operations["rescheduleTask"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/undo/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["ResourceID"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Restore the server-stored previous schedule. Foreign IDs return 404; expired/consumed tokens and intervening task edits return 409. Send an empty JSON object. */
+    post: operations["undoSchedule"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/tasks/{id}/completion": {
     parameters: {
       query?: never;
@@ -403,6 +441,24 @@ export interface components {
       items: components["schemas"]["Task"][];
       /** Format: uuid */
       nextCursor: string | null;
+    };
+    ScheduleInput: {
+      /** Format: date */
+      scheduledDate: string | null;
+      startTime: string | null;
+      endTime: string | null;
+      expectedRevision: number;
+    };
+    ScheduledTask: {
+      task: components["schemas"]["Task"];
+      undo: {
+        /** Format: uuid */
+        id: string;
+        /** Format: date-time */
+        expiresAt: string;
+      };
+      /** Format: date-time */
+      serverNow: string;
     };
     ExpectedRevision: {
       expectedRevision: number;
@@ -805,6 +861,68 @@ export interface operations {
     };
     responses: {
       /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Task"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  rescheduleTask: {
+    parameters: {
+      query?: never;
+      header: {
+        "X-CSRF-Token": components["parameters"]["CSRF"];
+        /** @description Generate once per intended command. Retry the identical method, request URI, and JSON bytes with the same key. A different request using the key returns 409. Keys are scoped to the account. */
+        "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["ResourceID"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ScheduleInput"];
+      };
+    };
+    responses: {
+      /** @description Schedule saved with undo token */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ScheduledTask"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  undoSchedule: {
+    parameters: {
+      query?: never;
+      header: {
+        "X-CSRF-Token": components["parameters"]["CSRF"];
+        /** @description Generate once per intended command. Retry the identical method, request URI, and JSON bytes with the same key. A different request using the key returns 409. Keys are scoped to the account. */
+        "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["ResourceID"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": Record<string, never>;
+      };
+    };
+    responses: {
+      /** @description Restored task */
       200: {
         headers: {
           [name: string]: unknown;

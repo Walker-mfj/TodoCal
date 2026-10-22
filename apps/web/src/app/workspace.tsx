@@ -39,6 +39,8 @@ import {
   type CalendarRange,
 } from "../lib/model";
 import { errorMessage } from "../lib/api";
+import { useSchedule } from "../features/calendar/use-schedule";
+import { UndoToast } from "../features/calendar/UndoToast";
 import { useCommand } from "../lib/use-command";
 const Calendar = dynamic(() => import("../features/calendar/calendar"), {
   ssr: false,
@@ -108,6 +110,7 @@ function AccountWorkspace() {
     nextCursor: string | null;
   }>("unscheduled", "/tasks?view=unscheduled&limit=20");
   const command = useCommand(execute);
+  const scheduling = useSchedule();
   const filter = useCallback(
     (t: Task) =>
       (!search ||
@@ -262,6 +265,35 @@ function AccountWorkspace() {
         </div>
       </aside>
       <main id="main" className="workspace">
+        {scheduling.busy && (
+          <div className="notice" role="status">
+            Saving calendar change…
+          </div>
+        )}
+        {scheduling.error && (
+          <div className="error" role="alert">
+            {scheduling.error}
+            {scheduling.pending ? (
+              <button
+                disabled={!connected || scheduling.busy}
+                onClick={scheduling.retry}
+              >
+                Retry calendar change
+              </button>
+            ) : (
+              <button onClick={scheduling.dismiss}>Dismiss</button>
+            )}
+          </div>
+        )}
+        {scheduling.toast && (
+          <UndoToast
+            {...scheduling.toast}
+            onUndo={scheduling.undo}
+            onExpire={scheduling.expire}
+            disabled={!connected || scheduling.blocked}
+          />
+        )}
+
         <header className="workspace-heading">
           <div>
             <p className="eyebrow">
@@ -421,7 +453,14 @@ function AccountWorkspace() {
                   open({ type: "new", seed });
                 }}
                 filter={filter}
-                disabled={!connected || !!calendar.error || calendar.isPending}
+                disabled={
+                  !connected ||
+                  !!calendar.error ||
+                  calendar.isPending ||
+                  scheduling.blocked
+                }
+                onSchedule={scheduling.schedule}
+                onScheduleError={scheduling.reportError}
               />
               <ProgressLegend />
             </div>
@@ -454,10 +493,16 @@ function AccountWorkspace() {
                   .filter(filter)
                   .map((t) => (
                     <TaskRow
+                      draggable
                       key={t.id}
                       task={t}
                       groups={allGroups}
-                      disabled={!connected || command.busy || command.uncertain}
+                      disabled={
+                        !connected ||
+                        command.busy ||
+                        command.uncertain ||
+                        scheduling.blocked
+                      }
                       onComplete={complete}
                       onOpen={() => open({ type: "detail", task: t })}
                     />
@@ -506,7 +551,12 @@ function AccountWorkspace() {
                   key={t.id}
                   task={t}
                   groups={allGroups}
-                  disabled={!connected || command.busy || command.uncertain}
+                  disabled={
+                    !connected ||
+                    command.busy ||
+                    command.uncertain ||
+                    scheduling.blocked
+                  }
                   onComplete={complete}
                   onOpen={() => open({ type: "detail", task: t })}
                 />
@@ -642,7 +692,12 @@ function AccountWorkspace() {
           historical={!!panel.historical}
           groups={allGroups}
           execute={execute}
-          disabled={!connected || command.busy || command.uncertain}
+          disabled={
+            !connected ||
+            command.busy ||
+            command.uncertain ||
+            scheduling.blocked
+          }
           onClose={() => setPanel(null)}
           onEdit={() => open({ type: "edit", task: panel.task })}
           onCurrent={() => void openCurrent(panel.task)}

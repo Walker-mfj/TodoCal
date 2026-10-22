@@ -46,6 +46,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/series/{id}/stop", s.stopSeries)
 	mux.HandleFunc("GET /api/v1/calendar", s.calendar)
 	mux.HandleFunc("GET /api/v1/reports/days/{date}", s.dayDetails)
+	mux.HandleFunc("POST /api/v1/tasks/{id}/schedule", s.scheduleTask)
+	mux.HandleFunc("POST /api/v1/undo/{id}", s.undoSchedule)
 	mux.HandleFunc("GET /api/v1/tasks", s.listTasks)
 	mux.HandleFunc("POST /api/v1/tasks", s.createTask)
 	mux.HandleFunc("GET /api/v1/tasks/{id}", s.getTask)

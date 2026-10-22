@@ -45,3 +45,11 @@ it("rejects data from a different cookie account before it enters the cache", as
     code: "account_changed",
   });
 });
+it("explains Undo expiry distinctly from a revision conflict", async () => {
+  const { errorMessage } = await import("../src/lib/api");
+  expect(
+    errorMessage(
+      new ApiError(409, "This undo is no longer available", "undo_expired"),
+    ),
+  ).toBe("This undo is no longer available");
+});

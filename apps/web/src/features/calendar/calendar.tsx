@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
+import { scheduleFromDrop, type Schedule } from "./interactions";
 import interactionPlugin from "@fullcalendar/interaction";
 import {
   slotDraft,
@@ -20,6 +21,8 @@ export default function Calendar({
   onCreate,
   filter,
   disabled,
+  onSchedule,
+  onScheduleError,
 }: {
   days: Day[];
   groups: Group[];
@@ -29,6 +32,8 @@ export default function Calendar({
   onCreate: (seed: Partial<Draft>) => void;
   filter: (task: Task) => boolean;
   disabled: boolean;
+  onSchedule: (task: Task, schedule: Schedule) => void;
+  onScheduleError: (error: unknown) => void;
 }) {
   const events = useMemo(
     () =>
@@ -41,6 +46,7 @@ export default function Calendar({
             start: day.date + (task.startTime ? `T${task.startTime}:00` : ""),
             end: task.endTime ? `${day.date}T${task.endTime}:00` : undefined,
             allDay: !task.startTime,
+            editable: !day.finalized && !disabled,
             classNames: [
               task.status === "complete" ? "event-complete" : "",
               day.finalized ? "event-historical" : "",
@@ -52,7 +58,7 @@ export default function Calendar({
             extendedProps: { task, historical: day.finalized },
           })),
       ),
-    [days, groups, filter],
+    [days, groups, filter, disabled],
   );
   return (
     <div className="calendar-wrap">
@@ -85,7 +91,66 @@ export default function Calendar({
         dayMaxEvents={3}
         selectable={!disabled}
         selectMirror
-        editable={false}
+        editable={!disabled}
+        droppable={!disabled}
+        eventResizableFromStart
+        snapDuration="00:15:00"
+        eventAllow={(info) =>
+          info.startStr.slice(0, 10) >= today &&
+          !days.find((day) => day.date === info.startStr.slice(0, 10))
+            ?.finalized
+        }
+        eventDrop={(arg) => {
+          try {
+            const task = arg.oldEvent.extendedProps.task as Task;
+            const schedule = scheduleFromDrop(
+              task,
+              arg.event.startStr,
+              arg.event.endStr || undefined,
+              arg.event.allDay,
+              arg.view.type === "dayGridMonth" ? "month" : "move",
+            );
+            arg.revert();
+            onSchedule(task, schedule);
+          } catch (error) {
+            arg.revert();
+            onScheduleError(error);
+          }
+        }}
+        eventResize={(arg) => {
+          try {
+            const task = arg.oldEvent.extendedProps.task as Task;
+            const schedule = scheduleFromDrop(
+              task,
+              arg.event.startStr,
+              arg.event.endStr || undefined,
+              arg.event.allDay,
+              "resize",
+            );
+            arg.revert();
+            onSchedule(task, schedule);
+          } catch (error) {
+            arg.revert();
+            onScheduleError(error);
+          }
+        }}
+        eventReceive={(arg) => {
+          try {
+            const task = arg.event.extendedProps.task as Task;
+            const schedule = scheduleFromDrop(
+              task,
+              arg.event.startStr,
+              arg.event.endStr || undefined,
+              arg.event.allDay,
+              arg.view.type === "dayGridMonth" ? "month" : "move",
+            );
+            arg.revert();
+            onSchedule(task, schedule);
+          } catch (error) {
+            arg.revert();
+            onScheduleError(error);
+          }
+        }}
         events={events}
         datesSet={(arg) =>
           onRange(arg.startStr.slice(0, 10), arg.endStr.slice(0, 10))

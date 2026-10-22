@@ -1,5 +1,7 @@
 "use client";
-import { Check, Repeat2 } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { Draggable } from "@fullcalendar/interaction";
+import { Check, Repeat2, GripVertical } from "lucide-react";
 import type { Task, Group } from "../../lib/model";
 export function TaskRow({
   task,
@@ -8,6 +10,7 @@ export function TaskRow({
   onOpen,
   onComplete,
   disabled = false,
+  draggable = false,
 }: {
   task: Task;
   groups?: Group[];
@@ -15,12 +18,36 @@ export function TaskRow({
   onOpen: () => void;
   onComplete?: (task: Task) => void;
   disabled?: boolean;
+  draggable?: boolean;
 }) {
+  const element = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!draggable || disabled || !element.current) return;
+    const drag = new Draggable(element.current, {
+      itemSelector: ".drag-handle",
+      eventData: () => ({
+        title: task.title,
+        duration: "00:30:00",
+        extendedProps: { task },
+      }),
+    });
+    return () => drag.destroy();
+  }, [task, draggable, disabled]);
   const group = groups.find((g) => g.id === task.groupId);
   return (
     <div
+      ref={element}
       className={`task-row ${task.status === "complete" ? "completed" : ""}`}
     >
+      {draggable && (
+        <span
+          className="drag-handle"
+          title="Drag to schedule; or open task to edit its date"
+          aria-hidden="true"
+        >
+          <GripVertical size={16} />
+        </span>
+      )}
       {onComplete && !historical ? (
         <button
           className="complete-button"

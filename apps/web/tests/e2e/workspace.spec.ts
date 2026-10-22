@@ -203,7 +203,11 @@ test("calendar click/selection, filtered progress, conflicts, offline writes and
     .boundingBox();
   await page.mouse.move(box!.x + box!.width / 2, slot!.y + 5);
   await page.mouse.down();
-  await page.mouse.move(box!.x + box!.width / 2, endSlot!.y + 10, { steps: 8 });
+  await page.mouse.move(
+    box!.x + box!.width / 2,
+    endSlot!.y + endSlot!.height * 0.75,
+    { steps: 8 },
+  );
   await page.mouse.up();
   await expect(page.getByLabel("Start time", { exact: true })).toHaveValue(
     "09:00",

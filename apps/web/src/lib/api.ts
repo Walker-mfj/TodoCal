@@ -14,6 +14,7 @@ export type RequestOptions = {
   key?: string;
   signal?: AbortSignal;
   owner?: string;
+  onResponse?: (response: Response) => void;
 };
 export async function apiFetch<T>(
   path: string,
@@ -46,11 +47,13 @@ export async function apiFetch<T>(
       "account_changed",
     );
   }
+  options.onResponse?.(response);
   if (response.status === 204) return undefined as T;
   return response.json();
 }
 export function errorMessage(error: unknown) {
   if (error instanceof ApiError) {
+    if (error.code === "undo_expired") return error.message;
     if (error.status === 401)
       return "Your session expired. Sign in to resume your draft.";
     if (error.status === 409)

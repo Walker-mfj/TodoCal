@@ -264,6 +264,55 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/ExpectedRevision'
+  /tasks/{id}/schedule:
+    parameters:
+    - $ref: '#/components/parameters/ResourceID'
+    post:
+      operationId: rescheduleTask
+      description: Atomically change only the schedule and issue an owned 10-second undo token bound to the resulting revision. All three nullable schedule fields are required. Finalized target dates are rejected.
+      parameters:
+      - $ref: '#/components/parameters/CSRF'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScheduleInput'
+      responses:
+        '200':
+          description: Schedule saved with undo token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduledTask'
+        default:
+          $ref: '#/components/responses/Error'
+  /undo/{id}:
+    parameters:
+    - $ref: '#/components/parameters/ResourceID'
+    post:
+      operationId: undoSchedule
+      description: Restore the server-stored previous schedule. Foreign IDs return 404; expired/consumed tokens and intervening task edits return 409. Send an empty JSON object.
+      parameters:
+      - $ref: '#/components/parameters/CSRF'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+      responses:
+        '200':
+          description: Restored task
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        default:
+          $ref: '#/components/responses/Error'
   /tasks/{id}/completion:
     parameters:
     - $ref: '#/components/parameters/ResourceID'
@@ -856,6 +905,42 @@ components:
       required:
       - items
       - nextCursor
+    ScheduleInput:
+      type: object
+      additionalProperties: false
+      required: [scheduledDate, startTime, endTime, expectedRevision]
+      properties:
+        scheduledDate:
+          type: [string, 'null']
+          format: date
+        startTime:
+          type: [string, 'null']
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+        endTime:
+          type: [string, 'null']
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+        expectedRevision:
+          type: integer
+          minimum: 1
+    ScheduledTask:
+      type: object
+      required: [task, undo, serverNow]
+      properties:
+        task:
+          $ref: '#/components/schemas/Task'
+        undo:
+          type: object
+          required: [id, expiresAt]
+          properties:
+            id:
+              type: string
+              format: uuid
+            expiresAt:
+              type: string
+              format: date-time
+        serverNow:
+          type: string
+          format: date-time
     ExpectedRevision:
       type: object
       additionalProperties: false

@@ -216,3 +216,7 @@ Use same-origin `/api/*` routing to Go (Next.js development rewrite; deployment 
 ## Execution Handoff
 
 This revision supersedes the browser-only plan. The user has selected Next.js + Go + PostgreSQL and Clear Week; production code is not scaffolded. Execute the tasks in order after review of this revised plan and selection of native or subagent-driven execution. Native execution is recommended because authentication, history, recurrence, and timer concurrency share transaction boundaries. Use the required execution and worktree skills when implementation begins.
+
+## Execution status — October 23, 2026
+
+Tasks 1–8 were implemented and verified; the unchecked task lists above are the original execution instructions, not a live status ledger. Current evidence is in `docs/verification/mvp-acceptance.md` and `docs/verification/hardening-results.md`. The follow-up storage/UUID fixes, load checks and expanded browser acceptance are committed as `9355409`. The user now requires Chrome acceptance only (22/22 journeys passed); Safari is not a remaining gate. Manual screen-reader verification remains outstanding under the subsequent full-accessibility request. Public deployment is separate and has not been requested.

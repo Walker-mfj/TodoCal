@@ -2,7 +2,7 @@
 
 ## Status
 
-This follow-up closes concrete storage/UUID defects and expands acceptance, accessibility and load evidence. All 66 browser journeys passed across Chrome, Firefox and WebKit. Installed Safari and manual assistive-technology testing are still outstanding; this is not a full WCAG conformance certificate.
+This follow-up closes concrete storage/UUID defects and expands acceptance, accessibility and load evidence. All 66 browser journeys passed across Chrome, Firefox and WebKit. The user narrowed required browser acceptance to Chrome on October 23; its 22/22 journeys pass. Installed Safari is no longer an acceptance gate. Manual assistive-technology testing remains outstanding for the earlier request for full accessibility; this is not a full WCAG conformance certificate.
 
 ## Changes and regressions
 
@@ -37,7 +37,7 @@ The native Safari application-control attempt did not return and was interrupted
 
 ## Remaining gates
 
-1. Installed Safari 26.5.2 WebDriver refuses a session until Safari Settings → Developer → Allow remote automation is enabled. The user has been asked to enable it; no system/browser permission was changed automatically. Playwright WebKit 27.2 is a separate engine run and does not substitute for installed Safari.
-2. Manual screen-reader verification is not complete. Check reading order, labels/errors, status announcements, task/calendar alternatives, timer updates and report details with VoiceOver in both themes before asserting full accessibility sign-off.
+- Required browser acceptance is satisfied by Chrome (user decision, October 23). Firefox/WebKit results are supplementary; installed Safari testing and its automation permission are no longer required.
+- Manual screen-reader verification is not complete. Check reading order, labels/errors, status announcements, task/calendar alternatives, timer updates and report details in Chrome with VoiceOver before asserting full accessibility sign-off. Narrowing browser support does not by itself waive the earlier full-accessibility request.
 
 Acceptance criteria remain mapped to their executable browser/model/PostgreSQL evidence in [MVP acceptance](mvp-acceptance.md). Exact clock-boundary history and timer cases use injected backend clocks rather than production test-only clock endpoints.

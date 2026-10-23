@@ -59,7 +59,7 @@ The reviewer deliberately did not run integration tests concurrently with the au
 
 ## Known limits
 
-- The expanded browser targets are Chrome, Firefox and Playwright WebKit. Installed Safari requires its remote-automation permission and remains pending. WebKit is not reported as Safari. Full screen-reader/manual WCAG conformance is not certified.
+- The expanded browser targets are Chrome, Firefox and Playwright WebKit. The user subsequently limited required browser acceptance to Chrome; installed Safari is no longer required. WebKit is not reported as Safari. Full screen-reader/manual WCAG conformance is not certified.
 - Denied/full sessionStorage falls back to page memory with a visible warning. Memory cannot survive reload; blocked storage deletion can leave browser data until storage access is restored. Saved server data remains authoritative.
 - Accepted UUID aliases are normalized before SQL; malformed IDs and cross-account aliases have regression coverage.
 - Weekly recurrence summary does not spell out its weekday; the start date remains visible.

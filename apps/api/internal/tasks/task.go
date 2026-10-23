@@ -239,7 +239,9 @@ func Complete(ctx context.Context, tx pgx.Tx, user, zone string, now time.Time, 
 		return t, err
 	}
 	if !complete {
-		_, err = tx.Exec(ctx, `UPDATE task_events SET invalidated_at=$3 WHERE user_id=$1 AND task_id=$2 AND kind='completed' AND local_date=$4 AND invalidated_at IS NULL`, user, old.ID, now, today)
+		_, err = tx.Exec(ctx, `UPDATE task_events SET invalidated_at=$3 WHERE user_id=$1 AND task_id=$2 AND kind='completed' AND local_date=$4 AND invalidated_at IS NULL
+ AND NOT EXISTS(SELECT 1 FROM daily_snapshots WHERE user_id=$1 AND date=$4::date)
+ AND NOT EXISTS(SELECT 1 FROM planning_state WHERE user_id=$1 AND caught_up_through >= $4::date)`, user, old.ID, now, today)
 		if err != nil {
 			return t, err
 		}

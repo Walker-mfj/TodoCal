@@ -163,3 +163,32 @@ func TestAnalyticsTimezoneChangeDoesNotDoubleCountFocus(t *testing.T) {
 		t.Fatal(d)
 	}
 }
+
+func TestReopenOnRevisitedFinalizedDatePreservesCompletionHistory(t *testing.T) {
+	for _, scheduled := range []bool{true, false} {
+		t.Run(map[bool]string{true: "planned", false: "completion-only"}[scheduled], func(t *testing.T) {
+			s, _ := testServer(t)
+			now := time.Date(2030, 10, 19, 12, 0, 0, 0, time.UTC)
+			s.now = func() time.Time { return now }
+			c, csrf := register(t, s, "roundtrip@example.com")
+			body := map[string]any{"title": "Preserve completion"}
+			if scheduled {
+				body["scheduledDate"] = "2030-10-19"
+			}
+			task := object(t, command(s, "POST", "/api/v1/tasks", body, c, csrf, uuid.NewString()), 201)
+			path := "/api/v1/tasks/" + task["id"].(string) + "/completion"
+			object(t, command(s, "POST", path, map[string]any{"complete": true, "expectedRevision": 1}, c, csrf, uuid.NewString()), 200)
+			object(t, command(s, "PATCH", "/api/v1/settings", map[string]any{"timezone": "Pacific/Kiritimati", "expectedRevision": 1}, c, csrf, uuid.NewString()), 200)
+			object(t, command(s, "PATCH", "/api/v1/settings", map[string]any{"timezone": "UTC", "expectedRevision": 2}, c, csrf, uuid.NewString()), 200)
+			now = now.Add(time.Second)
+			object(t, command(s, "POST", path, map[string]any{"complete": false, "expectedRevision": 2}, c, csrf, uuid.NewString()), 200)
+			day := object(t, req(s, "GET", "/api/v1/reports/days/2030-10-19", nil, c, ""), 200)
+			if day["completedTasks"] != float64(1) {
+				t.Fatalf("finalized completion lost: %+v", day)
+			}
+			if scheduled && day["completed"] != float64(1) {
+				t.Fatal("snapshot changed", day)
+			}
+		})
+	}
+}

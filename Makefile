@@ -47,3 +47,7 @@ generate-api-types:
 .PHONY: test-e2e
 test-e2e:
 	sh scripts/test-e2e.sh $(E2E_ARGS)
+
+.PHONY: test-operations
+test-operations: build-api
+	python3 scripts/test-operations.py

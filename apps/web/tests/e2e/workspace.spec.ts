@@ -246,6 +246,7 @@ test("calendar click/selection, filtered progress, conflicts, offline writes and
   await expect(page.getByLabel("Task title")).toHaveValue(
     "My conflicting draft",
   );
+  await page.screenshot({ path: "test-results/acceptance-conflict.png" });
   page.once("dialog", (d) => d.accept());
   await page.getByRole("button", { name: "Discard draft and reload" }).click();
   await expect(page.locator(".task-open")).toContainText(

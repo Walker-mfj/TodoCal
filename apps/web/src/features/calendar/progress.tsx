@@ -117,7 +117,7 @@ export function DayStrip({
           className={`day-progress ${progressLevel(completionRatio(d))}`}
           aria-pressed={selectedDate === d.date}
           onClick={() => onOpen(d.date)}
-          aria-label={`${dateLabel(d.date)}: ${d.percentage === null ? "No completion percentage" : `${d.percentage}% complete`}`}
+          title={dateLabel(d.date)}
         >
           <span>{dateLabel(d.date, "EEE d")}</span>
           <Ring value={d.percentage} ratio={completionRatio(d)} small />

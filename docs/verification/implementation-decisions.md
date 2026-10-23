@@ -71,3 +71,9 @@ Preserved from the execution ledger at local acceptance. Historical milestone li
 - Final: Ruling: Visual/accessibility and OpenAPI parity are scoped to Chrome journeys, manual screenshots and generated type checking, not exhaustive certification. Cost if wrong: other browsers or assistive technology need further validation.
 
 - Task 8: Ruling: Record already-completed full verification instead of repeating it solely for task-done bookkeeping; developer instruction forbids redundant test repetition without a new change or concern. Cost if wrong: completion evidence spans the recorded commands instead of one wrapper log.
+
+## October 23 hardening supersedes earlier deferrals
+
+Storage-denied/full workflows now use an account-scoped in-memory fallback with explicit persistence warnings and retry regressions. UUID aliases are normalized before SQL with malformed/foreign-ID tests. The isolated load harness measures a 10,000-task account and concurrent workload; see load-acceptance.md. Expanded browser, accessibility and acceptance evidence is recorded in hardening-results.md. Historical deferrals above are preserved for context and are not current defect status. Installed Safari and manual assistive-technology verification remain separate from Playwright WebKit and automated axe checks.
+
+A fresh hardening review found that attaching calendar keyboard targets only at view mount would miss replaced cells after date navigation. The fix uses dayCellDidMount, with a post-navigation focusability assertion and axe audit. No critical finding was reported.

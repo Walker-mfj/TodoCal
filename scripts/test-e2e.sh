@@ -33,4 +33,17 @@ until curl -fsS "$API_URL/readyz" >/dev/null 2>&1 && curl -fsS "$E2E_BASE_URL" >
   fi
   sleep 1
 done
-(cd apps/web && npm run test:e2e -- "$@")
+# Each browser project gets fresh rate-limit counters in the dedicated test DB.
+# This preserves production rate limiting while repeated local suites remain deterministic.
+reset_test_limits() {
+  docker compose exec -T postgres psql -U focus -d focus_web_test -v ON_ERROR_STOP=1 -c 'TRUNCATE auth_attempts' >/dev/null
+}
+if [ "$#" -eq 0 ]; then
+  for browser_project in chrome firefox webkit; do
+    reset_test_limits
+    (cd apps/web && npm run test:e2e -- --project="$browser_project")
+  done
+else
+  reset_test_limits
+  (cd apps/web && npm run test:e2e -- "$@")
+fi

@@ -1,4 +1,5 @@
 "use client";
+import { sessionStore } from "../../lib/session-storage";
 import { ValidatedForm } from "../../components/validated-form";
 import { useEffect, useRef, useState } from "react";
 import { X, Repeat2 } from "lucide-react";
@@ -53,7 +54,7 @@ export function TaskEditor({
     [conflict, setConflict] = useState(false);
   useEffect(() => {
     try {
-      const saved = sessionStorage.getItem(storageKey);
+      const saved = sessionStore.getItem(storageKey);
       if (saved) {
         const parsed = JSON.parse(saved);
         setDraft(parsed.draft);
@@ -65,7 +66,7 @@ export function TaskEditor({
   }, [storageKey]);
   useEffect(() => {
     if (ready)
-      sessionStorage.setItem(
+      sessionStore.setItem(
         storageKey,
         JSON.stringify({ draft, pending, baseRevision }),
       );
@@ -85,7 +86,7 @@ export function TaskEditor({
   const close = () => {
     if ((draft.title || pending) && !window.confirm("Discard this draft?"))
       return;
-    sessionStorage.removeItem(storageKey);
+    sessionStore.removeItem(storageKey);
     onClose();
   };
   const save = async () => {
@@ -119,14 +120,14 @@ export function TaskEditor({
           },
         };
         setPending(command);
-        sessionStorage.setItem(
+        sessionStore.setItem(
           storageKey,
           JSON.stringify({ draft, pending: command, baseRevision }),
         );
       }
       await execute(command.path, command.options);
       if (!mounted.current) return;
-      sessionStorage.removeItem(storageKey);
+      sessionStore.removeItem(storageKey);
       onSaved(task ? undefined : draft);
     } catch (e) {
       setError(errorMessage(e));
@@ -336,7 +337,7 @@ export function TaskEditor({
             type="button"
             onClick={() => {
               if (window.confirm("Replace this draft with the latest task?")) {
-                sessionStorage.removeItem(storageKey);
+                sessionStore.removeItem(storageKey);
                 onSaved();
               }
             }}

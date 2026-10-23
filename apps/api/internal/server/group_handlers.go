@@ -37,10 +37,12 @@ func validateGroup(in *groupInput) error {
 func getGroup(tx pgx.Tx, r *http.Request, user string) (group, error) {
 	var g group
 	id := r.PathValue("id")
-	if _, e := uuid.Parse(id); e != nil {
+	parsed, e := uuid.Parse(id)
+	if e != nil {
 		return g, tasks.Missing()
 	}
-	e := tx.QueryRow(r.Context(), `SELECT id::text,name,color,revision FROM groups WHERE user_id=$1 AND id=$2`, user, id).Scan(&g.ID, &g.Name, &g.Color, &g.Revision)
+	id = parsed.String()
+	e = tx.QueryRow(r.Context(), `SELECT id::text,name,color,revision FROM groups WHERE user_id=$1 AND id=$2`, user, id).Scan(&g.ID, &g.Name, &g.Color, &g.Revision)
 	if errors.Is(e, pgx.ErrNoRows) {
 		e = tasks.Missing()
 	}

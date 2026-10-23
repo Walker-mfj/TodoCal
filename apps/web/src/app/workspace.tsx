@@ -1,4 +1,5 @@
 "use client";
+import { sessionStore } from "../lib/session-storage";
 import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { DateTime } from "luxon";
@@ -90,6 +91,7 @@ function AccountWorkspace() {
   }));
   const [period, setPeriod] = useState<"week" | "month">("week"),
     [periodDate, setPeriodDate] = useState(date);
+  const [selectedReportDate, setSelectedReportDate] = useState<string>();
   const periodStart = DateTime.fromISO(periodDate).startOf(period);
   const reportFrom = periodStart.toISODate()!,
     reportTo = periodStart
@@ -102,12 +104,17 @@ function AccountWorkspace() {
   );
   useEffect(() => {
     if (
+      selectedReportDate &&
+      (selectedReportDate < reportFrom || selectedReportDate >= reportTo)
+    )
+      setSelectedReportDate(reportFrom);
+    if (
       page === "progress" &&
       panel?.type === "day" &&
       (panel.date < reportFrom || panel.date >= reportTo)
     )
       setPanel({ type: "day", date: reportFrom });
-  }, [page, reportFrom, reportTo, panel]);
+  }, [page, reportFrom, reportTo, panel, selectedReportDate]);
   const calendar = useOwnedQuery<CalendarRange>(
     "calendar",
     `/calendar?from=${page === "progress" ? reportFrom : range.from}&to=${page === "progress" ? reportTo : range.to}`,
@@ -154,7 +161,7 @@ function AccountWorkspace() {
     setCursor("");
   }, [search, group, priority, status, view]);
   useEffect(() => {
-    if (sessionStorage.getItem(`focus:draft:${account.user.id}:new`))
+    if (sessionStore.getItem(`focus:draft:${account.user.id}:new`))
       setPanel({ type: "new" });
   }, [account.user.id]);
   const setRangeStable = useCallback(
@@ -167,6 +174,7 @@ function AccountWorkspace() {
       if (!confirm("Close the editor? Your draft will be kept for this task."))
         return;
     }
+    if (next?.type === "day") setSelectedReportDate(next.date);
     setPanel(next);
     setSaveNotice("");
     setMessage("");
@@ -200,11 +208,13 @@ function AccountWorkspace() {
   const restoredDrafts =
     typeof window === "undefined"
       ? []
-      : Object.keys(sessionStorage).filter(
-          (k) =>
-            k.startsWith(`focus:draft:${account.user.id}:`) &&
-            !k.endsWith(":new"),
-        );
+      : sessionStore
+          .keys()
+          .filter(
+            (k) =>
+              k.startsWith(`focus:draft:${account.user.id}:`) &&
+              !k.endsWith(":new"),
+          );
   const navigation = [
     ["calendar", "Calendar", CalendarDays],
     ["tasks", "Tasks", ListTodo],
@@ -427,7 +437,7 @@ function AccountWorkspace() {
             <button
               onClick={() => {
                 if (confirm("Discard saved task drafts?")) {
-                  restoredDrafts.forEach((k) => sessionStorage.removeItem(k));
+                  restoredDrafts.forEach((k) => sessionStore.removeItem(k));
                   setMessage("Drafts discarded.");
                 }
               }}
@@ -730,7 +740,7 @@ function AccountWorkspace() {
             ) : (
               <div className={`report-days ${period}`}>
                 <DayStrip
-                  selectedDate={panel?.type === "day" ? panel.date : undefined}
+                  selectedDate={selectedReportDate}
                   month={period === "month"}
                   days={report.data?.days || []}
                   onOpen={(date) => open({ type: "day", date })}

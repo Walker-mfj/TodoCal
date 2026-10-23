@@ -1,4 +1,5 @@
 "use client";
+import { sessionStore } from "./session-storage";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, errorMessage, type RequestOptions } from "./api";
 import type { Execute } from "../app/providers";
@@ -19,7 +20,7 @@ export function useCommand(execute: Execute, storageKey?: string) {
     mounted.current = true;
     if (storageKey) {
       try {
-        const saved = sessionStorage.getItem(storageKey);
+        const saved = sessionStore.getItem(storageKey);
         if (saved) {
           pending.current = JSON.parse(saved);
           setUncertain(true);
@@ -32,7 +33,7 @@ export function useCommand(execute: Execute, storageKey?: string) {
   }, [storageKey]);
   const clearPending = () => {
     pending.current = null;
-    if (storageKey) sessionStorage.removeItem(storageKey);
+    if (storageKey) sessionStore.removeItem(storageKey);
   };
   async function run(
     path: string,
@@ -51,7 +52,7 @@ export function useCommand(execute: Execute, storageKey?: string) {
     };
     pending.current = command;
     if (storageKey)
-      sessionStorage.setItem(
+      sessionStore.setItem(
         storageKey,
         JSON.stringify({ path: command.path, options: command.options }),
       );

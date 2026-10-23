@@ -103,9 +103,11 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 		}
 		cursor := q.Get("cursor")
 		if cursor != "" {
-			if _, e := uuid.Parse(cursor); e != nil {
+			parsed, e := uuid.Parse(cursor)
+			if e != nil {
 				return nil, tasks.Invalid("Invalid cursor")
 			}
+			cursor = parsed.String()
 		}
 		priority, status, group, view := q.Get("priority"), q.Get("status"), q.Get("groupId"), q.Get("view")
 		if priority != "" && priority != "low" && priority != "medium" && priority != "high" {
@@ -115,9 +117,11 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 			return nil, tasks.Invalid("Invalid status filter")
 		}
 		if group != "" && group != "none" {
-			if _, e := uuid.Parse(group); e != nil {
+			parsed, e := uuid.Parse(group)
+			if e != nil {
 				return nil, tasks.Invalid("Invalid group filter")
 			}
+			group = parsed.String()
 		}
 		switch view {
 		case "", "all", "today", "upcoming", "overdue", "unscheduled", "previously-unfinished":

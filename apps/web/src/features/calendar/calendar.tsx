@@ -76,10 +76,16 @@ export default function Calendar({
   const progress = (date: string) => {
     const day = days.find((d) => d.date === date);
     if (!day) return null;
+    const label =
+      day.percentage === null
+        ? date > today
+          ? "Upcoming"
+          : "No plan"
+        : `${day.percentage === 100 ? "✓ " : ""}${day.percentage}% · ${day.completed}/${day.planned}`;
     return (
       <button
         className={`calendar-progress ${progressLevel(completionRatio(day))}`}
-        aria-label={`Daily progress ${date}`}
+        aria-label={`${label}, daily progress ${date}`}
         onClick={(event) => {
           event.stopPropagation();
           onDay?.(date);
@@ -122,11 +128,23 @@ export default function Calendar({
           center: "title",
           right: "timeGridDay,timeGridWeek,dayGridMonth",
         }}
+        buttonIcons={false}
         buttonText={{
+          prev: "Previous",
+          next: "Next",
           today: "Today",
           day: "Day",
           week: "Week",
           month: "Month",
+        }}
+        dayCellDidMount={({ el, date, view }) => {
+          if (view.type.startsWith("timeGrid")) {
+            el.tabIndex = 0;
+            el.setAttribute(
+              "aria-label",
+              `Time slots for ${date.toISOString().slice(0, 10)}`,
+            );
+          }
         }}
         allDayText="Untimed"
         height={650}
@@ -137,6 +155,7 @@ export default function Calendar({
         slotLabelFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
         eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
         dayMaxEvents={3}
+        slotEventOverlap={false}
         selectable={!disabled}
         selectMirror
         editable={!disabled}

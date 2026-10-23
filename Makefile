@@ -51,3 +51,7 @@ test-e2e:
 .PHONY: test-operations
 test-operations: build-api
 	python3 scripts/test-operations.py
+
+.PHONY: test-load
+test-load:
+	python3 scripts/test-load.py

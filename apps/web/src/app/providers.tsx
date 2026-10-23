@@ -1,4 +1,5 @@
 "use client";
+import { sessionStore } from "../lib/session-storage";
 import {
   createContext,
   useCallback,
@@ -6,6 +7,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import {
@@ -63,6 +65,11 @@ export function Providers({ children }: { children: ReactNode }) {
   );
 }
 function SessionProvider({ children }: { children: ReactNode }) {
+  const storageUnavailable = useSyncExternalStore(
+    sessionStore.subscribe,
+    sessionStore.isUnavailable,
+    () => false,
+  );
   const client = useQueryClient();
   const [session, setSession] = useState<Session | null>(null);
   const current = useRef<Session | null>(null);
@@ -200,16 +207,7 @@ function SessionProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     const owner = current.current?.user.id;
     await execute("/auth/logout", { method: "POST", body: {} });
-    if (owner) {
-      for (const key of Object.keys(sessionStorage)) {
-        if (
-          ["draft", "form", "command"].some((kind) =>
-            key.startsWith(`focus:${kind}:${owner}:`),
-          )
-        )
-          sessionStorage.removeItem(key);
-      }
-    }
+    if (owner) sessionStore.clearOwner(owner);
     clear();
     channel.current?.postMessage("session");
   };
@@ -227,6 +225,14 @@ function SessionProvider({ children }: { children: ReactNode }) {
         refresh,
       }}
     >
+      {storageUnavailable && (
+        <p className="notice" role="status">
+          Browser storage is unavailable or full. Drafts and unconfirmed changes
+          are kept only in this open page and may be lost on reload. Confirm
+          pending changes before refreshing. Browser data may also remain after
+          sign out if the browser blocks its removal.
+        </p>
+      )}
       {children}
     </Context.Provider>
   );

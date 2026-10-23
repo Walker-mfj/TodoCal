@@ -3,12 +3,36 @@ import { randomUUID } from "node:crypto";
 
 // Move with real Tab keys: focus() would conceal an unreachable control.
 async function tabTo(page: Page, target: Locator) {
-  for (let i = 0; i < 100; i++) {
-    if (await target.evaluate((node) => node === document.activeElement))
-      return;
-    await page.keyboard.press("Tab");
+  const visited = new Set<string>();
+  // Reverse at the document boundary: Firefox/WebKit may move forward focus
+  // into browser chrome instead of wrapping to the first form control.
+  // macOS WebKit uses Option-Tab to include buttons and links.
+  const keys =
+    page.context().browser()?.browserType().name() === "webkit"
+      ? ["Alt+Tab", "Alt+Shift+Tab"]
+      : ["Tab", "Shift+Tab"];
+  for (const key of keys) {
+    for (let i = 0; i < 100; i++) {
+      if (await target.evaluate((node) => node === document.activeElement))
+        return;
+      visited.add(
+        await page.evaluate(
+          () =>
+            `${document.activeElement?.tagName}:${document.activeElement?.getAttribute("type")}`,
+        ),
+      );
+      await page.keyboard.press(key);
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          ),
+      );
+    }
   }
-  throw new Error("Control is not reachable using Tab");
+  throw new Error(
+    `Control is not reachable using the keyboard; visited ${[...visited].join(" -> ")}`,
+  );
 }
 async function activate(page: Page, target: Locator) {
   await tabTo(page, target);

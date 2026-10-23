@@ -1,17 +1,21 @@
 "use client";
+import { sessionStore } from "./session-storage";
 import { useEffect, useState } from "react";
 export function useAccountDraft<T>(key: string, initial: T) {
   const [draft, setDraft] = useState(initial),
-    [ready, setReady] = useState(false);
+    [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const ready = loadedKey === key;
   useEffect(() => {
     try {
-      const saved = sessionStorage.getItem(key);
-      if (saved) setDraft(JSON.parse(saved));
-    } catch {}
-    setReady(true);
+      const saved = sessionStore.getItem(key);
+      setDraft(saved ? JSON.parse(saved) : initial);
+    } catch {
+      setDraft(initial);
+    }
+    setLoadedKey(key);
   }, [key]);
   useEffect(() => {
-    if (ready) sessionStorage.setItem(key, JSON.stringify(draft));
+    if (ready) sessionStore.setItem(key, JSON.stringify(draft));
   }, [key, draft, ready]);
-  return { draft, setDraft, ready };
+  return { draft: ready ? draft : initial, setDraft, ready };
 }

@@ -1,4 +1,5 @@
 "use client";
+import { sessionStore } from "../../lib/session-storage";
 import { useEffect, useRef, useState } from "react";
 import { useSession } from "../../app/providers";
 import { ApiError, errorMessage, type RequestOptions } from "../../lib/api";
@@ -24,7 +25,7 @@ export function useSchedule() {
   useEffect(() => {
     mounted.current = true;
     try {
-      const saved = sessionStorage.getItem(key);
+      const saved = sessionStore.getItem(key);
       if (saved) {
         setPending(JSON.parse(saved));
         setError(
@@ -42,7 +43,7 @@ export function useSchedule() {
     setBusy(true);
     setError("");
     setPending(command);
-    sessionStorage.setItem(key, JSON.stringify(command));
+    sessionStore.setItem(key, JSON.stringify(command));
     let responseTime = Date.now();
     let receivedAt = performance.now();
     try {
@@ -58,7 +59,7 @@ export function useSchedule() {
         },
       });
       if (!mounted.current) return;
-      sessionStorage.removeItem(key);
+      sessionStore.removeItem(key);
       setPending(null);
       if (command.kind === "schedule" && "undo" in result) {
         const remaining = Math.min(
@@ -81,7 +82,7 @@ export function useSchedule() {
       if (!mounted.current) return;
       setError(errorMessage(e));
       if (e instanceof ApiError && e.status !== 401 && e.status < 500) {
-        sessionStorage.removeItem(key);
+        sessionStore.removeItem(key);
         setPending(null);
         if (command.kind === "undo") setToast(null);
       }

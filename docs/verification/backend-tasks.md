@@ -24,7 +24,7 @@ Date: October 20, 2026. Scope: implementation-plan Task 2.
 
 A fresh reviewer inspected the implementation and found no critical or important findings. The reviewer's attempted unit test was blocked by build-cache permissions; the author's successful verification above is the execution evidence.
 
-Deferred minor: `urn:uuid:<uuid>` is accepted by UUID parsing but passed unnormalized to SQL, which may yield 500 instead of 404/422. Normal canonical UUIDs are supported. Normalize these alternate forms in a future validation pass.
+Resolved October 23: accepted UUID aliases (URN, compact, braces and uppercase) are normalized before SQL. `uuid_test.go` exercises aliases across reads/mutations, malformed values and ownership. The former URN HTTP 500 regression is covered.
 
 The reviewer deferred later recurrence/history, undo, and frontend work, and the OpenAPI/docs being edited concurrently. These remain outside this milestone; the author checked the contract separately.
 

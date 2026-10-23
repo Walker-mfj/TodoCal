@@ -69,12 +69,12 @@ make generate-api-types  # checked-in OpenAPI -> TypeScript (formatted)
 make test-web            # UI/model/API regression tests
 make typecheck
 make build-web
-make test-e2e            # builds production web, starts isolated local API/web, runs Chrome
+make test-e2e            # builds production web, starts isolated local API/web, runs Chrome, Firefox and WebKit
 # Optional targeted browser run:
 make test-e2e E2E_ARGS='--grep calendar'
 ```
 
-Browser tests use installed Google Chrome, the separate `focus_web_test` database, API port 18080, and web port 3002. They create unique test accounts, do not reset development data, and stop their own servers on exit. The build uses that test API URL; rebuild with the development/production `API_URL` before running `npm run start` manually. Do not run multiple browser suites using the same ports concurrently.
+Install test engines with `cd apps/web && npx playwright install firefox webkit` (Chrome uses the installed Google Chrome). Browser tests use these three engines, the separate `focus_web_test` database, API port 18080, and web port 3002. They create unique test accounts, do not reset development data, and stop their own servers on exit. The build uses that test API URL; rebuild with the development/production `API_URL` before running `npm run start` manually. Do not run multiple browser suites using the same ports concurrently.
 
 Private query caches are scoped to the account and cleared on session expiry, logout, or account change. Successful authenticated API responses include `X-Account-ID`; the client refuses a response from a different account before caching it. A task editor draft is stored in sessionStorage under its owner ID, including its original revision and an uncertain command's exact payload/idempotency key. Re-authentication can restore only that account's draft; explicit logout removes that account's drafts. Group/settings drafts and uncertain commands are also stored per owner and cleared on explicit logout. Settings conflict recovery offers reapply or discard against the latest revision. Other tabs send invalidation hints, while the API remains authoritative. Visible pages refresh every 15 seconds and on focus/reconnect. Disconnected writes are disabled. The form retains invalid/conflicting input and lets the user discard a conflicting draft and reload.
 
@@ -103,3 +103,5 @@ Focus analytics allocate saved intervals using the current account timezone, sho
 ## Acceptance and recovery
 
 See [MVP acceptance](docs/verification/mvp-acceptance.md) for criteria 1–50, review findings and known limits, and [local operations](docs/verification/operations.md) for configuration, migrations and backup/recovery. Run `make test-operations` for an isolated database restart and dump/restore rehearsal; it requires Python 3 and never modifies the development database.
+
+Acceptance hardening evidence, accessibility scope and remaining Safari permission gate: [hardening results](docs/verification/hardening-results.md). Run `make test-load` for the isolated synthetic load harness; the measured profile is in [load acceptance](docs/verification/load-acceptance.md).

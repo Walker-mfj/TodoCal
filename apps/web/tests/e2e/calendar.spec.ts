@@ -40,18 +40,27 @@ async function setup(page: Page) {
 }
 async function dragMinutes(page: Page, title: string, minutes: number) {
   const event = page.locator(".fc-timegrid-event").filter({ hasText: title });
+  await event.hover(); // Wait for layout and initial calendar scrolling to settle.
   const box = await event.boundingBox();
   const slot = await page
     .locator('.fc-timegrid-slot[data-time="09:00:00"]')
     .last()
     .boundingBox();
-  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  const nextSlot = await page
+    .locator('.fc-timegrid-slot[data-time="09:30:00"]')
+    .last()
+    .boundingBox();
+  // Use row pitch (including collapsed borders), not the cell's content height.
+  // FullCalendar centers the subject within its 30-minute hit row. Start
+  // in the second snap and land inside (not on the edge of) the target snap.
+  const x = box!.x + box!.width / 2;
+  const pitch = nextSlot!.y - slot!.y;
+  const y = box!.y + pitch * 0.75;
+  await page.mouse.move(x, y);
   await page.mouse.down();
-  await page.mouse.move(
-    box!.x + box!.width / 2,
-    box!.y + box!.height / 2 + (minutes * slot!.height) / 30,
-    { steps: 15 },
-  );
+  await page.mouse.move(x, y + (minutes * pitch) / 30 + pitch / 8, {
+    steps: 15,
+  });
   await page.mouse.up();
 }
 test("calendar drag snaps, Undo restores, resize saves, and Month moves preserve time", async ({

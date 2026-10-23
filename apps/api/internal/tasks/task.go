@@ -63,9 +63,11 @@ func Scan(row pgx.Row) (Task, error) {
 	return t, err
 }
 func Get(ctx context.Context, tx pgx.Tx, user, id string) (Task, error) {
-	if _, err := uuid.Parse(id); err != nil {
+	parsed, err := uuid.Parse(id)
+	if err != nil {
 		return Task{}, Missing()
 	}
+	id = parsed.String()
 	return Scan(tx.QueryRow(ctx, `SELECT `+Columns+` FROM tasks WHERE user_id=$1 AND id=$2 AND deleted_at IS NULL`, user, id))
 }
 func Validate(in *Input, zone string, now time.Time, previous *Task) error {
@@ -134,9 +136,11 @@ func CheckGroup(ctx context.Context, tx pgx.Tx, user string, id *string) error {
 	if id == nil {
 		return nil
 	}
-	if _, err := uuid.Parse(*id); err != nil {
+	parsed, err := uuid.Parse(*id)
+	if err != nil {
 		return Missing()
 	}
+	*id = parsed.String()
 	var exists bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM groups WHERE user_id=$1 AND id=$2)`, user, *id).Scan(&exists); err != nil {
 		return err

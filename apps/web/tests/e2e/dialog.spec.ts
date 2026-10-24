@@ -74,7 +74,15 @@ test("calendar slot changes retain content; only edited drafts need a close deci
   ).toBeFocused();
   await page.keyboard.press("Shift+Tab");
   await expect(
+    dialog.getByRole("button", { name: "Close dialog", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(
     dialog.getByRole("button", { name: "Close editor" }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
+    dialog.getByRole("button", { name: "Close dialog", exact: true }),
   ).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(
@@ -121,6 +129,20 @@ test("shared delete confirmation supports cancel, light/dark and accessible labe
       .analyze();
     expect(audit.violations).toEqual([]);
     await page.screenshot({ path: `test-results/shared-dialog-${theme}.png` });
+    await dialog
+      .getByRole("button", { name: "Close dialog", exact: true })
+      .click();
+    await expect(dialog).toBeHidden();
+    await expect(group).toBeVisible();
+    await group.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(dialog).toBeVisible();
+    // Clicking the backdrop cancels; it must never confirm or click through.
+    await page.mouse.click(10, 10);
+    await expect(dialog).toBeHidden();
+    await expect(group).toBeVisible();
+    await group.getByRole("button", { name: "Delete", exact: true }).click();
+    await dialog.getByRole("heading").click();
+    await expect(dialog).toBeVisible();
     await dialog.getByRole("button", { name: "Cancel" }).click();
     await expect(group).toBeVisible();
     await group.getByRole("button", { name: "Delete", exact: true }).click();

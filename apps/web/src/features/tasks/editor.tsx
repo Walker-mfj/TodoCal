@@ -1,4 +1,5 @@
 "use client";
+import type { CalendarDraft } from "../calendar/draft-preview";
 import { useConfirm } from "../../components/app-dialog";
 import { sessionStore } from "../../lib/session-storage";
 import { ValidatedForm } from "../../components/validated-form";
@@ -26,6 +27,7 @@ export function TaskEditor({
   onSaved,
   onClose,
   onStateChange,
+  onDraftChange,
 }: {
   owner: string;
   zone: string;
@@ -36,6 +38,7 @@ export function TaskEditor({
   execute: Execute;
   onSaved: (created?: Draft) => void;
   onClose: () => void;
+  onDraftChange?: (preview: CalendarDraft) => void;
   onStateChange?: (state: { dirty: boolean; blocked: boolean }) => void;
 }) {
   const confirm = useConfirm();
@@ -96,12 +99,15 @@ export function TaskEditor({
     );
   }, [draft, pending, baseRevision, baseline, ready, storageKey, dirty]);
   useEffect(() => {
+    if (ready) onDraftChange?.({ draft, taskId: task?.id });
+  }, [draft, task?.id, ready, onDraftChange]);
+  useEffect(() => {
     onStateChange?.({ dirty, blocked: busy || !!pending });
   }, [dirty, busy, pending, onStateChange]);
   useEffect(() => {
     if (seed === lastSeed.current) return;
     lastSeed.current = seed;
-    if (!ready || !seed || task || busy || pending) return;
+    if (!ready || !seed || busy || pending) return;
     const schedule = {
       scheduledDate: seed.scheduledDate || "",
       startTime: seed.startTime || "",
@@ -109,7 +115,7 @@ export function TaskEditor({
     };
     setDraft((previous) => ({ ...previous, ...schedule }));
     // Picking the initial slot is not an edit to the task's content.
-    setBaseline((previous) => ({ ...previous, ...schedule }));
+    if (!task) setBaseline((previous) => ({ ...previous, ...schedule }));
     setError("");
   }, [seed, ready, task, busy, pending]);
   const change = (key: keyof Draft, value: string | number) => {

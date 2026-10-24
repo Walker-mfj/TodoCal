@@ -1,4 +1,5 @@
 "use client";
+import type { CalendarDraft } from "../features/calendar/draft-preview";
 import { useConfirm } from "../components/app-dialog";
 import { sessionStore } from "../lib/session-storage";
 import { useCallback, useEffect, useState } from "react";
@@ -60,7 +61,12 @@ const Calendar = dynamic(() => import("../features/calendar/calendar"), {
 });
 type Panel =
   | { type: "new"; seed?: Partial<Draft> }
-  | { type: "edit" | "detail"; task: Task; historical?: boolean }
+  | {
+      type: "edit" | "detail";
+      task: Task;
+      historical?: boolean;
+      seed?: Partial<Draft>;
+    }
   | { type: "day"; date: string }
   | null;
 export default function Workspace() {
@@ -70,6 +76,7 @@ export default function Workspace() {
 }
 function AccountWorkspace() {
   const confirm = useConfirm();
+  const [draftPreview, setDraftPreview] = useState<CalendarDraft | null>(null);
   const [editorState, setEditorState] = useState({
     dirty: false,
     blocked: false,
@@ -190,6 +197,7 @@ function AccountWorkspace() {
         return;
     }
     if (next?.type === "day") setSelectedReportDate(next.date);
+    setDraftPreview(null);
     setPanel(next);
     setSaveNotice("");
     setMessage("");
@@ -548,6 +556,13 @@ function AccountWorkspace() {
               <Calendar
                 onDay={(date) => open({ type: "day", date })}
                 reveal={reveal}
+                draftPreview={
+                  (panel?.type === "new" && !draftPreview?.taskId) ||
+                  (panel?.type === "edit" &&
+                    panel.task.id === draftPreview?.taskId)
+                    ? draftPreview
+                    : null
+                }
                 days={calendar.data?.days || []}
                 groups={allGroups}
                 today={date}
@@ -562,14 +577,14 @@ function AccountWorkspace() {
                     );
                     return;
                   }
-                  if (panel?.type === "new") {
+                  if (panel?.type === "new" || panel?.type === "edit") {
                     if (editorState.blocked) {
                       setMessage(
                         "Confirm the pending save before changing its schedule.",
                       );
                       return;
                     }
-                    setPanel({ type: "new", seed });
+                    setPanel({ ...panel, seed });
                   } else void open({ type: "new", seed });
                 }}
                 filter={filter}
@@ -811,15 +826,20 @@ function AccountWorkspace() {
         <TaskEditor
           key={panel.type === "edit" ? panel.task.id : "new"}
           onStateChange={setEditorState}
+          onDraftChange={page === "calendar" ? setDraftPreview : undefined}
           owner={account.user.id}
           zone={account.settings.timezone}
           groups={allGroups}
           task={panel.type === "edit" ? panel.task : undefined}
-          seed={panel.type === "new" ? panel.seed : undefined}
+          seed={panel.seed}
           disabled={!connected}
           execute={execute}
-          onClose={() => setPanel(null)}
+          onClose={() => {
+            setDraftPreview(null);
+            setPanel(null);
+          }}
           onSaved={(created) => {
+            setDraftPreview(null);
             setEditorState({ dirty: false, blocked: false });
             setPanel(null);
             if (!created) return;

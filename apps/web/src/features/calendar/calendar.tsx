@@ -1,4 +1,5 @@
 "use client";
+import { draftEvent, type CalendarDraft } from "./draft-preview";
 import { useMemo, useEffect, useRef } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
@@ -16,6 +17,7 @@ import {
 } from "../../lib/model";
 export default function Calendar({
   reveal,
+  draftPreview,
   days,
   groups,
   today,
@@ -29,6 +31,7 @@ export default function Calendar({
   onDay,
 }: {
   reveal?: Partial<Draft> | null;
+  draftPreview?: CalendarDraft | null;
   days: Day[];
   groups: Group[];
   today: string;
@@ -48,11 +51,28 @@ export default function Calendar({
     api?.gotoDate(reveal.scheduledDate);
     if (reveal.startTime) api?.scrollToTime(reveal.startTime);
   }, [reveal]);
+  const preview = draftEvent(draftPreview);
+  const previewDate = preview ? draftPreview?.draft.scheduledDate : undefined;
+  const previewTime = preview ? draftPreview?.draft.startTime : undefined;
+  useEffect(() => {
+    if (!previewDate) return;
+    const api = calendarRef.current?.getApi();
+    api?.gotoDate(previewDate);
+    if (previewTime) api?.scrollToTime(previewTime);
+  }, [previewDate, previewTime]);
   const events = useMemo(
     () =>
       days.flatMap((day) =>
         day.entries
-          .filter((e) => filter(e.task))
+          .filter(
+            (e) =>
+              filter(e.task) &&
+              !(
+                draftPreview?.taskId === e.task.id &&
+                !day.finalized &&
+                (draftEvent(draftPreview) || !draftPreview.draft.scheduledDate)
+              ),
+          )
           .map(({ task, groupColor }) => ({
             id: `${day.date}:${task.id}`,
             title: task.title,
@@ -71,7 +91,7 @@ export default function Calendar({
             extendedProps: { task, historical: day.finalized },
           })),
       ),
-    [days, groups, filter, disabled],
+    [days, groups, filter, disabled, draftPreview],
   );
   const progress = (date: string) => {
     const day = days.find((d) => d.date === date);
@@ -220,7 +240,7 @@ export default function Calendar({
             onScheduleError(error);
           }
         }}
-        events={events}
+        events={preview ? [...events, preview] : events}
         datesSet={(arg) =>
           onRange(arg.startStr.slice(0, 10), arg.endStr.slice(0, 10))
         }
@@ -252,6 +272,9 @@ export default function Calendar({
               {arg.event.extendedProps.task?.priority === "high" ? " · !" : ""}
             </span>
             <span>{arg.event.title}</span>
+            {arg.event.extendedProps.draft && (
+              <span className="draft-badge">Draft</span>
+            )}
             {arg.event.extendedProps.task?.seriesId && (
               <span className="event-repeat" aria-label="Repeating">
                 ↻
@@ -260,6 +283,14 @@ export default function Calendar({
           </div>
         )}
         eventDidMount={(arg) => {
+          if (arg.event.extendedProps.draft) {
+            arg.el.setAttribute("role", "note");
+            arg.el.setAttribute(
+              "aria-label",
+              `Unsaved draft: ${arg.event.title}, ${arg.event.startStr}`,
+            );
+            return;
+          }
           // Selection mirrors are synthetic events with no persisted task.
           // Drag/resize mirrors must not become duplicate keyboard controls.
           if (arg.isMirror || !arg.event.extendedProps.task) return;

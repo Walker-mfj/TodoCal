@@ -86,6 +86,7 @@ test("acceptance: keyboard-only task workflow, custom errors, long names and emp
   });
   const title = "Long task " + "x".repeat(290);
   await page.keyboard.type(title);
+  await expect(page.getByLabel("Task title")).toHaveValue(title);
   await activate(
     page,
     page.getByRole("button", { name: "Create task", exact: true }),

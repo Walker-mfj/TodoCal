@@ -158,6 +158,8 @@ export default function Calendar({
         slotEventOverlap={false}
         selectable={!disabled}
         selectMirror
+        // A click uses the 30-minute dateClick default; only dragging selects.
+        selectMinDistance={5}
         editable={!disabled}
         droppable={!disabled}
         eventResizableFromStart
@@ -235,24 +237,22 @@ export default function Calendar({
             onCreate(slotDraft(arg.startStr, arg.endStr, arg.allDay));
           arg.view.calendar.unselect();
         }}
-        eventClick={(arg) =>
-          onTask(
-            arg.event.extendedProps.task,
-            arg.event.extendedProps.historical,
-          )
-        }
+        eventClick={(arg) => {
+          const task = arg.event.extendedProps.task as Task | undefined;
+          if (task) onTask(task, Boolean(arg.event.extendedProps.historical));
+        }}
         eventContent={(arg) => (
           <div
             className={`event-content ${arg.event.start && arg.event.end && +arg.event.end - +arg.event.start <= 1800000 ? "compact" : ""}`}
             title={`${arg.timeText} ${arg.event.title}`}
           >
             <span className="event-time">
-              {arg.event.extendedProps.task.status === "complete" ? "✓ " : ""}
+              {arg.event.extendedProps.task?.status === "complete" ? "✓ " : ""}
               {arg.timeText}
-              {arg.event.extendedProps.task.priority === "high" ? " · !" : ""}
+              {arg.event.extendedProps.task?.priority === "high" ? " · !" : ""}
             </span>
             <span>{arg.event.title}</span>
-            {arg.event.extendedProps.task.seriesId && (
+            {arg.event.extendedProps.task?.seriesId && (
               <span className="event-repeat" aria-label="Repeating">
                 ↻
               </span>
@@ -260,6 +260,9 @@ export default function Calendar({
           </div>
         )}
         eventDidMount={(arg) => {
+          // Selection mirrors are synthetic events with no persisted task.
+          // Drag/resize mirrors must not become duplicate keyboard controls.
+          if (arg.isMirror || !arg.event.extendedProps.task) return;
           arg.el.setAttribute("tabindex", "0");
           arg.el.setAttribute("role", "button");
           arg.el.setAttribute(

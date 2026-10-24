@@ -290,3 +290,28 @@ test("task validation uses an inline message instead of browser tooltips", async
   await expect(page.getByLabel("Task title")).toBeFocused();
   await page.screenshot({ path: "test-results/custom-validation.png" });
 });
+
+test("selecting a new time range renders a taskless preview without crashing", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await setup(page);
+  const column = page.locator(".fc-timegrid-col.fc-day-today");
+  const start = page.locator('.fc-timegrid-slot[data-time="09:00:00"]').last();
+  await start.scrollIntoViewIfNeeded();
+  const col = (await column.boundingBox())!;
+  const from = (await start.boundingBox())!;
+  const to = (await page
+    .locator('.fc-timegrid-slot[data-time="10:00:00"]')
+    .last()
+    .boundingBox())!;
+  await page.mouse.move(col.x + col.width / 2, from.y + 4);
+  await page.mouse.down();
+  await page.mouse.move(col.x + col.width / 2, to.y + 4, { steps: 12 });
+  await expect(page.locator(".fc-event-mirror")).toBeVisible();
+  expect(errors).toEqual([]);
+  await page.mouse.up();
+  await expect(page.getByLabel("Task title")).toBeVisible();
+  expect(errors).toEqual([]);
+});

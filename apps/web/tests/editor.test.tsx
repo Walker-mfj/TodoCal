@@ -125,3 +125,94 @@ it("does not remove another editor draft when an unmounted save completes", asyn
     "New task B",
   );
 });
+
+it("changes the calendar slot without replacing draft content", async () => {
+  const editor = render(
+    <TaskEditor
+      {...base}
+      execute={vi.fn()}
+      seed={{
+        scheduledDate: "2026-10-24",
+        startTime: "09:00",
+        endTime: "09:30",
+      }}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText("Task title"), {
+    target: { value: "Keep this title" },
+  });
+  fireEvent.change(screen.getByLabelText("Description"), {
+    target: { value: "Keep these notes" },
+  });
+  editor.rerender(
+    <TaskEditor
+      {...base}
+      execute={vi.fn()}
+      seed={{
+        scheduledDate: "2026-10-25",
+        startTime: "11:00",
+        endTime: "12:00",
+      }}
+    />,
+  );
+  await waitFor(() =>
+    expect(screen.getByLabelText("Start time")).toHaveValue("11:00"),
+  );
+  expect(screen.getByLabelText("Task title")).toHaveValue("Keep this title");
+  expect(screen.getByLabelText("Description")).toHaveValue("Keep these notes");
+  expect(screen.getByLabelText("Scheduled date")).toHaveValue("2026-10-25");
+  expect(screen.getByLabelText("End time")).toHaveValue("12:00");
+});
+it("tracks description-only edits and becomes clean when reverted", async () => {
+  const state = vi.fn();
+  render(<TaskEditor {...base} execute={vi.fn()} onStateChange={state} />);
+  await waitFor(() =>
+    expect(state).toHaveBeenLastCalledWith({ dirty: false, blocked: false }),
+  );
+  fireEvent.change(screen.getByLabelText("Description"), {
+    target: { value: "Notes without a title" },
+  });
+  await waitFor(() =>
+    expect(state).toHaveBeenLastCalledWith({ dirty: true, blocked: false }),
+  );
+  fireEvent.change(screen.getByLabelText("Description"), {
+    target: { value: "" },
+  });
+  await waitFor(() =>
+    expect(state).toHaveBeenLastCalledWith({ dirty: false, blocked: false }),
+  );
+});
+it("keeps uncertain save contents and schedule fixed when another slot is selected", async () => {
+  const execute = vi.fn().mockRejectedValue(new TypeError("Lost response"));
+  const editor = render(
+    <TaskEditor
+      {...base}
+      execute={execute}
+      seed={{
+        scheduledDate: "2026-10-24",
+        startTime: "09:00",
+        endTime: "09:30",
+      }}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText("Task title"), {
+    target: { value: "Pending task" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Create task" }));
+  await screen.findByRole("button", { name: "Retry save" });
+  editor.rerender(
+    <TaskEditor
+      {...base}
+      execute={execute}
+      seed={{
+        scheduledDate: "2026-10-25",
+        startTime: "11:00",
+        endTime: "12:00",
+      }}
+    />,
+  );
+  expect(screen.getByLabelText("Start time")).toHaveValue("09:00");
+  fireEvent.click(screen.getByRole("button", { name: "Retry save" }));
+  await waitFor(() => expect(execute).toHaveBeenCalledTimes(2));
+  expect(execute.mock.calls[1]).toEqual(execute.mock.calls[0]);
+});

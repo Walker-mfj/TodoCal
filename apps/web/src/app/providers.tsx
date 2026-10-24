@@ -1,4 +1,5 @@
 "use client";
+import { AppDialogProvider } from "../components/app-dialog";
 import { sessionStore } from "../lib/session-storage";
 import {
   createContext,
@@ -60,7 +61,9 @@ export function Providers({ children }: { children: ReactNode }) {
   );
   return (
     <QueryClientProvider client={client}>
-      <SessionProvider>{children}</SessionProvider>
+      <AppDialogProvider>
+        <SessionProvider>{children}</SessionProvider>
+      </AppDialogProvider>
     </QueryClientProvider>
   );
 }

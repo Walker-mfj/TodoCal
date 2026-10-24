@@ -1,4 +1,5 @@
 "use client";
+import { useConfirm } from "../components/app-dialog";
 import { sessionStore } from "../lib/session-storage";
 import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
@@ -68,6 +69,11 @@ export default function Workspace() {
   return <AccountWorkspace key={session.user.id} />;
 }
 function AccountWorkspace() {
+  const confirm = useConfirm();
+  const [editorState, setEditorState] = useState({
+    dirty: false,
+    blocked: false,
+  });
   const { session, connected, execute, read, refresh, logout } = useSession();
   const account = session!;
   const focus = useFocus();
@@ -169,9 +175,18 @@ function AccountWorkspace() {
       setRange((r) => (r.from === from && r.to === to ? r : { from, to })),
     [],
   );
-  const open = (next: Panel) => {
-    if (panel?.type === "edit" || panel?.type === "new") {
-      if (!confirm("Close the editor? Your draft will be kept for this task."))
+  const open = async (next: Panel) => {
+    if (
+      (panel?.type === "edit" || panel?.type === "new") &&
+      editorState.dirty
+    ) {
+      if (
+        !(await confirm("Your draft will be kept for this task.", {
+          title: "Close editor?",
+          confirmLabel: "Close editor",
+          cancelLabel: "Keep editing",
+        }))
+      )
         return;
     }
     if (next?.type === "day") setSelectedReportDate(next.date);
@@ -179,12 +194,18 @@ function AccountWorkspace() {
     setSaveNotice("");
     setMessage("");
   };
-  const complete = (task: Task) => {
+  const complete = async (task: Task) => {
     const move =
       task.status !== "complete" &&
       !!task.scheduledDate &&
       task.scheduledDate > date;
-    if (move && !confirm("Move this future task to today and complete it?"))
+    if (
+      move &&
+      !(await confirm("Move this future task to today and complete it?", {
+        title: "Complete future task?",
+        confirmLabel: "Move and complete",
+      }))
+    )
       return;
     void command.run(
       `/tasks/${task.id}/completion`,
@@ -298,10 +319,14 @@ function AccountWorkspace() {
           </small>
           <button
             disabled={!connected}
-            onClick={() => {
+            onClick={async () => {
               if (
-                (panel?.type === "new" || panel?.type === "edit") &&
-                !confirm("Sign out and discard your saved drafts?")
+                (editorState.dirty || restoredDrafts.length > 0) &&
+                !(await confirm("Sign out and discard your saved drafts?", {
+                  title: "Sign out?",
+                  confirmLabel: "Sign out",
+                  destructive: true,
+                }))
               )
                 return;
               void logout().catch((e) => setMessage(errorMessage(e)));
@@ -435,8 +460,14 @@ function AccountWorkspace() {
               Resume draft
             </button>
             <button
-              onClick={() => {
-                if (confirm("Discard saved task drafts?")) {
+              onClick={async () => {
+                if (
+                  await confirm("Discard saved task drafts?", {
+                    title: "Discard drafts?",
+                    confirmLabel: "Discard drafts",
+                    destructive: true,
+                  })
+                ) {
                   restoredDrafts.forEach((k) => sessionStore.removeItem(k));
                   setMessage("Drafts discarded.");
                 }
@@ -531,7 +562,15 @@ function AccountWorkspace() {
                     );
                     return;
                   }
-                  open({ type: "new", seed });
+                  if (panel?.type === "new") {
+                    if (editorState.blocked) {
+                      setMessage(
+                        "Confirm the pending save before changing its schedule.",
+                      );
+                      return;
+                    }
+                    setPanel({ type: "new", seed });
+                  } else void open({ type: "new", seed });
                 }}
                 filter={filter}
                 disabled={
@@ -771,6 +810,7 @@ function AccountWorkspace() {
       {panel?.type === "new" || panel?.type === "edit" ? (
         <TaskEditor
           key={panel.type === "edit" ? panel.task.id : "new"}
+          onStateChange={setEditorState}
           owner={account.user.id}
           zone={account.settings.timezone}
           groups={allGroups}
@@ -780,6 +820,7 @@ function AccountWorkspace() {
           execute={execute}
           onClose={() => setPanel(null)}
           onSaved={(created) => {
+            setEditorState({ dirty: false, blocked: false });
             setPanel(null);
             if (!created) return;
             if (page === "calendar") {

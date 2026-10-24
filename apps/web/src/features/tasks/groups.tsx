@@ -1,4 +1,5 @@
 "use client";
+import { useConfirm } from "../../components/app-dialog";
 import { ValidatedForm } from "../../components/validated-form";
 import { useAccountDraft } from "../../lib/use-account-draft";
 import { useCommand } from "../../lib/use-command";
@@ -15,6 +16,7 @@ export function Groups({
   execute: Execute;
   disabled: boolean;
 }) {
+  const confirm = useConfirm();
   const { draft, setDraft, ready } = useAccountDraft<{
     editing: Group | null;
     name: string;
@@ -59,8 +61,17 @@ export function Groups({
             <button
               className="danger"
               disabled={disabled || command.busy || command.uncertain}
-              onClick={() => {
-                if (confirm(`Delete group “${g.name}”? Tasks will be kept.`))
+              onClick={async () => {
+                if (
+                  await confirm(
+                    `Delete group “${g.name}”? Tasks will be kept.`,
+                    {
+                      title: "Delete group?",
+                      confirmLabel: "Delete group",
+                      destructive: true,
+                    },
+                  )
+                )
                   void command.run(
                     `/groups/${g.id}`,
                     "DELETE",

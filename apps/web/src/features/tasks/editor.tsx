@@ -1,4 +1,5 @@
 "use client";
+import { useConfirm } from "../../components/app-dialog";
 import { sessionStore } from "../../lib/session-storage";
 import { ValidatedForm } from "../../components/validated-form";
 import { useEffect, useRef, useState } from "react";
@@ -24,6 +25,7 @@ export function TaskEditor({
   execute,
   onSaved,
   onClose,
+  onStateChange,
 }: {
   owner: string;
   zone: string;
@@ -34,7 +36,14 @@ export function TaskEditor({
   execute: Execute;
   onSaved: (created?: Draft) => void;
   onClose: () => void;
+  onStateChange?: (state: { dirty: boolean; blocked: boolean }) => void;
 }) {
+  const confirm = useConfirm();
+  const initial = useRef<Draft>(
+    task ? draftFromTask(task, zone) : { title: "", ...seed },
+  );
+  const [baseline, setBaseline] = useState(initial.current);
+  const lastSeed = useRef(seed);
   const mounted = useRef(false);
   useEffect(() => {
     mounted.current = true;
@@ -57,20 +66,52 @@ export function TaskEditor({
       const saved = sessionStore.getItem(storageKey);
       if (saved) {
         const parsed = JSON.parse(saved);
-        setDraft(parsed.draft);
+        setDraft(
+          !task && seed && !parsed.pending
+            ? {
+                ...parsed.draft,
+                scheduledDate: seed.scheduledDate || "",
+                startTime: seed.startTime || "",
+                endTime: seed.endTime || "",
+              }
+            : parsed.draft,
+        );
+        setBaseline(parsed.baseline || initial.current);
         setPending(parsed.pending || null);
         setBaseRevision(parsed.baseRevision ?? task?.revision);
       }
     } catch {}
     setReady(true);
   }, [storageKey]);
+  const dirty = fingerprint(draft) !== fingerprint(baseline) || !!pending;
   useEffect(() => {
-    if (ready)
-      sessionStore.setItem(
-        storageKey,
-        JSON.stringify({ draft, pending, baseRevision }),
-      );
-  }, [draft, pending, baseRevision, ready, storageKey]);
+    if (!ready) return;
+    if (!dirty) {
+      sessionStore.removeItem(storageKey);
+      return;
+    }
+    sessionStore.setItem(
+      storageKey,
+      JSON.stringify({ draft, pending, baseRevision, baseline }),
+    );
+  }, [draft, pending, baseRevision, baseline, ready, storageKey, dirty]);
+  useEffect(() => {
+    onStateChange?.({ dirty, blocked: busy || !!pending });
+  }, [dirty, busy, pending, onStateChange]);
+  useEffect(() => {
+    if (seed === lastSeed.current) return;
+    lastSeed.current = seed;
+    if (!ready || !seed || task || busy || pending) return;
+    const schedule = {
+      scheduledDate: seed.scheduledDate || "",
+      startTime: seed.startTime || "",
+      endTime: seed.endTime || "",
+    };
+    setDraft((previous) => ({ ...previous, ...schedule }));
+    // Picking the initial slot is not an edit to the task's content.
+    setBaseline((previous) => ({ ...previous, ...schedule }));
+    setError("");
+  }, [seed, ready, task, busy, pending]);
   const change = (key: keyof Draft, value: string | number) => {
     setDraft((d) => ({
       ...d,
@@ -83,10 +124,17 @@ export function TaskEditor({
     }));
     setError("");
   };
-  const close = () => {
-    if ((draft.title || pending) && !window.confirm("Discard this draft?"))
+  const close = async () => {
+    if (
+      dirty &&
+      !(await confirm("Your draft will be kept for this task.", {
+        title: "Close editor?",
+        confirmLabel: "Close editor",
+        cancelLabel: "Keep editing",
+      }))
+    )
       return;
-    sessionStore.removeItem(storageKey);
+    if (!dirty) sessionStore.removeItem(storageKey);
     onClose();
   };
   const save = async () => {
@@ -122,7 +170,7 @@ export function TaskEditor({
         setPending(command);
         sessionStore.setItem(
           storageKey,
-          JSON.stringify({ draft, pending: command, baseRevision }),
+          JSON.stringify({ draft, pending: command, baseRevision, baseline }),
         );
       }
       await execute(command.path, command.options);
@@ -335,8 +383,14 @@ export function TaskEditor({
         {conflict && (
           <button
             type="button"
-            onClick={() => {
-              if (window.confirm("Replace this draft with the latest task?")) {
+            onClick={async () => {
+              if (
+                await confirm("Replace this draft with the latest task?", {
+                  title: "Discard local changes?",
+                  confirmLabel: "Discard and reload",
+                  destructive: true,
+                })
+              ) {
                 sessionStore.removeItem(storageKey);
                 onSaved();
               }
@@ -359,5 +413,23 @@ export function TaskEditor({
         </button>
       </ValidatedForm>
     </aside>
+  );
+}
+
+function fingerprint(draft: Draft) {
+  const normalized = {
+    ...draft,
+    priority: draft.priority || "medium",
+    cadence: draft.cadence || "none",
+  };
+  return JSON.stringify(
+    Object.entries(normalized)
+      .filter(
+        ([key, value]) =>
+          value !== undefined &&
+          value !== "" &&
+          !(key === "intervalDays" && normalized.cadence !== "interval"),
+      )
+      .sort(([a], [b]) => a.localeCompare(b)),
   );
 }

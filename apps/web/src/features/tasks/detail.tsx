@@ -1,4 +1,5 @@
 "use client";
+import { useConfirm } from "../../components/app-dialog";
 import { useState } from "react";
 import { X } from "lucide-react";
 import { useOwnedQuery, type Execute } from "../../app/providers";
@@ -36,6 +37,7 @@ export function TaskDetail({
   onDeleted: () => void;
   onFocus?: () => void;
 }) {
+  const confirm = useConfirm();
   const series = useOwnedQuery<components["schemas"]["RecurrenceSeries"]>(
     "series",
     `/series/${task.seriesId}`,
@@ -143,12 +145,17 @@ export function TaskDetail({
                     ) : (
                       <button
                         disabled={disabled || command.busy || command.uncertain}
-                        onClick={() => {
+                        onClick={async () => {
                           if (
                             command.uncertain ||
-                            confirm(
+                            (await confirm(
                               "Stop repeating after today? Future incomplete occurrences will be removed. Today and history are kept.",
-                            )
+                              {
+                                title: "Stop repeating?",
+                                confirmLabel: "Stop repeating",
+                                destructive: true,
+                              },
+                            ))
                           )
                             void command.run(
                               `/series/${task.seriesId}/stop`,
@@ -176,10 +183,15 @@ export function TaskDetail({
           <button
             className="danger wide"
             disabled={disabled || command.busy || command.uncertain}
-            onClick={() => {
+            onClick={async () => {
               if (
-                confirm(
+                await confirm(
                   `Delete “${task.title}”? Historical records will be kept.`,
+                  {
+                    title: "Delete task?",
+                    confirmLabel: "Delete task",
+                    destructive: true,
+                  },
                 )
               )
                 void command.run(

@@ -247,8 +247,11 @@ test("calendar click/selection, filtered progress, conflicts, offline writes and
     "My conflicting draft",
   );
   await page.screenshot({ path: "test-results/acceptance-conflict.png" });
-  page.once("dialog", (d) => d.accept());
   await page.getByRole("button", { name: "Discard draft and reload" }).click();
+  await page
+    .getByRole("alertdialog")
+    .getByRole("button", { name: "Discard and reload" })
+    .click();
   await expect(page.locator(".task-open")).toContainText(
     "Changed in second browser",
   );
@@ -281,9 +284,12 @@ test("calendar click/selection, filtered progress, conflicts, offline writes and
   await page.getByRole("button", { name: "Create task", exact: true }).click();
   await expect(page.getByLabel("Task title")).toBeHidden();
   await page.locator(".task-open").filter({ hasText: "Offline draft" }).click();
-  page.once("dialog", (d) => d.accept());
   await page
     .getByRole("button", { name: "Stop repeating after today", exact: true })
+    .click();
+  await page
+    .getByRole("alertdialog")
+    .getByRole("button", { name: "Stop repeating", exact: true })
     .click();
   await expect(
     page.getByText("Recurrence stopped.", { exact: true }),

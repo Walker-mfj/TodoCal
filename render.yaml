@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: todocal-api
+    runtime: docker
+    plan: free
+    region: singapore
+    rootDir: apps/api
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: APP_ORIGIN
+        sync: false
+      - key: PROXY_SECRET
+        sync: false

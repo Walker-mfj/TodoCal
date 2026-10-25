@@ -1,0 +1,17 @@
+{
+  "name": "todocal-edge",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "cd ../../apps/web && STATIC_EXPORT=true npm run build",
+    "test": "node --test worker.test.mjs",
+    "deploy": "npm run build && wrangler deploy",
+    "preview": "wrangler dev"
+  },
+  "devDependencies": {
+    "wrangler": "4.152.0"
+  },
+  "overrides": {
+    "undici": "7.30.1"
+  }
+}

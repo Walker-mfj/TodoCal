@@ -1421,13 +1421,15 @@ export interface operations {
         "application/json": {
           /** @enum {string} */
           kind: "focus" | "short_break" | "long_break";
+          /** @description Optional session duration; defaults to account settings. */
+          durationMinutes?: number;
           /** Format: uuid */
           taskId?: string | null;
         };
       };
     };
     responses: {
-      /** @description Timer started; duration captured from current settings */
+      /** @description Timer started; duration captured from request or current settings */
       201: {
         headers: {
           [name: string]: unknown;

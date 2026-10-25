@@ -1,9 +1,13 @@
 "use client";
+import { AccountMenu } from "../components/account-menu";
+import { ToastProvider, ToastNotice } from "../components/toast";
 import type { CalendarDraft } from "../features/calendar/draft-preview";
 import { useConfirm } from "../components/app-dialog";
 import { sessionStore } from "../lib/session-storage";
 import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import Image from "next/image";
+import calendarCheckmark from "../../assets/brand/calendar-checkmark.png";
 import { DateTime } from "luxon";
 import {
   CalendarDays,
@@ -13,11 +17,12 @@ import {
   Folder,
   Plus,
   LogOut,
-  Wifi,
-  WifiOff,
   Search,
   X,
   ArrowUpRight,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Timer,
 } from "lucide-react";
 import {
   AnalyticsSummary,
@@ -27,7 +32,7 @@ import {
 } from "../features/analytics/AnalyticsSummary";
 import { completionRatio } from "../lib/model";
 import { useFocus } from "../features/focus/useFocus";
-import { TimerBar } from "../features/focus/TimerBar";
+import { FloatingFocus } from "../features/focus/FloatingFocus";
 import { TimerPanel } from "../features/focus/TimerPanel";
 import { useSession, useOwnedQuery } from "./providers";
 import { AuthScreen } from "../features/auth/auth-screen";
@@ -72,7 +77,11 @@ type Panel =
 export default function Workspace() {
   const { session, loading } = useSession();
   if (loading || !session) return <AuthScreen />;
-  return <AccountWorkspace key={session.user.id} />;
+  return (
+    <ToastProvider key={session.user.id}>
+      <AccountWorkspace />
+    </ToastProvider>
+  );
 }
 function AccountWorkspace() {
   const confirm = useConfirm();
@@ -85,6 +94,7 @@ function AccountWorkspace() {
   const account = session!;
   const focus = useFocus();
   const [showFocus, setShowFocus] = useState(false);
+  const [focusHidden, setFocusHidden] = useState(false);
   const [focusTask, setFocusTask] = useState<Task | null>(null);
   const date = today(account.settings.timezone);
   const [page, setPage] = useState("calendar"),
@@ -97,7 +107,26 @@ function AccountWorkspace() {
     [cursor, setCursor] = useState(""),
     [message, setMessage] = useState("");
   const [saveNotice, setSaveNotice] = useState("");
-  const [reveal, setReveal] = useState<Partial<Draft> | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  useEffect(() => {
+    try {
+      setSidebarCollapsed(
+        localStorage.getItem("focus:ui:sidebar-collapsed") === "true",
+      );
+    } catch {
+      /* Storage may be disabled; navigation remains usable. */
+    }
+  }, []);
+  const toggleSidebar = () => {
+    const collapsed = !sidebarCollapsed;
+    setSidebarCollapsed(collapsed);
+    try {
+      localStorage.setItem("focus:ui:sidebar-collapsed", String(collapsed));
+    } catch {
+      /* Keep the current state even if storage is unavailable. */
+    }
+  };
+  const [unscheduledOpen, setUnscheduledOpen] = useState(false);
   const [range, setRange] = useState(() => ({
     from: DateTime.fromISO(date).startOf("week").toISODate()!,
     to: DateTime.fromISO(date).startOf("week").plus({ weeks: 1 }).toISODate()!,
@@ -188,13 +217,19 @@ function AccountWorkspace() {
       editorState.dirty
     ) {
       if (
-        !(await confirm("Your draft will be kept for this task.", {
+        !(await confirm("Unsaved changes will be discarded.", {
           title: "Close editor?",
           confirmLabel: "Close editor",
           cancelLabel: "Keep editing",
         }))
       )
         return;
+    }
+    if (panel?.type === "new" || panel?.type === "edit") {
+      sessionStore.removeItem(
+        `focus:draft:${account.user.id}:${panel.type === "edit" ? panel.task.id : "new"}`,
+      );
+      setEditorState({ dirty: false, blocked: false });
     }
     if (next?.type === "day") setSelectedReportDate(next.date);
     setDraftPreview(null);
@@ -253,44 +288,58 @@ function AccountWorkspace() {
   ] as const;
   const allGroups = groups.data?.items || [];
   return (
-    <div className={`app-shell ${panel ? "has-panel" : ""}`}>
+    <div
+      className={`app-shell ${panel ? "has-panel" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}
+    >
       <a className="skip-link" href="#main">
         Skip to workspace
       </a>
       <aside className="sidebar">
-        <div className="brand">
-          <span className="brand-mark">f.</span>
-          <span>
-            focus
-            <br />
-            calendar
-          </span>
+        <div className="sidebar-header">
+          <div className="brand sidebar-brand">
+            <span className="brand-mark" aria-hidden="true">
+              <Image src={calendarCheckmark} alt="" width={36} height={36} />
+            </span>
+            <span className="sidebar-brand-name">
+              Todo<span className="sidebar-brand-accent">Cal</span>
+            </span>
+          </div>
+          <button
+            className="sidebar-toggle"
+            aria-label={
+              sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"
+            }
+            aria-expanded={!sidebarCollapsed}
+            onClick={toggleSidebar}
+          >
+            {sidebarCollapsed ? (
+              <PanelLeftOpen size={18} />
+            ) : (
+              <PanelLeftClose size={18} />
+            )}
+          </button>
         </div>
         <button
           className="primary new-task"
+          aria-label="New task"
+          title="New task"
           onClick={() => open({ type: "new" })}
         >
           <Plus size={17} />
-          New task
-        </button>
-        <button
-          className="focus-open"
-          onClick={() => {
-            setFocusTask(null);
-            setShowFocus(true);
-          }}
-        >
-          Focus timer
+          <span className="nav-label">New task</span>
         </button>
         <nav aria-label="Main navigation">
           {navigation.map(([key, label, Icon]) => (
             <button
               key={key}
+              aria-label={label}
+              title={label}
+              aria-current={page === key ? "page" : undefined}
               className={page === key ? "active" : ""}
               onClick={() => setPage(key)}
             >
               <Icon size={18} />
-              {label}
+              <span className="nav-label">{label}</span>
             </button>
           ))}
         </nav>
@@ -317,15 +366,26 @@ function AccountWorkspace() {
             Manage groups
           </button>
         </div>
-        <div className="sidebar-bottom">
-          <div className="connection">
-            {connected ? <Wifi size={14} /> : <WifiOff size={14} />}
-            <span>{connected ? "Connected" : "Disconnected"}</span>
+        <AccountMenu email={account.user.email} connected={connected}>
+          <div className="focus-preference">
+            <span className="focus-preference-label">
+              <Timer size={16} /> Focus widget
+            </span>
+            <button
+              className="focus-switch"
+              role="switch"
+              aria-label="Show floating focus timer"
+              aria-checked={!focusHidden}
+              title="Show floating focus timer"
+              onClick={() => setFocusHidden((hidden) => !hidden)}
+            >
+              <span />
+            </button>
           </div>
-          <small className="account-email" title={account.user.email}>
-            {account.user.email}
-          </small>
           <button
+            className="account-signout"
+            aria-label="Sign out"
+            title="Sign out"
             disabled={!connected}
             onClick={async () => {
               if (
@@ -341,18 +401,19 @@ function AccountWorkspace() {
             }}
           >
             <LogOut size={16} />
-            Sign out
+            <span>Sign out</span>
           </button>
-        </div>
+        </AccountMenu>
       </aside>
-      <main id="main" className="workspace">
+      <main
+        id="main"
+        className={`workspace ${page === "calendar" ? "calendar-workspace" : ""}`}
+      >
         {scheduling.busy && (
-          <div className="notice" role="status">
-            Saving calendar change…
-          </div>
+          <ToastNotice duration={0}>Saving calendar change…</ToastNotice>
         )}
         {scheduling.error && (
-          <div className="error" role="alert">
+          <ToastNotice tone="error" resetKey={scheduling.error}>
             {scheduling.error}
             {scheduling.pending ? (
               <button
@@ -364,7 +425,7 @@ function AccountWorkspace() {
             ) : (
               <button onClick={scheduling.dismiss}>Dismiss</button>
             )}
-          </div>
+          </ToastNotice>
         )}
         {scheduling.toast && (
           <UndoToast
@@ -400,22 +461,26 @@ function AccountWorkspace() {
                   : "Your plans, at your own pace."}
             </p>
           </div>
-          <span className="workspace-label">CLEAR WEEK</span>
+          <span className="workspace-label">TODOCAL</span>
         </header>
         {!connected && (
-          <div role="status" className="notice connection-banner">
+          <ToastNotice tone="warning" duration={0}>
             You’re disconnected. Saved data may be out of date; changes are
             disabled.<button onClick={() => void refresh()}>Reconnect</button>
-          </div>
+          </ToastNotice>
         )}
-        <TimerBar focus={focus} onOpen={() => setShowFocus(true)} />
+        <FloatingFocus
+          hidden={focusHidden}
+          focus={focus}
+          onOpen={() => setShowFocus(true)}
+        />
         {focus.command.error && (
-          <div role="alert" className="error">
+          <ToastNotice tone="error" resetKey={focus.command.error}>
             {focus.command.error}
-          </div>
+          </ToastNotice>
         )}
         {focus.command.uncertain && (
-          <div className="notice">
+          <ToastNotice tone="warning" duration={0}>
             A timer action is unconfirmed.{" "}
             <button
               disabled={!connected || focus.command.busy}
@@ -423,7 +488,7 @@ function AccountWorkspace() {
             >
               Retry timer action
             </button>
-          </div>
+          </ToastNotice>
         )}
         {showFocus && (
           <TimerPanel
@@ -435,12 +500,30 @@ function AccountWorkspace() {
           />
         )}
         {saveNotice && (
-          <div role="status" className="notice">
+          <ToastNotice
+            tone="success"
+            resetKey={saveNotice}
+            onDismiss={() => setSaveNotice("")}
+          >
             {saveNotice}
-          </div>
+          </ToastNotice>
         )}
         {(message || command.error) && (
-          <div role="alert" className="error">
+          <ToastNotice
+            tone={
+              !command.error &&
+              (message.startsWith("Past days are read-only") ||
+                message.startsWith("Confirm the pending save"))
+                ? "warning"
+                : "error"
+            }
+            duration={command.uncertain ? 0 : undefined}
+            resetKey={message || command.error}
+            onDismiss={() => {
+              setMessage("");
+              command.dismissError();
+            }}
+          >
             {message || command.error}
             {command.uncertain && (
               <button
@@ -452,10 +535,10 @@ function AccountWorkspace() {
                 Retry request
               </button>
             )}
-          </div>
+          </ToastNotice>
         )}
         {restoredDrafts.length > 0 && !panel && (
-          <div className="notice">
+          <ToastNotice duration={0}>
             You have a saved task draft.
             <button
               onClick={() => {
@@ -477,13 +560,13 @@ function AccountWorkspace() {
                   })
                 ) {
                   restoredDrafts.forEach((k) => sessionStore.removeItem(k));
-                  setMessage("Drafts discarded.");
+                  setSaveNotice("Drafts discarded.");
                 }
               }}
             >
               Discard
             </button>
-          </div>
+          </ToastNotice>
         )}
         {(page === "calendar" || page === "tasks") && (
           <>
@@ -547,15 +630,9 @@ function AccountWorkspace() {
                   </button>
                 </p>
               ) : null}
-              {calendar.data?.days.length === 7 && (
-                <DayStrip
-                  days={calendar.data.days}
-                  onOpen={(date) => open({ type: "day", date })}
-                />
-              )}
               <Calendar
+                draftDisabled={editorState.blocked}
                 onDay={(date) => open({ type: "day", date })}
-                reveal={reveal}
                 draftPreview={
                   (panel?.type === "new" && !draftPreview?.taskId) ||
                   (panel?.type === "edit" &&
@@ -600,57 +677,67 @@ function AccountWorkspace() {
               <ProgressLegend />
             </div>
             {!!calendar.data?.warnings.length && (
-              <p className="notice">
+              <ToastNotice tone="warning">
                 Some repeating tasks fall in a daylight-saving time gap and were
                 skipped: {calendar.data.warnings.map((w) => w.date).join(", ")}.
-              </p>
+              </ToastNotice>
             )}
-            <section className="unscheduled-section">
-              <div className="section-title">
-                <h2>Without a date</h2>
-                <button
-                  className="text-button"
-                  onClick={() => {
-                    setView("unscheduled");
-                    setPage("tasks");
-                  }}
-                >
-                  View all <ArrowUpRight size={14} />
-                </button>
+            <details
+              className="unscheduled-section"
+              open={unscheduledOpen}
+              onToggle={(event) => setUnscheduledOpen(event.currentTarget.open)}
+            >
+              <summary>
+                Without a date{" "}
+                <span>{unscheduled.data?.items.length || 0}</span>
+              </summary>
+              <div className="unscheduled-content">
+                <div className="section-title">
+                  <h2>Without a date</h2>
+                  <button
+                    className="text-button"
+                    onClick={() => {
+                      setView("unscheduled");
+                      setPage("tasks");
+                    }}
+                  >
+                    View all <ArrowUpRight size={14} />
+                  </button>
+                </div>
+                <p className="muted">
+                  Keep an idea here until you’re ready to make room.
+                </p>
+                {unscheduled.error ? (
+                  <p className="error">{errorMessage(unscheduled.error)}</p>
+                ) : unscheduled.data?.items.length ? (
+                  unscheduled.data.items
+                    .filter(filter)
+                    .map((t) => (
+                      <TaskRow
+                        draggable
+                        key={t.id}
+                        task={t}
+                        groups={allGroups}
+                        disabled={
+                          !connected ||
+                          command.busy ||
+                          command.uncertain ||
+                          scheduling.blocked
+                        }
+                        onComplete={complete}
+                        onOpen={() => open({ type: "detail", task: t })}
+                      />
+                    ))
+                ) : (
+                  <button
+                    className="empty-add"
+                    onClick={() => open({ type: "new" })}
+                  >
+                    + Capture a task, no date needed
+                  </button>
+                )}
               </div>
-              <p className="muted">
-                Keep an idea here until you’re ready to make room.
-              </p>
-              {unscheduled.error ? (
-                <p className="error">{errorMessage(unscheduled.error)}</p>
-              ) : unscheduled.data?.items.length ? (
-                unscheduled.data.items
-                  .filter(filter)
-                  .map((t) => (
-                    <TaskRow
-                      draggable
-                      key={t.id}
-                      task={t}
-                      groups={allGroups}
-                      disabled={
-                        !connected ||
-                        command.busy ||
-                        command.uncertain ||
-                        scheduling.blocked
-                      }
-                      onComplete={complete}
-                      onOpen={() => open({ type: "detail", task: t })}
-                    />
-                  ))
-              ) : (
-                <button
-                  className="empty-add"
-                  onClick={() => open({ type: "new" })}
-                >
-                  + Capture a task, no date needed
-                </button>
-              )}
-            </section>
+            </details>
           </>
         )}
         {page === "tasks" && (
@@ -843,12 +930,12 @@ function AccountWorkspace() {
             setEditorState({ dirty: false, blocked: false });
             setPanel(null);
             if (!created) return;
+            if (!created.scheduledDate) setUnscheduledOpen(true);
             if (page === "calendar") {
               setSearch("");
               setGroup("");
               setPriority("");
               setStatus("");
-              setReveal({ ...created });
             }
             setSaveNotice(
               created.scheduledDate
@@ -965,33 +1052,7 @@ function AccountWorkspace() {
             )
           )}
         </aside>
-      ) : (
-        <aside className="detail-panel idle-panel">
-          <p className="eyebrow">A LITTLE BREATHING ROOM</p>
-          <div className="idle-art" aria-hidden="true">
-            ✓
-          </div>
-          <h2>
-            Start small.
-            <br />
-            Keep going.
-          </h2>
-          <p className="muted">
-            Select a task to see its details, or make room for something new.
-          </p>
-          <button onClick={() => open({ type: "new" })}>
-            <Plus size={16} />
-            New task
-          </button>
-          <div className="focus-note">
-            <h3>Your pace matters.</h3>
-            <p>
-              Tasks don’t need a timer. A completed step is progress all the
-              same.
-            </p>
-          </div>
-        </aside>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -108,7 +108,7 @@ func Active(ctx context.Context, tx pgx.Tx, user string, now time.Time) (State, 
 	}
 	return out, e
 }
-func Start(ctx context.Context, tx pgx.Tx, user string, taskID *string, kind string, now time.Time) (State, error) {
+func Start(ctx context.Context, tx pgx.Tx, user string, taskID *string, kind string, now time.Time, duration ...int64) (State, error) {
 	if kind != "focus" && kind != "short_break" && kind != "long_break" {
 		return State{}, tasks.Invalid("Choose focus, short_break, or long_break")
 	}
@@ -142,6 +142,12 @@ func Start(ctx context.Context, tx pgx.Tx, user string, taskID *string, kind str
 		return state, e
 	}
 	id := uuid.NewString()
+	if len(duration) > 0 {
+		if duration[0] < 1 || duration[0] > 180 {
+			return State{}, tasks.Invalid("Duration must be between 1 and 180 minutes")
+		}
+		minutes = duration[0]
+	}
 	_, e = tx.Exec(ctx, `INSERT INTO focus_sessions(user_id,id,task_id,task_title,kind,status,target_seconds,running_since,started_at) VALUES($1,$2,$3,$4,$5,'running',$6,$7,$7)`, user, id, taskID, title, kind, minutes*60, now)
 	if e != nil {
 		return state, e

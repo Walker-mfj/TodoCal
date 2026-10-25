@@ -16,8 +16,8 @@ import {
   type Draft,
 } from "../../lib/model";
 export default function Calendar({
-  reveal,
   draftPreview,
+  draftDisabled = false,
   days,
   groups,
   today,
@@ -30,8 +30,8 @@ export default function Calendar({
   onScheduleError,
   onDay,
 }: {
-  reveal?: Partial<Draft> | null;
   draftPreview?: CalendarDraft | null;
+  draftDisabled?: boolean;
   days: Day[];
   groups: Group[];
   today: string;
@@ -45,21 +45,41 @@ export default function Calendar({
   onDay?: (date: string) => void;
 }) {
   const calendarRef = useRef<FullCalendar>(null);
+  // Recalculate widths when the navigation or editor changes the available space.
+  const containerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!reveal?.scheduledDate) return;
-    const api = calendarRef.current?.getApi();
-    api?.gotoDate(reveal.scheduledDate);
-    if (reveal.startTime) api?.scrollToTime(reveal.startTime);
-  }, [reveal]);
+    if (!containerRef.current) return;
+    const observer = new ResizeObserver(() =>
+      calendarRef.current?.getApi().updateSize(),
+    );
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
   const preview = draftEvent(draftPreview);
-  const previewDate = preview ? draftPreview?.draft.scheduledDate : undefined;
-  const previewTime = preview ? draftPreview?.draft.startTime : undefined;
-  useEffect(() => {
-    if (!previewDate) return;
-    const api = calendarRef.current?.getApi();
-    api?.gotoDate(previewDate);
-    if (previewTime) api?.scrollToTime(previewTime);
-  }, [previewDate, previewTime]);
+  if (preview) preview.editable = !disabled && !draftDisabled;
+  const moveDraft = (
+    start: string,
+    end: string | undefined,
+    allDay: boolean,
+    kind: "move" | "resize" | "month",
+  ) => {
+    if (!draftPreview || disabled || draftDisabled) return;
+    const schedule = scheduleFromDrop(
+      {
+        startTime: draftPreview.draft.startTime || null,
+        endTime: draftPreview.draft.endTime || null,
+      },
+      start,
+      end,
+      allDay,
+      kind,
+    );
+    onCreate({
+      scheduledDate: schedule.scheduledDate || "",
+      startTime: schedule.startTime || "",
+      endTime: schedule.endTime || "",
+    });
+  };
   const events = useMemo(
     () =>
       days.flatMap((day) =>
@@ -120,7 +140,7 @@ export default function Calendar({
     );
   };
   return (
-    <div className="calendar-wrap">
+    <div className="calendar-wrap" ref={containerRef}>
       <FullCalendar
         ref={calendarRef}
         plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
@@ -167,7 +187,8 @@ export default function Calendar({
           }
         }}
         allDayText="Untimed"
-        height={650}
+        height="100%"
+        scrollTimeReset={false}
         scrollTime="08:00:00"
         slotMinTime="00:00:00"
         slotMaxTime="24:00:00"
@@ -176,6 +197,8 @@ export default function Calendar({
         eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
         dayMaxEvents={3}
         slotEventOverlap={false}
+        eventMinHeight={0}
+        eventShortHeight={32}
         selectable={!disabled}
         selectMirror
         // A click uses the 30-minute dateClick default; only dragging selects.
@@ -191,6 +214,17 @@ export default function Calendar({
         }
         eventDrop={(arg) => {
           try {
+            if (arg.oldEvent.extendedProps.draft) {
+              const { startStr, endStr, allDay } = arg.event;
+              arg.revert();
+              moveDraft(
+                startStr,
+                endStr || undefined,
+                allDay,
+                arg.view.type === "dayGridMonth" ? "month" : "move",
+              );
+              return;
+            }
             const task = arg.oldEvent.extendedProps.task as Task;
             const schedule = scheduleFromDrop(
               task,
@@ -208,6 +242,12 @@ export default function Calendar({
         }}
         eventResize={(arg) => {
           try {
+            if (arg.oldEvent.extendedProps.draft) {
+              const { startStr, endStr, allDay } = arg.event;
+              arg.revert();
+              moveDraft(startStr, endStr || undefined, allDay, "resize");
+              return;
+            }
             const task = arg.oldEvent.extendedProps.task as Task;
             const schedule = scheduleFromDrop(
               task,
@@ -271,7 +311,14 @@ export default function Calendar({
               {arg.timeText}
               {arg.event.extendedProps.task?.priority === "high" ? " · !" : ""}
             </span>
-            <span>{arg.event.title}</span>
+            <span className="event-title">
+              {arg.event.extendedProps.task?.status === "complete" && (
+                <span className="event-done" aria-label="Completed">
+                  ✓{" "}
+                </span>
+              )}
+              {arg.event.title}
+            </span>
             {arg.event.extendedProps.draft && (
               <span className="draft-badge">Draft</span>
             )}
@@ -298,7 +345,7 @@ export default function Calendar({
           arg.el.setAttribute("role", "button");
           arg.el.setAttribute(
             "aria-label",
-            `${arg.event.title}, ${arg.event.startStr}`,
+            `${arg.event.title}, ${arg.event.extendedProps.task.status === "complete" ? "Completed" : "To do"}, ${arg.event.startStr}`,
           );
           arg.el.onkeydown = (e) => {
             if (e.key === "Enter" || e.key === " ") {

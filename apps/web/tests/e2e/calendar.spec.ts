@@ -150,6 +150,7 @@ test("calendar external drop assigns 30 minutes, clear-time drop and uncertain r
   const { date, send } = await setup(page);
   const task = await send("/tasks", { title: "From unscheduled" });
   await page.reload();
+  await page.locator(".unscheduled-section summary").click();
   const row = page
     .locator(".unscheduled-section .task-row")
     .filter({ hasText: "From unscheduled" });
@@ -255,10 +256,17 @@ test("new scheduled tasks appear immediately without navigation or polling", asy
   }
 });
 
-test("creating a task outside the visible week reveals its date and clears hiding filters", async ({
+test("creating a task outside the visible week preserves the calendar date and scroll", async ({
   page,
 }) => {
   const { date } = await setup(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const heading = await page.locator(".fc-toolbar-title").textContent();
+  const scroll = () =>
+    page
+      .locator(".fc-scroller")
+      .evaluateAll((nodes) => Math.max(...nodes.map((n) => n.scrollTop)));
+  const before = await scroll();
   const next = new Date(date + "T12:00:00Z");
   next.setUTCDate(next.getUTCDate() + 14);
   await page.getByPlaceholder("Search tasks…").fill("Something else");
@@ -270,9 +278,18 @@ test("creating a task outside the visible week reveals its date and clears hidin
   await page.getByLabel("Scheduled date").fill(next.toISOString().slice(0, 10));
   await page.getByRole("button", { name: "Create task", exact: true }).click();
   await expect(page.getByLabel("Task title")).toBeHidden();
+  await expect(page.locator(".fc-toolbar-title")).toHaveText(heading!);
+  expect(Math.abs((await scroll()) - before)).toBeLessThan(2);
   await expect(
     page.locator(".fc-event").filter({ hasText: "Visible after save" }),
-  ).toBeVisible({ timeout: 3000 });
+  ).toHaveCount(0);
+  expect(
+    (await (await page.request.get("/api/v1/tasks")).json()).items,
+  ).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ title: "Visible after save" }),
+    ]),
+  );
 });
 
 test("task validation uses an inline message instead of browser tooltips", async ({
@@ -314,4 +331,98 @@ test("selecting a new time range renders a taskless preview without crashing", a
   await page.mouse.up();
   await expect(page.getByLabel("Task title")).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test("calendar fits desktop and keeps its scroll when creating a draft; sidebar can collapse", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await expect(page.locator(".idle-panel")).toHaveCount(0);
+  const fits = async () => {
+    const size = await page.evaluate(() => ({
+      height: document.documentElement.scrollHeight,
+      viewport: innerHeight,
+    }));
+    expect(size.height).toBeLessThanOrEqual(size.viewport);
+    const workspace = await page.locator(".workspace").evaluate((node) => ({
+      scroll: node.scrollHeight,
+      client: node.clientHeight,
+    }));
+    expect(workspace.scroll).toBeLessThanOrEqual(workspace.client + 1);
+  };
+  await fits();
+  const beforeWidth = (await page.locator(".calendar-card").boundingBox())!
+    .width;
+  await page.getByRole("button", { name: "Collapse sidebar" }).click();
+  await expect(
+    page.getByRole("button", { name: "Expand sidebar" }),
+  ).toHaveAttribute("aria-expanded", "false");
+  expect(
+    (await page.locator(".calendar-card").boundingBox())!.width,
+  ).toBeGreaterThan(beforeWidth);
+  await page.getByRole("button", { name: "Expand sidebar" }).click();
+  const row = page.locator('.fc-timegrid-slot[data-time="10:00:00"]').last();
+  await row.scrollIntoViewIfNeeded();
+  const readScroll = () =>
+    page
+      .locator(".fc-scroller")
+      .evaluateAll((nodes) => Math.max(...nodes.map((node) => node.scrollTop)));
+  const before = await readScroll();
+  const column = (await page
+    .locator(".fc-timegrid-col.fc-day-today")
+    .boundingBox())!;
+  const box = (await row.boundingBox())!;
+  await page.mouse.click(column.x + column.width / 2, box.y + 4);
+  await expect(page.getByLabel("Task title")).toBeVisible();
+  await expect(page.locator(".fc-event-draft")).toBeVisible();
+  expect(Math.abs((await readScroll()) - before)).toBeLessThan(2);
+  await fits();
+  const submit = await page
+    .getByRole("button", { name: "Create task", exact: true })
+    .boundingBox();
+  expect(submit!.y + submit!.height).toBeLessThanOrEqual(768);
+  await page.screenshot({ path: "test-results/calendar-compact-editor.png" });
+  await page.getByLabel("Task title").fill("Stay in place");
+  await page.getByRole("button", { name: "Create task", exact: true }).click();
+  await expect(page.getByLabel("Task title")).toBeHidden();
+  expect(Math.abs((await readScroll()) - before)).toBeLessThan(2);
+  await fits();
+  await page.screenshot({ path: "test-results/calendar-compact.png" });
+  const event = page.locator(".fc-event").filter({ hasText: "Stay in place" });
+  await event.click();
+  await page
+    .getByRole("button", { name: "Mark complete", exact: true })
+    .click();
+  await expect(event).toHaveClass(/event-complete/);
+  await expect(event.locator(".event-done")).toBeVisible();
+  await page.screenshot({ path: "test-results/calendar-completed.png" });
+});
+
+test("draft drag and resize update the editor without creating a task", async ({ page }) => {
+  const { date } = await setup(page);
+  await page.getByRole('button', { name: 'New task', exact: true }).click();
+  await page.getByLabel('Task title').fill('Movable draft');
+  await page.getByLabel('Scheduled date').fill(date);
+  await page.getByLabel('Start time', { exact: true }).fill('09:00');
+  await page.getByLabel('End time', { exact: true }).fill('10:00');
+  const event = page.locator('.fc-event-draft');
+  await expect(event).toHaveClass(/fc-event-draggable/);
+  await dragMinutes(page, 'Movable draft', 60);
+  await expect(page.getByLabel('Start time', { exact: true })).toHaveValue('10:00');
+  await expect(page.getByLabel('End time', { exact: true })).toHaveValue('11:00');
+  await event.hover();
+  const edge = (await event.locator('.fc-event-resizer-end').boundingBox())!;
+  const slot = (await page.locator('.fc-timegrid-slot[data-time="10:00:00"]').last().boundingBox())!;
+  await page.mouse.move(edge.x + edge.width/2, edge.y + edge.height/2);
+  await page.mouse.down();
+  await page.mouse.move(edge.x + edge.width/2, edge.y + edge.height/2 + slot.height, {steps:10});
+  await page.mouse.up();
+  await expect(page.getByLabel('End time', { exact: true })).toHaveValue('11:30');
+  expect((await (await page.request.get('/api/v1/tasks')).json()).items).toHaveLength(0);
+  await page.getByRole('button', { name:'Create task',exact:true }).click();
+  await expect(event).toHaveCount(0);
+  const tasks=(await (await page.request.get('/api/v1/tasks')).json()).items;
+  expect(tasks).toHaveLength(1);
+  expect(tasks[0]).toMatchObject({startTime:'10:00',endTime:'11:30'});
 });

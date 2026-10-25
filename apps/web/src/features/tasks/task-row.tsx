@@ -70,6 +70,9 @@ export function TaskRow({
           {group ? ` · ${group.name}` : ""}
         </span>
       </button>
+      {task.status === "complete" && (
+        <span className="completed-label">Completed</span>
+      )}
       {task.seriesId && <Repeat2 size={14} aria-label="Repeating" />}
       <span className={`priority ${task.priority}`}>{task.priority}</span>
     </div>

@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: Focus Calendar API
+  title: TodoCal API
   version: 0.5.0
   description: Authentication, owned task/group/settings APIs, recurrence, calendar
     finalized daily plans, and account-wide optional timers. Period reports use authoritative daily plans and focus intervals. Mutations require the configured Origin and application/json; domain
@@ -595,12 +595,17 @@ paths:
                 kind:
                   type: string
                   enum: [focus, short_break, long_break]
+                durationMinutes:
+                  type: integer
+                  minimum: 1
+                  maximum: 180
+                  description: Optional session duration; defaults to account settings.
                 taskId:
                   type: [string, 'null']
                   format: uuid
       responses:
         '201':
-          description: Timer started; duration captured from current settings
+          description: Timer started; duration captured from request or current settings
           content:
             application/json:
               schema:

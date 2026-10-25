@@ -1,6 +1,9 @@
 "use client";
 import { ValidatedForm } from "../../components/validated-form";
 import { useState } from "react";
+import Image from "next/image";
+import todoCalLogo from "../../../assets/brand/todocal-logo.png";
+import calendarCheckmark from "../../../assets/brand/calendar-checkmark.png";
 import { useSession } from "../../app/providers";
 import { ApiError, errorMessage } from "../../lib/api";
 export function AuthScreen() {
@@ -19,8 +22,25 @@ export function AuthScreen() {
   return (
     <main className="auth-page">
       <section className="auth-intro">
-        <div className="brand">
-          <span className="brand-mark">f.</span>focus calendar
+        <div className="brand auth-brand" aria-label="TodoCal">
+          <Image
+            className="brand-wordmark"
+            src={todoCalLogo}
+            alt=""
+            width={252}
+            height={66}
+          />
+          <span className="brand-dark-wordmark" aria-hidden="true">
+            <span className="brand-mark">
+              <Image
+                src={calendarCheckmark}
+                alt=""
+                width={36}
+                height={36}
+              />
+            </span>
+            <span>TodoCal</span>
+          </span>
         </div>
         <p className="eyebrow">A little progress, every day.</p>
         <h1>
@@ -43,7 +63,7 @@ export function AuthScreen() {
         <small>Your tasks, your pace. Pomodoro is always optional.</small>
       </section>
       <section className="auth-form">
-        <p className="eyebrow">YOUR CLEAR WEEK STARTS HERE</p>
+        <p className="eyebrow">YOUR TODOCAL STARTS HERE</p>
         <h2>{register ? "Create your account" : "Welcome back"}</h2>
         <p className="muted">
           {register

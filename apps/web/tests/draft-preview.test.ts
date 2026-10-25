@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { draftEvent } from "../src/features/calendar/draft-preview";
-it("renders a read-only draft with live title and schedule", () => {
+it("renders a editable draft with live title and schedule", () => {
   expect(
     draftEvent({
       draft: {
@@ -14,7 +14,7 @@ it("renders a read-only draft with live title and schedule", () => {
     title: "Changed title",
     start: "2026-10-24T10:00:00",
     end: "2026-10-24T11:30:00",
-    editable: false,
+    editable: true,
     extendedProps: { draft: true },
   });
 });

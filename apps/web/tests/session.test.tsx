@@ -78,3 +78,55 @@ it("registers, loads account theme, and clears private data on logout/account sw
   await screen.findByText("Private two");
   expect(screen.queryByText("Private one")).not.toBeInTheDocument();
 });
+
+it("coalesces session refresh and avoids starting requests canceled by Strict Mode", async () => {
+  const { StrictMode } = await import("react");
+  let meCalls = 0;
+  let dataCalls = 0;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+    if (String(url).endsWith("/auth/me")) {
+      meCalls++;
+      return new Response(
+        JSON.stringify({
+          user: { id: "strict", email: "strict@example.com" },
+          csrfToken: "csrf",
+          settings,
+        }),
+      );
+    }
+    dataCalls++;
+    return new Response(JSON.stringify({ title: "Strict data" }), {
+      headers: { "X-Account-ID": "strict" },
+    });
+  });
+  function RefreshHarness() {
+    const session = useSession();
+    return (
+      <>
+        {session.session && <Harness />}
+        <button
+          onClick={() => {
+            void session.refresh();
+            void session.refresh();
+          }}
+        >
+          Refresh together
+        </button>
+      </>
+    );
+  }
+  const view = render(
+    <StrictMode>
+      <Providers>
+        <RefreshHarness />
+      </Providers>
+    </StrictMode>,
+  );
+  await screen.findByText("Strict data");
+  expect(meCalls).toBe(1);
+  expect(dataCalls).toBe(1);
+  fireEvent.click(screen.getByRole("button", { name: "Refresh together" }));
+  await waitFor(() => expect(meCalls).toBe(2));
+  expect(dataCalls).toBe(1);
+  view.unmount();
+});

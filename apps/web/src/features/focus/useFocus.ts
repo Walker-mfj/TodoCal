@@ -94,10 +94,15 @@ export function useFocus() {
       void audio.current.resume().catch(() => {});
     } catch {}
   };
-  const start = (kind: FocusKind, taskId?: string) => {
+  const start = (
+    kind: FocusKind,
+    taskId?: string,
+    durationMinutes?: number,
+  ) => {
     primeSound();
     void command.run("/focus", "POST", {
       kind,
+      ...(durationMinutes === undefined ? {} : { durationMinutes }),
       taskId: kind === "focus" ? taskId || null : null,
     });
   };

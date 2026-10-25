@@ -1,4 +1,5 @@
 "use client";
+import { ToastNotice } from "../../components/toast";
 import { useEffect, useState } from "react";
 export function UndoToast({
   label,
@@ -28,12 +29,19 @@ export function UndoToast({
     return () => clearInterval(timer);
   }, [deadline, onExpire]);
   return (
-    <div className="undo-toast" role="status">
-      <span>Schedule saved · {label}</span>
-      <button onClick={onUndo} disabled={disabled || seconds === 0}>
-        Undo
-      </button>
-      <small>{seconds}s</small>
-    </div>
+    <ToastNotice
+      tone="success"
+      duration={0}
+      resetKey={String(deadline)}
+      onDismiss={onExpire}
+    >
+      <div className="toast-message">Schedule saved · {label}</div>
+      <div className="toast-actions">
+        <button onClick={onUndo} disabled={disabled || seconds === 0}>
+          Undo
+        </button>
+        <small>{seconds}s</small>
+      </div>
+    </ToastNotice>
   );
 }

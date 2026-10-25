@@ -48,7 +48,7 @@ export function Providers({ children }: { children: ReactNode }) {
             retry: false,
             staleTime: 10_000,
             refetchOnWindowFocus: true,
-            refetchOnReconnect: true,
+            refetchOnReconnect: false,
             refetchInterval: () =>
               typeof document !== "undefined" &&
               document.visibilityState === "visible"
@@ -93,26 +93,38 @@ function SessionProvider({ children }: { children: ReactNode }) {
     },
     [client],
   );
-  const refresh = useCallback(async () => {
+  const refreshing = useRef<{ version: number; promise: Promise<void> } | null>(
+    null,
+  );
+  const refresh = useCallback(() => {
     const version = epoch.current;
-    try {
-      const result = await apiFetch<Session>("/auth/me");
-      if (version !== epoch.current) return;
-      if (current.current && current.current.user.id !== result.user.id) {
-        clear();
+    if (refreshing.current?.version === version)
+      return refreshing.current.promise;
+    const promise = (async () => {
+      try {
+        const result = await apiFetch<Session>("/auth/me");
+        if (version !== epoch.current) return;
+        if (current.current && current.current.user.id !== result.user.id) {
+          clear();
+        }
+        current.current = result;
+        setSession(result);
+        setConnected(navigator.onLine);
+        setExpired(false);
+        document.documentElement.dataset.mode = result.settings.appearance;
+      } catch (e) {
+        if (version !== epoch.current) return;
+        if (e instanceof ApiError && e.status === 401) {
+          clear(!!current.current);
+          setLoading(false);
+        } else setConnected(false);
+      } finally {
+        if (version === epoch.current) setLoading(false);
+        if (refreshing.current?.version === version) refreshing.current = null;
       }
-      current.current = result;
-      setSession(result);
-      setConnected(navigator.onLine);
-      setExpired(false);
-      document.documentElement.dataset.mode = result.settings.appearance;
-    } catch (e) {
-      if (version !== epoch.current) return;
-      if (e instanceof ApiError && e.status === 401) clear(!!current.current);
-      else setConnected(false);
-    } finally {
-      setLoading(false);
-    }
+    })();
+    refreshing.current = { version, promise };
+    return promise;
   }, [clear]);
   useEffect(() => {
     void refresh();
@@ -125,7 +137,7 @@ function SessionProvider({ children }: { children: ReactNode }) {
       await client.invalidateQueries();
     };
     const timer = setInterval(tick, 15_000);
-    window.addEventListener("focus", online);
+    window.addEventListener("focus", tick);
     window.addEventListener("online", online);
     window.addEventListener("offline", offline);
     document.addEventListener("visibilitychange", tick);
@@ -135,7 +147,7 @@ function SessionProvider({ children }: { children: ReactNode }) {
     }
     return () => {
       clearInterval(timer);
-      window.removeEventListener("focus", online);
+      window.removeEventListener("focus", tick);
       window.removeEventListener("online", online);
       window.removeEventListener("offline", offline);
       document.removeEventListener("visibilitychange", tick);
@@ -249,7 +261,13 @@ export function useOwnedQuery<T>(name: string, path: string, enabled = true) {
   const { session, read } = useSession();
   return useQuery({
     queryKey: [session?.user.id, name, path],
-    queryFn: ({ signal }) => read<T>(path, { signal, owner: session?.user.id }),
+    queryFn: async ({ signal }) => {
+      // Strict Mode can unsubscribe synchronously during its mount check.
+      // Let that cancellation settle before starting network work.
+      await Promise.resolve();
+      signal.throwIfAborted();
+      return read<T>(path, { signal, owner: session?.user.id });
+    },
     enabled: !!session && enabled,
   });
 }

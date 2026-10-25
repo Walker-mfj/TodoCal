@@ -133,14 +133,14 @@ export function TaskEditor({
   const close = async () => {
     if (
       dirty &&
-      !(await confirm("Your draft will be kept for this task.", {
+      !(await confirm("Unsaved changes will be discarded.", {
         title: "Close editor?",
         confirmLabel: "Close editor",
         cancelLabel: "Keep editing",
       }))
     )
       return;
-    if (!dirty) sessionStore.removeItem(storageKey);
+    sessionStore.removeItem(storageKey);
     onClose();
   };
   const save = async () => {
@@ -197,7 +197,7 @@ export function TaskEditor({
   };
   return (
     <aside
-      className="detail-panel"
+      className="detail-panel task-editor"
       aria-label={task ? "Edit task" : "New task"}
     >
       <div className="panel-heading">

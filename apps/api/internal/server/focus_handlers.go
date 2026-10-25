@@ -16,13 +16,18 @@ func (s *Server) focusState(w http.ResponseWriter, r *http.Request) {
 func (s *Server) startFocus(w http.ResponseWriter, r *http.Request) {
 	s.mutate(w, r, func(tx pgx.Tx, p Principal, zone string, now time.Time, raw []byte) (any, int, error) {
 		var in struct {
-			TaskID *string `json:"taskId"`
-			Kind   string  `json:"kind"`
+			DurationMinutes *int64  `json:"durationMinutes"`
+			TaskID          *string `json:"taskId"`
+			Kind            string  `json:"kind"`
 		}
 		if e := parseInput(raw, &in); e != nil {
 			return nil, 0, e
 		}
-		out, e := focus.Start(r.Context(), tx, p.ID, in.TaskID, in.Kind, now)
+		var duration []int64
+		if in.DurationMinutes != nil {
+			duration = append(duration, *in.DurationMinutes)
+		}
+		out, e := focus.Start(r.Context(), tx, p.ID, in.TaskID, in.Kind, now, duration...)
 		return out, 201, e
 	})
 }

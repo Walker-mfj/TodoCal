@@ -28,7 +28,7 @@ export function draftEvent(preview?: CalendarDraft | null): EventInput | null {
     start: date + (timed ? `T${draft.startTime}:00` : ""),
     end: timed ? `${date}T${draft.endTime}:00` : undefined,
     allDay: !timed,
-    editable: false,
+    editable: true,
     classNames: ["fc-event-draft"],
     extendedProps: { draft: true, priority: draft.priority },
   };

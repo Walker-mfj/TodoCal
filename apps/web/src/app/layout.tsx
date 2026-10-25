@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Providers } from "./providers";
 import "./globals.css";
 export const metadata: Metadata = {
-  title: "Focus Calendar — Clear Week",
+  title: "TodoCal — Tasks & Calendar",
   description:
     "A clear plan, a little breathing room. Your personal calendar and daily progress.",
 };

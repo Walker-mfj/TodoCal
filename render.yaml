@@ -3,7 +3,7 @@ services:
     name: todocal-api
     runtime: docker
     plan: free
-    region: singapore
+    region: ohio
     rootDir: apps/api
     dockerfilePath: ./Dockerfile
     healthCheckPath: /healthz

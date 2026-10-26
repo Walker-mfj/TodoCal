@@ -4,6 +4,16 @@ Next.js static assets run on Cloudflare Workers. A small Worker forwards `/api/*
 
 ## Configuration
 
+Live deployment (2026-10-25):
+
+- App: https://todocal.laiphuc.workers.dev
+- API: https://todocal-api.onrender.com
+- Render dashboard: https://dashboard.render.com/web/srv-dbf0ekks728c73dmd6ig
+- Neon project: `delicate-moon-70365012`, production branch `br-icy-feather-b4u8imu4`.
+- Render deploys from `codex/free-deployment` automatically. Frontend updates require `npm run deploy` from `deploy/cloudflare`; secrets remain in Cloudflare.
+
+Render and Neon use their Free plans. After inactivity, the first API request can take around a minute while Render wakes up. Local accounts and data have not been imported.
+
 Deploy `render.yaml` from this repository (Free plan, Docker context `apps/api`). The current Neon project is in Ohio; Render uses Ohio to keep API/database traffic nearby. Set `DATABASE_URL` to a direct Neon PostgreSQL 18 TLS connection (`sslmode=require`; remove `channel_binding` because the migration driver lib/pq does not support that parameter), `APP_ORIGIN` to the exact Cloudflare HTTPS origin with no trailing slash, and `PROXY_SECRET` to a random secret of at least 32 characters. Keep secrets in provider settings, never Git/chat.
 
 The startup script applies migrations and starts the API on `0.0.0.0:$PORT`. This is for a single instance. Back up before schema updates. Health probes use `/healthz` to avoid continually waking the database; check `/readyz` during release verification.

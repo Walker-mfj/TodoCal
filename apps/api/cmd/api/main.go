@@ -49,7 +49,10 @@ func run() error {
 		slog.Info("migrations applied")
 		return nil
 	}
-	api := &http.Server{Addr: cfg.Address, Handler: server.ProxyHandler(server.New(pool, cfg.Origin, cfg.Secure).Handler(), os.Getenv("PROXY_SECRET")), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
+	app := server.New(pool, cfg.Origin, cfg.Secure)
+	closeMonitoring := app.EnableMonitoring(os.Getenv("BETTER_STACK_DSN"), os.Getenv("RENDER_GIT_COMMIT"))
+	defer closeMonitoring()
+	api := &http.Server{Addr: cfg.Address, Handler: server.ProxyHandler(app.Handler(), os.Getenv("PROXY_SECRET")), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
 	done := make(chan error, 1)
 	go func() { done <- api.ListenAndServe() }()
 	slog.Info("API listening", "address", cfg.Address)

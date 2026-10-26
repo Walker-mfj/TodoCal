@@ -3,10 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "cd ../../apps/web && STATIC_EXPORT=true npm run build",
+    "build": "node build.mjs",
     "test": "node --test worker.test.mjs",
-    "deploy": "npm run build && wrangler deploy",
-    "preview": "wrangler dev"
+    "deploy": "npm run build && npm run upload:sourcemaps && wrangler deploy",
+    "preview": "wrangler dev",
+    "upload:sourcemaps": "node upload-sourcemaps.mjs"
   },
   "devDependencies": {
     "wrangler": "4.152.0"

@@ -5,6 +5,7 @@ const config: NextConfig = {
     ? { output: "export" as const, images: { unoptimized: true } }
     : {}),
   devIndicators: false,
+  productionBrowserSourceMaps: process.env.MONITORING_SOURCE_MAPS === "true",
   ...(!staticExport
     ? {
         async rewrites() {

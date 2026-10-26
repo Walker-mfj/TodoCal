@@ -13,14 +13,17 @@ import (
 	"strings"
 	"time"
 
+	"focuscalendar/internal/monitoring"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Server struct {
-	pool   *pgxpool.Pool
-	origin string
-	secure bool
-	now    func() time.Time
+	monitor     *monitoring.Reporter
+	ingestLimit ingestLimiter
+	pool        *pgxpool.Pool
+	origin      string
+	secure      bool
+	now         func() time.Time
 }
 
 func New(p *pgxpool.Pool, origin string, secure bool) *Server {
@@ -28,6 +31,7 @@ func New(p *pgxpool.Pool, origin string, secure bool) *Server {
 }
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/v1/monitoring/errors", s.ingestError)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]string{"status": "ok"}) })
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		if err := s.pool.Ping(r.Context()); err != nil {
@@ -78,7 +82,7 @@ func (s *Server) Handler() http.Handler {
 				return
 			}
 		}
-		mux.ServeHTTP(w, r)
+		s.observe(mux).ServeHTTP(w, r)
 	})
 }
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -90,6 +94,9 @@ func fail(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, map[string]any{"error": map[string]any{"code": code, "message": message, "requestId": w.Header().Get("X-Request-ID")}})
 }
 func internal(w http.ResponseWriter, err error) {
+	if reporter, ok := w.(interface{ ReportError(error) }); ok {
+		reporter.ReportError(err)
+	}
 	slog.Error("request failed", "requestId", w.Header().Get("X-Request-ID"), "type", errorType(err))
 	fail(w, 500, "internal", "Something went wrong. Please try again.")
 }

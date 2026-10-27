@@ -10,7 +10,25 @@ Live deployment (2026-10-25):
 - API: https://todocal-api.onrender.com
 - Render dashboard: https://dashboard.render.com/web/srv-dbf0ekks728c73dmd6ig
 - Neon project: `delicate-moon-70365012`, production branch `br-icy-feather-b4u8imu4`.
-- Render deploys from `codex/free-deployment` automatically. Frontend updates require `npm run deploy` from `deploy/cloudflare`; secrets remain in Cloudflare.
+- Render currently deploys from `codex/free-deployment` automatically. Moving the local branch to `main` does not change the Render dashboard setting.
+- `.github/workflows/deploy-frontend.yml` deploys the frontend on pushes to `main`, or manual runs on `main`, once the workflow is pushed and the secrets below are configured. Local merges alone do not deploy anything. Manual frontend deployment remains available with `npm run deploy` from `deploy/cloudflare`.
+
+## Frontend deployment from GitHub
+
+Set these GitHub Actions secrets in the repository (or its `production` environment):
+
+- `CLOUDFLARE_API_TOKEN`: an API token allowed to deploy Workers in account `8cf9e69ea0ad681889782c541601c0d1`. Scope it to that account. Local Wrangler OAuth login does not authenticate GitHub Actions.
+- `BETTER_STACK_API_TOKEN`: the existing Telemetry token authorized to upload private source maps for TodoCal. Source maps contain frontend source code; do not upload them as public build artifacts.
+
+The workflow installs locked dependencies, runs frontend/proxy tests, builds and checks types, uploads private source maps, then publishes the Worker. Failed checks or uploads stop publication. Only the publication step receives the Cloudflare token. Existing Worker secrets (`API_ORIGIN`, `PROXY_SECRET`) remain in Cloudflare. Deployments are serialized; in-flight deployments are not cancelled. The final website check reports failures but does not automatically roll back.
+
+To move the backend to the same release branch, change Render's deployment branch to `main` after the intended commits have been pushed there. This is a separate live configuration change; the frontend workflow does not change or wait for Render.
+
+## Frontend/backend compatibility
+
+Render and Cloudflare deployments are independent, not an atomic release. One can succeed while the other fails, and open browser tabs can keep running older frontend code even after a successful deployment.
+
+Use additive releases: deploy backward-compatible API fields/endpoints and database migrations first, confirm the backend is live, then publish frontend code that uses them. Keep the old API behavior until older clients no longer need it. Split breaking changes into separate releases; do not merge a frontend requiring a new API until that API is live. For incompatible releases, coordinate maintenance or introduce versioned endpoints. Automatic frontend deployment alone does not enforce this ordering.
 
 Render and Neon use their Free plans. After inactivity, the first API request can take around a minute while Render wakes up. Local accounts and data have not been imported.
 

@@ -281,7 +281,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Stops future generation and cancels future incomplete occurrences, preserving historical/current occurrences and explicitly completed tasks. Requires the series revision returned by creation; series content editing is outside the MVP. */
+    /** @description Stops future generation and cancels future incomplete occurrences, preserving historical/current occurrences and explicitly completed tasks. Requires the current series revision. Edit series content through PATCH /tasks/{id} with scope all. */
     post: operations["stopSeries"];
     delete?: never;
     options?: never;
@@ -518,6 +518,14 @@ export interface components {
     };
     /** @description Omitted editable fields are retained. Explicit null clears nullable fields. Status is changed only through the completion endpoint. */
     TaskPatch: {
+      /**
+       * @description All updates current and future occurrences plus the lazy series template; finalized history is preserved. Date changes shift all live occurrences by the same number of days.
+       * @default one
+       * @enum {string}
+       */
+      scope: "one" | "all";
+      /** @description Required for scope all; obtain from GET /series/{id}. */
+      expectedSeriesRevision?: number;
       title?: string;
       /** @default  */
       description: string;

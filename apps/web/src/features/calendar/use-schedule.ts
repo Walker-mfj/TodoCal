@@ -14,8 +14,12 @@ type Command = {
 };
 type Toast = { label: string; id: string; deadline: number };
 export function useSchedule() {
-  const { session, execute, connected } = useSession();
+  const { session, execute, read, connected } = useSession();
   const key = `focus:command:${session!.user.id}:schedule`;
+  const [choice, setChoice] = useState<{ task: Task; value: Schedule } | null>(
+    null,
+  );
+  const [choosing, setChoosing] = useState(false);
   const [pending, setPending] = useState<Command | null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -92,9 +96,17 @@ export function useSchedule() {
     }
   }
   function schedule(task: Task, value: Schedule) {
-    if (pending || inFlight.current || !connected) return;
+    if (pending || inFlight.current || !connected || choice) return;
     setToast(null);
-    void run({
+    setError("");
+    if (task.seriesId) {
+      setChoice({ task, value });
+      return;
+    }
+    scheduleOne(task, value);
+  }
+  function scheduleOne(task: Task, value: Schedule) {
+    return run({
       path: `/tasks/${task.id}/schedule`,
       options: {
         method: "POST",
@@ -104,6 +116,46 @@ export function useSchedule() {
       kind: "schedule",
       label: task.title,
     });
+  }
+  async function chooseScope(scope: "one" | "all") {
+    if (!choice || inFlight.current || pending || !connected) return;
+    const { task, value } = choice;
+    if (scope === "one") {
+      setChoice(null);
+      await scheduleOne(task, value);
+      return;
+    }
+    inFlight.current = true;
+    setChoosing(true);
+    setError("");
+    try {
+      const series = await read<{ revision: number }>(
+        `/series/${task.seriesId}`,
+      );
+      if (!mounted.current) return;
+      setChoice(null);
+      inFlight.current = false;
+      await run({
+        path: `/tasks/${task.id}`,
+        options: {
+          method: "PATCH",
+          key: crypto.randomUUID(),
+          body: {
+            ...value,
+            scope: "all",
+            expectedRevision: task.revision,
+            expectedSeriesRevision: series.revision,
+          },
+        },
+        kind: "schedule",
+        label: task.title,
+      });
+    } catch (e) {
+      if (mounted.current) setError(errorMessage(e));
+    } finally {
+      inFlight.current = false;
+      if (mounted.current) setChoosing(false);
+    }
   }
   function undo() {
     if (
@@ -123,6 +175,15 @@ export function useSchedule() {
   }
   return {
     schedule,
+    choice,
+    choosing,
+    chooseScope,
+    cancelChoice: () => {
+      if (!choosing) {
+        setChoice(null);
+        setError("");
+      }
+    },
     undo,
     retry: () => {
       if (pending) void run(pending);
@@ -131,7 +192,7 @@ export function useSchedule() {
     error,
     toast,
     pending,
-    blocked: busy || !!pending,
+    blocked: busy || !!pending || !!choice || choosing,
     reportError: (e: unknown) => setError(errorMessage(e)),
     dismiss: () => {
       if (!pending) setError("");

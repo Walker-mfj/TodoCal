@@ -1,6 +1,8 @@
 package server
 
 import (
+	"encoding/json"
+	"focuscalendar/internal/recurrence"
 	"focuscalendar/internal/tasks"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -37,9 +39,41 @@ func (s *Server) editTask(w http.ResponseWriter, r *http.Request) {
 		if revision != old.Revision {
 			return nil, 0, tasks.Conflict()
 		}
-		var in tasks.Input
-		if e = mergePatch(raw, old.Input, &in); e != nil {
+		var fields map[string]json.RawMessage
+		if e = json.Unmarshal(raw, &fields); e != nil {
+			return nil, 0, tasks.Invalid("Send a JSON object")
+		}
+		var scope string
+		var seriesRevision int64
+		if v, ok := fields["scope"]; ok {
+			if e = json.Unmarshal(v, &scope); e != nil {
+				return nil, 0, tasks.Invalid("Choose one or all occurrences")
+			}
+		}
+		if scope != "" && scope != "one" && scope != "all" {
+			return nil, 0, tasks.Invalid("Choose one or all occurrences")
+		}
+		if v, ok := fields["expectedSeriesRevision"]; ok {
+			if e = json.Unmarshal(v, &seriesRevision); e != nil {
+				return nil, 0, tasks.Invalid("Provide expectedSeriesRevision")
+			}
+		}
+		delete(fields, "scope")
+		delete(fields, "expectedSeriesRevision")
+		patch, e := json.Marshal(fields)
+		if e != nil {
 			return nil, 0, e
+		}
+		var in tasks.Input
+		if e = mergePatch(patch, old.Input, &in); e != nil {
+			return nil, 0, e
+		}
+		if scope == "all" {
+			if seriesRevision < 1 {
+				return nil, 0, tasks.Invalid("Provide expectedSeriesRevision")
+			}
+			t, err := recurrence.UpdateFromTask(r.Context(), tx, p.ID, zone, now, old, in, seriesRevision, fields)
+			return t, 200, err
 		}
 		t, e := tasks.Update(r.Context(), tx, p.ID, zone, now, old, in)
 		return t, 200, e

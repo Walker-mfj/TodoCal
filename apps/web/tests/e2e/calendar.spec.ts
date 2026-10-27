@@ -399,30 +399,120 @@ test("calendar fits desktop and keeps its scroll when creating a draft; sidebar 
   await page.screenshot({ path: "test-results/calendar-completed.png" });
 });
 
-test("draft drag and resize update the editor without creating a task", async ({ page }) => {
+test("draft drag and resize update the editor without creating a task", async ({
+  page,
+}) => {
   const { date } = await setup(page);
-  await page.getByRole('button', { name: 'New task', exact: true }).click();
-  await page.getByLabel('Task title').fill('Movable draft');
-  await page.getByLabel('Scheduled date').fill(date);
-  await page.getByLabel('Start time', { exact: true }).fill('09:00');
-  await page.getByLabel('End time', { exact: true }).fill('10:00');
-  const event = page.locator('.fc-event-draft');
+  await page.getByRole("button", { name: "New task", exact: true }).click();
+  await page.getByLabel("Task title").fill("Movable draft");
+  await page.getByLabel("Scheduled date").fill(date);
+  await page.getByLabel("Start time", { exact: true }).fill("09:00");
+  await page.getByLabel("End time", { exact: true }).fill("10:00");
+  const event = page.locator(".fc-event-draft");
   await expect(event).toHaveClass(/fc-event-draggable/);
-  await dragMinutes(page, 'Movable draft', 60);
-  await expect(page.getByLabel('Start time', { exact: true })).toHaveValue('10:00');
-  await expect(page.getByLabel('End time', { exact: true })).toHaveValue('11:00');
+  await dragMinutes(page, "Movable draft", 60);
+  await expect(page.getByLabel("Start time", { exact: true })).toHaveValue(
+    "10:00",
+  );
+  await expect(page.getByLabel("End time", { exact: true })).toHaveValue(
+    "11:00",
+  );
   await event.hover();
-  const edge = (await event.locator('.fc-event-resizer-end').boundingBox())!;
-  const slot = (await page.locator('.fc-timegrid-slot[data-time="10:00:00"]').last().boundingBox())!;
-  await page.mouse.move(edge.x + edge.width/2, edge.y + edge.height/2);
+  const edge = (await event.locator(".fc-event-resizer-end").boundingBox())!;
+  const slot = (await page
+    .locator('.fc-timegrid-slot[data-time="10:00:00"]')
+    .last()
+    .boundingBox())!;
+  await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2);
   await page.mouse.down();
-  await page.mouse.move(edge.x + edge.width/2, edge.y + edge.height/2 + slot.height, {steps:10});
+  await page.mouse.move(
+    edge.x + edge.width / 2,
+    edge.y + edge.height / 2 + slot.height,
+    { steps: 10 },
+  );
   await page.mouse.up();
-  await expect(page.getByLabel('End time', { exact: true })).toHaveValue('11:30');
-  expect((await (await page.request.get('/api/v1/tasks')).json()).items).toHaveLength(0);
-  await page.getByRole('button', { name:'Create task',exact:true }).click();
+  await expect(page.getByLabel("End time", { exact: true })).toHaveValue(
+    "11:30",
+  );
+  expect(
+    (await (await page.request.get("/api/v1/tasks")).json()).items,
+  ).toHaveLength(0);
+  await page.getByRole("button", { name: "Create task", exact: true }).click();
   await expect(event).toHaveCount(0);
-  const tasks=(await (await page.request.get('/api/v1/tasks')).json()).items;
+  const tasks = (await (await page.request.get("/api/v1/tasks")).json()).items;
   expect(tasks).toHaveLength(1);
-  expect(tasks[0]).toMatchObject({startTime:'10:00',endTime:'11:30'});
+  expect(tasks[0]).toMatchObject({ startTime: "10:00", endTime: "11:30" });
+});
+
+test("repeating drag asks for scope; cancel, one and all preserve occurrence details", async ({
+  page,
+}) => {
+  const { date, send } = await setup(page);
+  const tomorrow = new Date(date + "T12:00:00Z");
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  const end = tomorrow.toISOString().slice(0, 10);
+  await send("/series", {
+    task: {
+      title: "Drag repeating",
+      scheduledDate: date,
+      startTime: "09:00",
+      endTime: "10:00",
+    },
+    cadence: "daily",
+    intervalDays: 1,
+    endDate: end,
+  });
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  const to = tomorrow.toISOString().slice(0, 10);
+  const items = (
+    await (
+      await page.request.get(`/api/v1/calendar?from=${date}&to=${to}`)
+    ).json()
+  ).tasks;
+  const first = items.find(
+    (t: { scheduledDate: string }) => t.scheduledDate === date,
+  );
+  const second = items.find(
+    (t: { scheduledDate: string }) => t.scheduledDate === end,
+  );
+  await send(
+    `/tasks/${second.id}`,
+    {
+      title: "Own title",
+      description: "Own notes",
+      expectedRevision: second.revision,
+    },
+    "PATCH",
+  );
+  await page.reload();
+  const dialog = page.getByRole("dialog", {
+    name: "Reschedule repeating task",
+  });
+  const read = async (id: string) =>
+    await (await page.request.get(`/api/v1/tasks/${id}`)).json();
+  await dragMinutes(page, "Drag repeating", 60);
+  await expect(dialog).toBeVisible();
+  expect((await read(first.id)).startTime).toBe("09:00");
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  expect((await read(first.id)).startTime).toBe("09:00");
+  await dragMinutes(page, "Drag repeating", 60);
+  await dialog
+    .getByRole("button", { name: "This occurrence", exact: true })
+    .click();
+  await expect.poll(async () => (await read(first.id)).startTime).toBe("10:00");
+  expect((await read(second.id)).startTime).toBe("09:00");
+  await expect(
+    page.locator(".fc-timegrid-event").filter({ hasText: "Drag repeating" }),
+  ).toContainText("10:00");
+  await dragMinutes(page, "Drag repeating", 60);
+  await dialog
+    .getByRole("button", { name: "All occurrences", exact: true })
+    .click();
+  await expect.poll(async () => (await read(first.id)).startTime).toBe("11:00");
+  expect(await read(second.id)).toMatchObject({
+    title: "Own title",
+    description: "Own notes",
+    startTime: "11:00",
+    endTime: "12:00",
+  });
 });

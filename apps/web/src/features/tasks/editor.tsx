@@ -5,8 +5,14 @@ import { sessionStore } from "../../lib/session-storage";
 import { ValidatedForm } from "../../components/validated-form";
 import { useEffect, useRef, useState } from "react";
 import { X, Repeat2 } from "lucide-react";
-import { ApiError, errorMessage, type RequestOptions } from "../../lib/api";
 import {
+  apiFetch,
+  ApiError,
+  errorMessage,
+  type RequestOptions,
+} from "../../lib/api";
+import {
+  FieldError,
   draftFromTask,
   recurrenceSummary,
   taskPayload,
@@ -42,6 +48,11 @@ export function TaskEditor({
   onStateChange?: (state: { dirty: boolean; blocked: boolean }) => void;
 }) {
   const confirm = useConfirm();
+  const [scopePrompt, setScopePrompt] = useState(false);
+  const scopeDialog = useRef<HTMLDialogElement>(null);
+  const [seriesRevision, setSeriesRevision] = useState<number | null>(null);
+  const [seriesError, setSeriesError] = useState("");
+  const [fieldError, setFieldError] = useState<FieldError | null>(null);
   const initial = useRef<Draft>(
     task ? draftFromTask(task, zone) : { title: "", ...seed },
   );
@@ -81,11 +92,29 @@ export function TaskEditor({
         );
         setBaseline(parsed.baseline || initial.current);
         setPending(parsed.pending || null);
+        setSeriesRevision(parsed.seriesRevision ?? null);
         setBaseRevision(parsed.baseRevision ?? task?.revision);
       }
     } catch {}
     setReady(true);
   }, [storageKey]);
+  useEffect(() => {
+    if (!task?.seriesId || !ready || seriesRevision !== null) return;
+    let active = true;
+    apiFetch<{ revision: number }>(`/series/${task.seriesId}`, { owner })
+      .then((data) => {
+        if (active) setSeriesRevision(data.revision);
+      })
+      .catch((e) => {
+        if (active) setSeriesError(errorMessage(e));
+      });
+    return () => {
+      active = false;
+    };
+  }, [task?.seriesId, ready, owner, seriesRevision]);
+  useEffect(() => {
+    if (scopePrompt) scopeDialog.current?.showModal();
+  }, [scopePrompt]);
   const dirty = fingerprint(draft) !== fingerprint(baseline) || !!pending;
   useEffect(() => {
     if (!ready) return;
@@ -95,15 +124,33 @@ export function TaskEditor({
     }
     sessionStore.setItem(
       storageKey,
-      JSON.stringify({ draft, pending, baseRevision, baseline }),
+      JSON.stringify({
+        draft,
+        pending,
+        baseRevision,
+        baseline,
+        seriesRevision,
+      }),
     );
-  }, [draft, pending, baseRevision, baseline, ready, storageKey, dirty]);
+  }, [
+    draft,
+    pending,
+    baseRevision,
+    baseline,
+    ready,
+    storageKey,
+    dirty,
+    seriesRevision,
+  ]);
+
   useEffect(() => {
     if (ready) onDraftChange?.({ draft, taskId: task?.id });
   }, [draft, task?.id, ready, onDraftChange]);
+
   useEffect(() => {
     onStateChange?.({ dirty, blocked: busy || !!pending });
   }, [dirty, busy, pending, onStateChange]);
+
   useEffect(() => {
     if (seed === lastSeed.current) return;
     lastSeed.current = seed;
@@ -117,7 +164,9 @@ export function TaskEditor({
     // Picking the initial slot is not an edit to the task's content.
     if (!task) setBaseline((previous) => ({ ...previous, ...schedule }));
     setError("");
+    setFieldError(null);
   }, [seed, ready, task, busy, pending]);
+
   const change = (key: keyof Draft, value: string | number) => {
     setDraft((d) => ({
       ...d,
@@ -129,6 +178,7 @@ export function TaskEditor({
         : {}),
     }));
     setError("");
+    setFieldError(null);
   };
   const close = async () => {
     if (
@@ -143,8 +193,10 @@ export function TaskEditor({
     sessionStore.removeItem(storageKey);
     onClose();
   };
-  const save = async () => {
+  const save = async (scope: "one" | "all" = "one") => {
+    setScopePrompt(false);
     setError("");
+    setFieldError(null);
     setBusy(true);
     try {
       let command = pending;
@@ -157,7 +209,18 @@ export function TaskEditor({
             method: task ? "PATCH" : "POST",
             key: crypto.randomUUID(),
             body: task
-              ? { ...input, expectedRevision: baseRevision }
+              ? {
+                  ...input,
+                  expectedRevision: baseRevision,
+                  ...(task.seriesId
+                    ? {
+                        scope,
+                        ...(scope === "all"
+                          ? { expectedSeriesRevision: seriesRevision }
+                          : {}),
+                      }
+                    : {}),
+                }
               : repeating
                 ? {
                     task: input,
@@ -176,15 +239,48 @@ export function TaskEditor({
         setPending(command);
         sessionStore.setItem(
           storageKey,
-          JSON.stringify({ draft, pending: command, baseRevision, baseline }),
+          JSON.stringify({
+            draft,
+            pending: command,
+            baseRevision,
+            baseline,
+            seriesRevision,
+          }),
         );
       }
       await execute(command.path, command.options);
+      // Navigation can unmount this editor while saving. Clear only this command,
+      // never a newer draft opened in the meantime.
+      try {
+        const stored = JSON.parse(sessionStore.getItem(storageKey) || "null");
+        if (stored?.pending?.options?.key === command.options.key)
+          sessionStore.removeItem(storageKey);
+      } catch {}
       if (!mounted.current) return;
-      sessionStore.removeItem(storageKey);
       onSaved(task ? undefined : draft);
     } catch (e) {
-      setError(errorMessage(e));
+      if (e instanceof FieldError) setFieldError(e);
+      else if (e instanceof ApiError && e.status === 422) {
+        const field = /title/i.test(e.message)
+          ? "title"
+          : /description/i.test(e.message)
+            ? "description"
+            : /priority/i.test(e.message)
+              ? "priority"
+              : /pomodoro/i.test(e.message)
+                ? "estimatedPomodoros"
+                : /deadline/i.test(e.message)
+                  ? "deadline"
+                  : /end time|both start/i.test(e.message)
+                    ? "endTime"
+                    : /local time|HH:mm/i.test(e.message)
+                      ? "startTime"
+                      : /date|daily plan/i.test(e.message)
+                        ? "scheduledDate"
+                        : null;
+        if (field) setFieldError(new FieldError(field, e.message));
+        else setError(errorMessage(e));
+      } else setError(errorMessage(e));
       if (e instanceof ApiError && e.status !== 401 && e.status < 500) {
         setPending(null);
         if (e.status === 409) setConflict(true);
@@ -218,13 +314,22 @@ export function TaskEditor({
       </div>
       {task?.seriesId && (
         <p className="notice">
-          <Repeat2 size={14} /> Changes apply to this occurrence only.
+          <Repeat2 size={14} /> When saving, choose this occurrence or all
+          current and future occurrences.
         </p>
       )}
       <ValidatedForm
+        fieldError={fieldError}
         onSubmit={(e) => {
           e.preventDefault();
-          void save();
+          try {
+            if (!pending) taskPayload(draft, zone);
+            if (task?.seriesId && !pending) setScopePrompt(true);
+            else void save();
+          } catch (e) {
+            if (e instanceof FieldError) setFieldError(e);
+            else setError(errorMessage(e));
+          }
         }}
       >
         <fieldset disabled={busy || !!pending || disabled || !ready}>
@@ -234,6 +339,7 @@ export function TaskEditor({
               autoFocus
               required
               maxLength={300}
+              name="title"
               value={draft.title}
               onChange={(e) => change("title", e.target.value)}
               placeholder="What would you like to do?"
@@ -244,6 +350,7 @@ export function TaskEditor({
             <textarea
               rows={3}
               maxLength={10000}
+              name="description"
               value={draft.description || ""}
               onChange={(e) => change("description", e.target.value)}
               placeholder="A few helpful details…"
@@ -253,6 +360,7 @@ export function TaskEditor({
             <label>
               Group
               <select
+                name="groupId"
                 value={draft.groupId || ""}
                 onChange={(e) => change("groupId", e.target.value)}
               >
@@ -267,6 +375,7 @@ export function TaskEditor({
             <label>
               Priority
               <select
+                name="priority"
                 value={draft.priority || "medium"}
                 onChange={(e) => change("priority", e.target.value)}
               >
@@ -280,6 +389,7 @@ export function TaskEditor({
             Scheduled date
             <input
               type="date"
+              name="scheduledDate"
               value={draft.scheduledDate || ""}
               onChange={(e) => change("scheduledDate", e.target.value)}
             />
@@ -289,6 +399,7 @@ export function TaskEditor({
               Start time
               <input
                 type="time"
+                name="startTime"
                 value={draft.startTime || ""}
                 onChange={(e) => change("startTime", e.target.value)}
               />
@@ -297,6 +408,7 @@ export function TaskEditor({
               End time
               <input
                 type="time"
+                name="endTime"
                 value={draft.endTime || ""}
                 onChange={(e) => change("endTime", e.target.value)}
               />
@@ -309,6 +421,7 @@ export function TaskEditor({
             Deadline (optional)
             <input
               type="datetime-local"
+              name="deadline"
               value={draft.deadline || ""}
               onChange={(e) => change("deadline", e.target.value)}
             />
@@ -318,6 +431,7 @@ export function TaskEditor({
               <label>
                 Repeat
                 <select
+                  name="cadence"
                   value={draft.cadence || "none"}
                   onChange={(e) => change("cadence", e.target.value)}
                 >
@@ -336,6 +450,7 @@ export function TaskEditor({
                         type="number"
                         min={2}
                         max={365}
+                        name="intervalDays"
                         value={draft.intervalDays || 2}
                         onChange={(e) =>
                           change("intervalDays", Number(e.target.value))
@@ -348,6 +463,7 @@ export function TaskEditor({
                     <input
                       type="date"
                       min={draft.scheduledDate}
+                      name="endDate"
                       value={draft.endDate || ""}
                       onChange={(e) => change("endDate", e.target.value)}
                     />
@@ -369,6 +485,7 @@ export function TaskEditor({
               type="number"
               min={1}
               max={2147483647}
+              name="estimatedPomodoros"
               value={draft.estimatedPomodoros || ""}
               onChange={(e) => change("estimatedPomodoros", e.target.value)}
               placeholder="No timer needed"
@@ -418,6 +535,48 @@ export function TaskEditor({
                 : "Create task"}
         </button>
       </ValidatedForm>
+      {scopePrompt && (
+        <dialog
+          ref={scopeDialog}
+          className="app-dialog"
+          aria-labelledby="recurring-edit-title"
+          onCancel={() => setScopePrompt(false)}
+        >
+          <div className="app-dialog-heading">
+            <h2 id="recurring-edit-title">Edit repeating task</h2>
+          </div>
+          <p>
+            Apply changes to this occurrence, or all occurrences from today
+            onward? Finalized history stays unchanged. Date changes shift the
+            other occurrences by the same number of days.
+          </p>
+          {seriesError && (
+            <p role="alert" className="error">
+              {seriesError}
+            </p>
+          )}
+          <div className="app-dialog-actions">
+            <button
+              type="button"
+              autoFocus
+              onClick={() => setScopePrompt(false)}
+            >
+              Cancel
+            </button>
+            <button type="button" onClick={() => void save("one")}>
+              This occurrence
+            </button>
+            <button
+              type="button"
+              className="primary"
+              disabled={seriesRevision === null}
+              onClick={() => void save("all")}
+            >
+              All occurrences
+            </button>
+          </div>
+        </dialog>
+      )}
     </aside>
   );
 }

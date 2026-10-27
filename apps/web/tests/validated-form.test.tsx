@@ -20,6 +20,9 @@ it("shows an accessible custom error and prevents an invalid submission", () => 
     "aria-invalid",
     "true",
   );
+  expect(screen.getByLabelText("Task title").nextElementSibling).toBe(
+    screen.getByRole("alert"),
+  );
   expect(submit).not.toHaveBeenCalled();
   fireEvent.input(screen.getByLabelText("Task title"), {
     target: { value: "Read" },

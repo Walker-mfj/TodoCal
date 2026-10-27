@@ -78,9 +78,11 @@ test("calendar previews create/edit drafts without saving; slot selection retarg
   await expect(original).toHaveCount(1);
   await original.click();
   await page.getByRole("button", { name: "Edit task", exact: true }).click();
+  // Confirming Close editor explicitly discards the previous unsaved draft.
   await expect(page.getByLabel("Task title")).toHaveValue(
-    "Changed appointment",
+    "Draft appointment",
   );
+  await page.getByLabel("Task title").fill("Changed appointment");
   await expect(preview).toContainText("Changed appointment");
   await slot(page, "12:00");
   await expect(

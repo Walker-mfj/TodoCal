@@ -1,5 +1,6 @@
 "use client";
-import { useId, useRef, useState, type ComponentProps } from "react";
+import { useEffect, useId, useRef, useState, type ComponentProps } from "react";
+import { createPortal } from "react-dom";
 type Field = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 function message(field: Field) {
   const label =
@@ -25,8 +26,13 @@ function message(field: Field) {
 export function ValidatedForm({
   children,
   onSubmit,
+  fieldError,
   ...props
-}: ComponentProps<"form">) {
+}: ComponentProps<"form"> & {
+  fieldError?: { field: string; message: string } | null;
+}) {
+  const form = useRef<HTMLFormElement>(null);
+  const [host, setHost] = useState<HTMLElement | null>(null);
   const [error, setError] = useState("");
   const id = useId();
   const invalid = useRef<Field | null>(null);
@@ -36,8 +42,35 @@ export function ValidatedForm({
     invalid.current = null;
     setError("");
   };
+  const show = (field: Field, text: string) => {
+    invalid.current = field;
+    field.setAttribute("aria-invalid", "true");
+    field.setAttribute("aria-describedby", id);
+    if (!field.hasAttribute("aria-label")) {
+      const label = Array.from(field.labels?.[0]?.childNodes || [])
+        .filter((n) => n.nodeType === 3)
+        .map((n) => n.textContent)
+        .join("")
+        .trim();
+      if (label) field.setAttribute("aria-label", label);
+    }
+    setHost(field.parentElement);
+    setError(text);
+    field.focus();
+  };
+  useEffect(() => {
+    if (!fieldError) return;
+    const field = form.current?.elements.namedItem(fieldError.field);
+    if (
+      field instanceof HTMLInputElement ||
+      field instanceof HTMLSelectElement ||
+      field instanceof HTMLTextAreaElement
+    )
+      show(field, fieldError.message);
+  }, [fieldError]);
   return (
     <form
+      ref={form}
       {...props}
       noValidate
       onInvalid={(e) => e.preventDefault()}
@@ -54,22 +87,20 @@ export function ValidatedForm({
         ) as Field | undefined;
         if (field) {
           e.preventDefault();
-          invalid.current = field;
-          field.setAttribute("aria-invalid", "true");
-          field.setAttribute("aria-describedby", id);
-          setError(message(field));
-          field.focus();
+          show(field, message(field));
           return;
         }
         onSubmit?.(e);
       }}
     >
-      {error && (
-        <div id={id} className="error form-validation" role="alert">
-          <strong>Please check this field</strong>
-          <span>{error}</span>
-        </div>
-      )}
+      {error &&
+        host &&
+        createPortal(
+          <span id={id} className="error field-error" role="alert">
+            {error}
+          </span>,
+          host,
+        )}
       {children}
     </form>
   );

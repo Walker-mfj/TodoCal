@@ -216,3 +216,42 @@ it("keeps uncertain save contents and schedule fixed when another slot is select
   await waitFor(() => expect(execute).toHaveBeenCalledTimes(2));
   expect(execute.mock.calls[1]).toEqual(execute.mock.calls[0]);
 });
+
+it("places schedule validation beside the invalid end time", async () => {
+  render(
+    <TaskEditor
+      {...base}
+      execute={vi.fn()}
+      seed={{
+        title: "Read",
+        scheduledDate: "2030-10-26",
+        startTime: "10:00",
+        endTime: "09:00",
+      }}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Create task" }));
+  const alert = await screen.findByRole("alert");
+  expect(screen.getByLabelText("End time").nextElementSibling).toBe(alert);
+});
+
+it("clears its confirmed pending draft after navigating away during save", async () => {
+  let finish!: (value: unknown) => void;
+  const execute = vi.fn(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const editor = render(<TaskEditor {...base} execute={execute as never} />);
+  fireEvent.change(screen.getByLabelText("Task title"), {
+    target: { value: "Save while leaving" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Create task" }));
+  await waitFor(() => expect(execute).toHaveBeenCalled());
+  editor.unmount();
+  finish({});
+  await waitFor(() =>
+    expect(sessionStorage.getItem("focus:draft:user-one:new")).toBeNull(),
+  );
+});

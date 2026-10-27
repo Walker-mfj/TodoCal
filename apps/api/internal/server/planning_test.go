@@ -2,9 +2,11 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"focuscalendar/internal/planning"
 	"github.com/google/uuid"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -392,5 +394,111 @@ func TestReadSeriesOwnedAndCurrentRevision(t *testing.T) {
 	out = object(t, req(s, "GET", path, nil, a, ""), 200)
 	if out["revision"] != float64(2) || out["stoppedAfter"] == nil {
 		t.Fatal(out)
+	}
+}
+
+func TestEditRecurringTaskScope(t *testing.T) {
+	s, _ := testServer(t)
+	s.now = func() time.Time { return atDate("2030-10-19") }
+	c, csrf := register(t, s, "series-edit@example.com")
+	sr := series(t, s, c, csrf, "daily", 1, "2030-10-25")
+	initial := calendar(t, s, c, "2030-10-19", "2030-10-22")["tasks"].([]any)
+	selected := initial[1].(map[string]any)
+	path := "/api/v1/tasks/" + selected["id"].(string)
+	object(t, command(s, "PATCH", path, map[string]any{"title": "Only one", "expectedRevision": 1}, c, csrf, uuid.NewString()), 200)
+	// All-scope updates materialized occurrences and the lazy template atomically.
+	object(t, command(s, "PATCH", path, map[string]any{"title": "All updated", "scope": "all", "expectedRevision": 2, "expectedSeriesRevision": sr["revision"], "scheduledDate": "2030-10-21", "startTime": "10:00", "endTime": "10:15"}, c, csrf, uuid.NewString()), 200)
+	all := calendar(t, s, c, "2030-10-19", "2030-10-27")["tasks"].([]any)
+	if len(all) != 7 {
+		t.Fatalf("expected 7 shifted occurrences, got %d", len(all))
+	}
+	for _, item := range all {
+		v := item.(map[string]any)
+		if v["title"] != "All updated" || v["startTime"] != "10:00" {
+			t.Fatal(v)
+		}
+	}
+	if all[0].(map[string]any)["scheduledDate"] != "2030-10-20" || all[6].(map[string]any)["scheduledDate"] != "2030-10-26" {
+		t.Fatal(all)
+	}
+	object(t, command(s, "PATCH", path, map[string]any{"title": "Stale", "scope": "all", "expectedRevision": 3, "expectedSeriesRevision": 1}, c, csrf, uuid.NewString()), 409)
+	// A different account cannot edit the series through an occurrence.
+	other, otherCSRF := register(t, s, "series-edit-other@example.com")
+	object(t, command(s, "PATCH", path, map[string]any{"title": "No", "scope": "all", "expectedRevision": 3, "expectedSeriesRevision": 2}, other, otherCSRF, uuid.NewString()), 404)
+}
+
+func TestSeriesEditPreservesHistoryAndRollsBackInvalidShift(t *testing.T) {
+	s, _ := testServer(t)
+	s.now = func() time.Time { return atDate("2030-10-19") }
+	c, csrf := register(t, s, "series-history-edit@example.com")
+	sr := series(t, s, c, csrf, "daily", 1, "2030-10-22")
+	calendar(t, s, c, "2030-10-19", "2030-10-23")
+	s.now = func() time.Time { return atDate("2030-10-20") }
+	out := calendar(t, s, c, "2030-10-19", "2030-10-23")
+	live := out["tasks"].([]any)
+	selected := live[1].(map[string]any)
+	path := "/api/v1/tasks/" + selected["id"].(string)
+	// Moving all dates back would place today's occurrence in finalized history.
+	object(t, command(s, "PATCH", path, map[string]any{"scope": "all", "expectedRevision": 1, "expectedSeriesRevision": 1, "scheduledDate": "2030-10-20", "title": "Must roll back"}, c, csrf, uuid.NewString()), 422)
+	unchanged := object(t, req(s, "GET", path, nil, c, ""), 200)
+	if unchanged["title"] != "Practice" || unchanged["revision"] != float64(1) {
+		t.Fatal(unchanged)
+	}
+	object(t, command(s, "PATCH", path, map[string]any{"scope": "all", "expectedRevision": 1, "expectedSeriesRevision": 1, "title": "Current updated"}, c, csrf, uuid.NewString()), 200)
+	out = calendar(t, s, c, "2030-10-19", "2030-10-23")
+	for _, item := range out["tasks"].([]any) {
+		if item.(map[string]any)["title"] != "Current updated" {
+			t.Fatal(item)
+		}
+	}
+	day := object(t, req(s, "GET", "/api/v1/reports/days/2030-10-19", nil, c, ""), 200)
+	raw, _ := json.Marshal(day)
+	if !strings.Contains(string(raw), "Practice") || strings.Contains(string(raw), "Current updated") {
+		t.Fatal(day)
+	}
+	meta := object(t, req(s, "GET", "/api/v1/series/"+sr["id"].(string), nil, c, ""), 200)
+	if meta["revision"] != float64(2) {
+		t.Fatal(meta)
+	}
+}
+
+func TestSeriesSchedulePatchPreservesOccurrenceDetails(t *testing.T) {
+	s, _ := testServer(t)
+	s.now = func() time.Time { return atDate("2030-10-19") }
+	c, csrf := register(t, s, "series-schedule-details@example.com")
+	object(t, command(s, "POST", "/api/v1/series", map[string]any{"task": map[string]any{"title": "Practice", "scheduledDate": "2030-10-19", "deadline": "2030-10-19T12:00:00Z"}, "cadence": "daily", "intervalDays": 1, "endDate": "2030-10-23"}, c, csrf, uuid.NewString()), 201)
+	items := calendar(t, s, c, "2030-10-19", "2030-10-21")["tasks"].([]any)
+	selected := items[0].(map[string]any)
+	other := items[1].(map[string]any)
+	object(t, command(s, "PATCH", "/api/v1/tasks/"+other["id"].(string), map[string]any{"title": "Custom occurrence", "description": "Keep notes", "deadline": "2030-10-22T13:00:00Z", "expectedRevision": 1}, c, csrf, uuid.NewString()), 200)
+	object(t, command(s, "PATCH", "/api/v1/tasks/"+selected["id"].(string), map[string]any{"scheduledDate": "2030-10-20", "startTime": "11:00", "endTime": "11:30", "scope": "all", "expectedRevision": 1, "expectedSeriesRevision": 1}, c, csrf, uuid.NewString()), 200)
+	preserved := object(t, req(s, "GET", "/api/v1/tasks/"+other["id"].(string), nil, c, ""), 200)
+	if preserved["title"] != "Custom occurrence" || preserved["description"] != "Keep notes" || preserved["scheduledDate"] != "2030-10-21" || preserved["startTime"] != "11:00" || preserved["deadline"] != "2030-10-22T13:00:00Z" {
+		t.Fatal(preserved)
+	}
+	lazy := calendar(t, s, c, "2030-10-23", "2030-10-25")["tasks"].([]any)
+	if len(lazy) != 2 || lazy[0].(map[string]any)["deadline"] != "2030-10-22T12:00:00Z" {
+		t.Fatal(lazy)
+	}
+	for _, item := range lazy {
+		v := item.(map[string]any)
+		if v["title"] != "Practice" || v["startTime"] != "11:00" {
+			t.Fatal(v)
+		}
+	}
+}
+
+func TestSeriesPartialPatchValidatesLazyTemplate(t *testing.T) {
+	s, _ := testServer(t)
+	s.now = func() time.Time { return atDate("2030-10-19") }
+	c, csrf := register(t, s, "partial-series-template@example.com")
+	series(t, s, c, csrf, "daily", 1, "2030-10-21")
+	selected := calendar(t, s, c, "2030-10-19", "2030-10-20")["tasks"].([]any)[0].(map[string]any)
+	path := "/api/v1/tasks/" + selected["id"].(string)
+	object(t, command(s, "PATCH", path, map[string]any{"startTime": "09:00", "endTime": "10:00", "expectedRevision": 1}, c, csrf, uuid.NewString()), 200)
+	object(t, command(s, "PATCH", path, map[string]any{"startTime": "08:00", "scope": "all", "expectedRevision": 2, "expectedSeriesRevision": 1}, c, csrf, uuid.NewString()), 422)
+	lazy := calendar(t, s, c, "2030-10-20", "2030-10-22")["tasks"].([]any)
+	if len(lazy) != 2 || lazy[0].(map[string]any)["startTime"] != nil {
+		t.Fatal(lazy)
 	}
 }

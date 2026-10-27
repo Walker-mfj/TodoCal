@@ -58,6 +58,7 @@ import {
 } from "../lib/model";
 import { errorMessage } from "../lib/api";
 import { useSchedule } from "../features/calendar/use-schedule";
+import { ScheduleScopeDialog } from "../features/calendar/schedule-scope-dialog";
 import { UndoToast } from "../features/calendar/UndoToast";
 import { useCommand } from "../lib/use-command";
 const Calendar = dynamic(() => import("../features/calendar/calendar"), {
@@ -97,7 +98,7 @@ function AccountWorkspace() {
   const [focusHidden, setFocusHidden] = useState(false);
   const [focusTask, setFocusTask] = useState<Task | null>(null);
   const date = today(account.settings.timezone);
-  const [page, setPage] = useState("calendar"),
+  const [page, updatePage] = useState("calendar"),
     [panel, setPanel] = useState<Panel>(null),
     [search, setSearch] = useState(""),
     [group, setGroup] = useState(""),
@@ -236,6 +237,14 @@ function AccountWorkspace() {
     setPanel(next);
     setSaveNotice("");
     setMessage("");
+  };
+  const setPage = (next: string) => {
+    if (next === page) return;
+    // Drafts remain recoverable, but editors belong to the page where they opened.
+    setPanel(null);
+    setDraftPreview(null);
+    setEditorState({ dirty: false, blocked: false });
+    updatePage(next);
   };
   const complete = async (task: Task) => {
     const move =
@@ -468,6 +477,18 @@ function AccountWorkspace() {
             You’re disconnected. Saved data may be out of date; changes are
             disabled.<button onClick={() => void refresh()}>Reconnect</button>
           </ToastNotice>
+        )}
+        {scheduling.choice && (
+          <ScheduleScopeDialog
+            busy={scheduling.choosing}
+            error={scheduling.error}
+            allAvailable={
+              !!scheduling.choice.task.scheduledDate &&
+              !!scheduling.choice.value.scheduledDate
+            }
+            onCancel={scheduling.cancelChoice}
+            onChoose={scheduling.chooseScope}
+          />
         )}
         <FloatingFocus
           hidden={focusHidden}

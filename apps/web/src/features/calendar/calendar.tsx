@@ -197,7 +197,7 @@ export default function Calendar({
         eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
         dayMaxEvents={3}
         slotEventOverlap={false}
-        eventMinHeight={0}
+        eventMinHeight={16}
         eventShortHeight={32}
         selectable={!disabled}
         selectMirror
@@ -309,7 +309,12 @@ export default function Calendar({
             <span className="event-time">
               {arg.event.extendedProps.task?.status === "complete" ? "✓ " : ""}
               {arg.timeText}
-              {arg.event.extendedProps.task?.priority === "high" ? " · !" : ""}
+              {arg.event.extendedProps.task?.priority === "high" && (
+                <span title="High priority" aria-label="High priority">
+                  {" "}
+                  · !
+                </span>
+              )}
             </span>
             <span className="event-title">
               {arg.event.extendedProps.task?.status === "complete" && (
@@ -323,7 +328,11 @@ export default function Calendar({
               <span className="draft-badge">Draft</span>
             )}
             {arg.event.extendedProps.task?.seriesId && (
-              <span className="event-repeat" aria-label="Repeating">
+              <span
+                className="event-repeat"
+                aria-label="Repeating"
+                title="Repeating task"
+              >
                 ↻
               </span>
             )}

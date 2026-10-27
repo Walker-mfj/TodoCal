@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Timer } from "lucide-react";
 import { timerLabel } from "./clock";
 import type { FocusController } from "./useFocus";
@@ -15,6 +15,23 @@ export function FloatingFocus({
   const [position, setPosition] = useState<{ x: number; y: number } | null>(
     null,
   );
+  useEffect(() => {
+    const restore = () => {
+      try {
+        const saved = JSON.parse(
+          localStorage.getItem("todocal:focus-position") || "null",
+        );
+        if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y))
+          setPosition({
+            x: Math.max(8, Math.min(innerWidth - 72, saved.x)),
+            y: Math.max(8, Math.min(innerHeight - 72, saved.y)),
+          });
+      } catch {}
+    };
+    restore();
+    window.addEventListener("resize", restore);
+    return () => window.removeEventListener("resize", restore);
+  }, []);
   const drag = useRef<{
     x: number;
     y: number;
@@ -58,6 +75,16 @@ export function FloatingFocus({
               x: Math.max(8, Math.min(innerWidth - 72, d.left + dx)),
               y: Math.max(8, Math.min(innerHeight - 72, d.top + dy)),
             });
+        }}
+        onPointerUp={() => {
+          if (drag.current?.moved && position) {
+            try {
+              localStorage.setItem(
+                "todocal:focus-position",
+                JSON.stringify(position),
+              );
+            } catch {}
+          }
         }}
         onPointerCancel={() => {
           drag.current = null;

@@ -494,8 +494,8 @@ paths:
       operationId: stopSeries
       description: Stops future generation and cancels future incomplete occurrences,
         preserving historical/current occurrences and explicitly completed tasks.
-        Requires the series revision returned by creation; series content editing
-        is outside the MVP.
+        Requires the current series revision. Edit series content through PATCH
+        /tasks/{id} with scope all.
       responses:
         '200':
           description: Success
@@ -940,6 +940,15 @@ components:
       type: object
       additionalProperties: false
       properties:
+        scope:
+          type: string
+          enum: [one, all]
+          default: one
+          description: All updates current and future occurrences plus the lazy series template; finalized history is preserved. Date changes shift all live occurrences by the same number of days.
+        expectedSeriesRevision:
+          type: integer
+          minimum: 1
+          description: Required for scope all; obtain from GET /series/{id}.
         title:
           type: string
           minLength: 1

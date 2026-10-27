@@ -1,10 +1,21 @@
 "use client";
+import { useState } from "react";
 import { useConfirm } from "../../components/app-dialog";
 import { ValidatedForm } from "../../components/validated-form";
 import { useAccountDraft } from "../../lib/use-account-draft";
 import { useCommand } from "../../lib/use-command";
 import type { Execute } from "../../app/providers";
 import type { Group } from "../../lib/model";
+const palette = [
+  ["Blue", "#4169b1"],
+  ["Orange", "#ed7d31"],
+  ["Green", "#278765"],
+  ["Purple", "#8056b3"],
+  ["Rose", "#c84e75"],
+  ["Teal", "#16838c"],
+  ["Gold", "#b58a23"],
+  ["Slate", "#64748b"],
+];
 export function Groups({
   owner,
   groups,
@@ -17,6 +28,7 @@ export function Groups({
   disabled: boolean;
 }) {
   const confirm = useConfirm();
+  const [custom, setCustom] = useState(false);
   const { draft, setDraft, ready } = useAccountDraft<{
     editing: Group | null;
     name: string;
@@ -54,6 +66,7 @@ export function Groups({
                 setEditing(g);
                 setName(g.name);
                 setColor(g.color);
+                setCustom(!palette.some(([, hex]) => hex === g.color));
               }}
             >
               Edit
@@ -112,14 +125,54 @@ export function Groups({
                 onChange={(e) => setName(e.target.value)}
               />
             </label>
-            <label>
-              Color
-              <input
-                type="color"
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-              />
-            </label>
+            <div className="group-color-field">
+              <span className="color-label">Color</span>
+              <div
+                className="color-palette"
+                role="group"
+                aria-label="Group color"
+              >
+                {palette.map(([name, hex]) => (
+                  <button
+                    key={hex}
+                    type="button"
+                    className="color-swatch"
+                    aria-label={name}
+                    title={name}
+                    aria-pressed={color === hex}
+                    style={
+                      {
+                        backgroundColor: hex,
+                        "--swatch": hex,
+                      } as React.CSSProperties
+                    }
+                    onClick={() => {
+                      setColor(hex);
+                      setCustom(false);
+                    }}
+                  />
+                ))}
+                <button
+                  type="button"
+                  aria-pressed={
+                    custom || !palette.some(([, hex]) => hex === color)
+                  }
+                  onClick={() => setCustom(true)}
+                >
+                  Custom color
+                </button>
+              </div>
+              {(custom || !palette.some(([, hex]) => hex === color)) && (
+                <label>
+                  Custom color
+                  <input
+                    type="color"
+                    value={color}
+                    onChange={(e) => setColor(e.target.value)}
+                  />
+                </label>
+              )}
+            </div>
           </div>
         </fieldset>
         {command.error && (

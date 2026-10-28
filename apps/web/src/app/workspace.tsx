@@ -18,7 +18,6 @@ import {
   Plus,
   LogOut,
   Search,
-  X,
   ArrowUpRight,
   PanelLeftClose,
   PanelLeftOpen,
@@ -37,6 +36,7 @@ import { TimerPanel } from "../features/focus/TimerPanel";
 import { useSession, useOwnedQuery } from "./providers";
 import { AuthScreen } from "../features/auth/auth-screen";
 import { TaskEditor } from "../features/tasks/editor";
+import { SidebarPanel } from "../components/sidebar-panel";
 import { TaskDetail } from "../features/tasks/detail";
 import { TaskRow } from "../features/tasks/task-row";
 import { Groups } from "../features/tasks/groups";
@@ -991,20 +991,14 @@ function AccountWorkspace() {
           onDeleted={() => setPanel(null)}
         />
       ) : panel?.type === "day" ? (
-        <aside className="detail-panel day-detail">
-          <div className="panel-heading">
-            <div>
-              <p className="eyebrow">DAILY PROGRESS</p>
-              <h2>{dateLabel(panel.date, "EEEE, MMM d")}</h2>
-            </div>
-            <button
-              className="icon-button"
-              aria-label="Close day details"
-              onClick={() => setPanel(null)}
-            >
-              <X size={18} />
-            </button>
-          </div>
+        <SidebarPanel
+          className="day-detail"
+          label="Day details"
+          eyebrow="DAILY PROGRESS"
+          title={dateLabel(panel.date, "EEEE, MMM d")}
+          closeLabel="Close day details"
+          onClose={() => setPanel(null)}
+        >
           {day.isPending ? (
             <p>Loading day…</p>
           ) : day.error ? (
@@ -1072,7 +1066,7 @@ function AccountWorkspace() {
               </>
             )
           )}
-        </aside>
+        </SidebarPanel>
       ) : null}
     </div>
   );

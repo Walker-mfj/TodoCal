@@ -255,3 +255,15 @@ it("clears its confirmed pending draft after navigating away during save", async
     expect(sessionStorage.getItem("focus:draft:user-one:new")).toBeNull(),
   );
 });
+
+it("plans focus with a custom session length without changing the scheduled interval", async () => {
+  const save = vi.fn().mockResolvedValue({});
+  render(<TaskEditor {...base} execute={save} seed={{title: "Read", scheduledDate: "2026-10-20", startTime: "09:00", endTime: "10:00"}} />);
+  fireEvent.click(screen.getByRole("checkbox", {name: "Plan focus"}));
+  fireEvent.change(screen.getByLabelText("Planned Pomodoros"), {target: {value: "3"}});
+  fireEvent.change(screen.getByLabelText("Session length (minutes)"), {target: {value: "40"}});
+  expect(screen.getByText("Planned Focus Time: 120 min")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", {name: "Create task"}));
+  await waitFor(() => expect(save).toHaveBeenCalled());
+  expect(save.mock.calls[0][1].body).toMatchObject({estimatedPomodoros: 3, focusMinutes: 40, scheduledDate: "2026-10-20", startTime: "09:00", endTime: "10:00"});
+});

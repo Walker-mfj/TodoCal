@@ -49,5 +49,5 @@ it("shows the finalized group name after the current group is renamed", () => {
   expect(screen.queryByText("Renamed group")).not.toBeInTheDocument();
   expect(
     screen.queryByRole("button", { name: "Edit task" }),
-  ).not.toBeInTheDocument();
+  ).toBeEnabled();
 });

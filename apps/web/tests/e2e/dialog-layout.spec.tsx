@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import { ScheduleScopeDialog } from "../../src/features/calendar/schedule-scope-dialog";
+import { PriorityBadge } from "../../src/components/priority-badge";
 
 for (const mode of ["light", "dark"]) {
   for (const width of [390, 1024]) {
@@ -16,8 +17,15 @@ for (const mode of ["light", "dark"]) {
           onChoose={async () => {}}
         />,
       );
+      const badges = renderToStaticMarkup(
+        <div>
+          {(["high", "medium", "low"] as const).map((priority) => (
+            <PriorityBadge key={priority} priority={priority} />
+          ))}
+        </div>,
+      );
       await page.setContent(
-        `<html data-mode="${mode}"><head><style>${readFileSync("src/app/globals.css", "utf8")}</style></head><body>${markup}</body></html>`,
+        `<html data-mode="${mode}"><head><style>${readFileSync("src/app/globals.css", "utf8")}</style></head><body>${badges}${markup}</body></html>`,
       );
       await page
         .locator("dialog")
@@ -54,4 +62,3 @@ for (const mode of ["light", "dark"]) {
     });
   }
 }
-

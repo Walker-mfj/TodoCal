@@ -32,7 +32,7 @@ export function TimerPanel({
           { signal, owner: session?.user.id },
         );
         result.push(
-          ...page.items.filter((t) => (t.estimatedPomodoros || 0) > 0),
+          ...page.items.filter((t) => t.status !== "complete"),
         );
         cursor = page.nextCursor;
       } while (cursor);
@@ -40,14 +40,14 @@ export function TimerPanel({
     },
   });
   const [selectedId, setSelectedId] = useState(
-    task?.estimatedPomodoros ? task.id : "",
+    task?.id || "",
   );
   const selectedTask =
     choices.data?.find((t) => t.id === selectedId) ||
     (task?.id === selectedId ? task : undefined);
   const [kind, setKind] = useState<FocusKind>(focus.state?.nextKind || "focus");
   const [durations, setDurations] = useState({
-    focus: String(settings.focusMinutes),
+    focus: String(task?.focusMinutes ?? settings.focusMinutes),
     short_break: String(settings.shortBreakMinutes),
     long_break: String(settings.longBreakMinutes),
   });
@@ -130,13 +130,15 @@ export function TimerPanel({
               disabled={focus.blocked || choices.isPending}
               onChange={(event) => {
                 setSelectedId(event.target.value);
+                const next = choices.data?.find((t) => t.id === event.target.value);
+                setDurations((old) => ({ ...old, focus: String(next?.focusMinutes ?? settings.focusMinutes) }));
                 if (!event.target.value) onFree();
               }}
             >
               <option value="">Free focus · no task</option>
-              {choices.data?.map((t) => (
+              {(task && !choices.data?.some((t) => t.id === task.id) ? [task, ...(choices.data || [])] : choices.data || []).map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.title} · {t.estimatedPomodoros} Pomodoro
+                  {t.title}{t.estimatedPomodoros ? ` · ${t.estimatedPomodoros} Pomodoros` : ""}
                 </option>
               ))}
             </select>
@@ -148,7 +150,7 @@ export function TimerPanel({
             )}
             {choices.data?.length === 0 && (
               <small>
-                Set estimated Pomodoros on a task to select it here.
+                Focus is optional. Choose a task or start free focus.
               </small>
             )}
           </label>

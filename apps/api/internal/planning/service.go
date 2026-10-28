@@ -81,7 +81,7 @@ func liveEntries(ctx context.Context, tx pgx.Tx, user, date string) ([]Entry, er
 	return entries, nil
 }
 func endedEntries(ctx context.Context, tx pgx.Tx, user, date string, cutoff time.Time) ([]Entry, error) {
-	rows, e := tx.Query(ctx, `WITH latest AS (SELECT DISTINCT ON(task_id) task_id,kind,after_state FROM task_events WHERE user_id=$1 AND occurred_at<$3 ORDER BY task_id,occurred_at DESC,(after_state->>'revision')::bigint DESC) SELECT after_state FROM latest WHERE kind<>'deleted' AND after_state->>'scheduledDate'=$2 ORDER BY after_state->>'startTime' NULLS FIRST,task_id`, user, date, cutoff)
+	rows, e := tx.Query(ctx, `WITH latest AS (SELECT DISTINCT ON(task_id) task_id,kind,after_state FROM task_events WHERE user_id=$1 AND (occurred_at<$3 OR historical_adjustment) ORDER BY task_id,occurred_at DESC,(after_state->>'revision')::bigint DESC) SELECT after_state FROM latest WHERE kind<>'deleted' AND after_state->>'scheduledDate'=$2 ORDER BY after_state->>'startTime' NULLS FIRST,task_id`, user, date, cutoff)
 	if e != nil {
 		return nil, e
 	}
@@ -264,6 +264,27 @@ func DayReport(ctx context.Context, tx pgx.Tx, user, zone, date string, now time
 		}
 		if e = rows.Err(); e != nil {
 			return out, e
+		}
+		rows.Close()
+		// Sessions evolve independently from the saved daily plan. Keep the
+		// snapshot's planned content while exposing current focus and revision.
+		for i := range out.Entries {
+			current, err := tasks.Get(ctx, tx, user, out.Entries[i].Task.ID)
+			if err != nil {
+				var fault *tasks.Fault
+				if errors.As(err, &fault) && fault.Status == 404 {
+					continue
+				}
+				return out, err
+			}
+			if out.Entries[i].Task.Status == "complete" {
+				out.Entries[i].Task.CompletedAt = current.CompletedAt
+			}
+			out.Entries[i].Task.ActualFocusSeconds = current.ActualFocusSeconds
+			out.Entries[i].Task.FocusProgress = current.FocusProgress
+			out.Entries[i].Task.RecurrenceCadence = current.RecurrenceCadence
+			out.Entries[i].Task.RecurrenceIntervalDays = current.RecurrenceIntervalDays
+			out.Entries[i].Task.Revision = current.Revision
 		}
 		out.Percentage = percentage(out.Planned, out.Completed)
 		return out, nil

@@ -263,12 +263,83 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/ExpectedRevision'
+  /tasks/{id}/restore:
+    parameters:
+    - $ref: '#/components/parameters/ResourceID'
+    post:
+      operationId: restoreTask
+      description: Restore a soft-deleted task at its deleted revision, including its historical plan.
+      parameters:
+      - $ref: '#/components/parameters/CSRF'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExpectedRevision'
+      responses:
+        '200':
+          description: Restored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        default:
+          $ref: '#/components/responses/Error'
+  /series/{id}/restore:
+    parameters:
+    - $ref: '#/components/parameters/ResourceID'
+    post:
+      operationId: restoreSeries
+      description: Undo stopping a series. Fails atomically if any affected occurrence changed.
+      parameters:
+      - $ref: '#/components/parameters/CSRF'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExpectedRevision'
+      responses:
+        '200':
+          description: Restored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecurrenceSeries'
+        default:
+          $ref: '#/components/responses/Error'
+  /tasks/{id}/focus:
+    parameters:
+    - $ref: '#/components/parameters/ResourceID'
+    get:
+      operationId: taskFocusHistory
+      description: Owned occurrence focus sessions, including active elapsed time, newest first.
+      responses:
+        '200':
+          description: Focus history
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [actualFocusSeconds, sessions]
+                properties:
+                  actualFocusSeconds:
+                    type: integer
+                  sessions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FocusSession'
+        default:
+          $ref: '#/components/responses/Error'
   /tasks/{id}/schedule:
     parameters:
     - $ref: '#/components/parameters/ResourceID'
     post:
       operationId: rescheduleTask
-      description: Atomically change only the schedule and issue an owned 10-second undo token bound to the resulting revision. All three nullable schedule fields are required. Finalized target dates are rejected.
+      description: Atomically change only the schedule and issue an owned 10-second undo token bound to the resulting revision. All three nullable schedule fields are required. Historical targets update the saved daily plan.
       parameters:
       - $ref: '#/components/parameters/CSRF'
       - $ref: '#/components/parameters/IdempotencyKey'
@@ -327,8 +398,8 @@ paths:
         default:
           $ref: '#/components/responses/Error'
       description: Completion never requires Pomodoro. Unscheduled completion stays
-        unscheduled. Completing a future task requires moveToToday=true. Reopening
-        invalidates same-day completion events; prior-day events remain valid.
+        unscheduled. Early completion preserves the scheduled date and time. Reopening
+        clears completedAt and updates historical analytics.
       parameters:
       - $ref: '#/components/parameters/CSRF'
       - $ref: '#/components/parameters/IdempotencyKey'
@@ -928,6 +999,11 @@ components:
           - string
           - 'null'
           format: date-time
+        focusMinutes:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 180
+          description: Per-task focus duration; null uses Settings.
         estimatedPomodoros:
           type:
           - integer
@@ -989,6 +1065,11 @@ components:
           - string
           - 'null'
           format: date-time
+        focusMinutes:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 180
+          description: Per-task focus duration; null uses Settings.
         estimatedPomodoros:
           type:
           - integer
@@ -1046,12 +1127,34 @@ components:
           - string
           - 'null'
           format: date-time
+        focusMinutes:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 180
+          description: Per-task focus duration; null uses Settings.
         estimatedPomodoros:
           type:
           - integer
           - 'null'
           minimum: 1
           maximum: 2147483647
+        completedAt:
+          type: [string, 'null']
+          format: date-time
+        deletedAt:
+          type: [string, 'null']
+          format: date-time
+        focusProgress:
+          type: number
+          minimum: 0
+          description: Sum of completed and ended focus session fractions, independent of current task duration.
+        actualFocusSeconds:
+          type: integer
+          minimum: 0
+        recurrenceCadence:
+          type: [string, 'null']
+        recurrenceIntervalDays:
+          type: [integer, 'null']
         id:
           type: string
           format: uuid
@@ -1166,9 +1269,14 @@ components:
         expectedRevision:
           type: integer
           minimum: 1
+        completedAt:
+          type: [string, 'null']
+          format: date-time
+          description: Explicit completion instant, no later than now. Defaults to now on first completion.
         moveToToday:
           type: boolean
-          default: false
+          deprecated: true
+          description: Ignored. Completion preserves the schedule.
       required:
       - complete
       - expectedRevision

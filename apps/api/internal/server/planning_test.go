@@ -83,11 +83,11 @@ func TestDailyHistoryCarryoverAndProgress(t *testing.T) {
 	moved := object(t, command(s, "PATCH", "/api/v1/tasks/"+moving["id"].(string), map[string]any{"scheduledDate": "2030-10-20", "expectedRevision": 1}, c, csrf, uuid.NewString()), 200)
 	object(t, command(s, "POST", "/api/v1/tasks/"+moved["id"].(string)+"/completion", map[string]any{"complete": true, "expectedRevision": 2}, c, csrf, uuid.NewString()), 200)
 	days = calendar(t, s, c, "2030-10-19", "2030-10-21")["days"].([]any)
-	if days[0].(map[string]any)["percentage"] != float64(50) || days[0].(map[string]any)["finalized"] != true || days[1].(map[string]any)["percentage"] != float64(100) {
-		t.Fatal("carryover rewrote history", days)
+	if days[0].(map[string]any)["percentage"] != float64(60) || days[0].(map[string]any)["finalized"] != true || days[1].(map[string]any)["percentage"] != float64(100) {
+		t.Fatal("explicit move did not correct history", days)
 	}
 	object(t, command(s, "DELETE", "/api/v1/tasks/"+moved["id"].(string), map[string]any{"expectedRevision": 3}, c, csrf, uuid.NewString()), 200)
-	if calendar(t, s, c, "2030-10-19", "2030-10-20")["days"].([]any)[0].(map[string]any)["planned"] != float64(6) {
+	if calendar(t, s, c, "2030-10-19", "2030-10-20")["days"].([]any)[0].(map[string]any)["planned"] != float64(5) {
 		t.Fatal("deletion rewrote history")
 	}
 }
@@ -135,8 +135,8 @@ func TestDelayedCatchupAndTimezoneSnapshotProtection(t *testing.T) {
 	object(t, command(s, "PATCH", "/api/v1/settings", map[string]any{"timezone": "Etc/GMT+12", "expectedRevision": 1}, c, csrf, uuid.NewString()), 200)
 	// 00:30 UTC on the 23rd becomes the already-finalized 22nd in UTC-12.
 	now = time.Date(2030, 10, 23, 0, 30, 0, 0, time.UTC)
-	object(t, command(s, "POST", "/api/v1/tasks", map[string]any{"title": "Cannot rewrite", "scheduledDate": "2030-10-22"}, c, csrf, uuid.NewString()), 422)
-	if calendar(t, s, c, "2030-10-22", "2030-10-23")["days"].([]any)[0].(map[string]any)["planned"] != float64(1) {
+	object(t, command(s, "POST", "/api/v1/tasks", map[string]any{"title": "Historical adjustment", "scheduledDate": "2030-10-22"}, c, csrf, uuid.NewString()), 201)
+	if calendar(t, s, c, "2030-10-22", "2030-10-23")["days"].([]any)[0].(map[string]any)["planned"] != float64(2) {
 		t.Fatal("timezone changed history")
 	}
 }
@@ -438,8 +438,8 @@ func TestSeriesEditPreservesHistoryAndRollsBackInvalidShift(t *testing.T) {
 	live := out["tasks"].([]any)
 	selected := live[1].(map[string]any)
 	path := "/api/v1/tasks/" + selected["id"].(string)
-	// Moving all dates back would place today's occurrence in finalized history.
-	object(t, command(s, "PATCH", path, map[string]any{"scope": "all", "expectedRevision": 1, "expectedSeriesRevision": 1, "scheduledDate": "2030-10-20", "title": "Must roll back"}, c, csrf, uuid.NewString()), 422)
+	// An invalid time range must roll back every occurrence.
+	object(t, command(s, "PATCH", path, map[string]any{"scope": "all", "expectedRevision": 1, "expectedSeriesRevision": 1, "startTime": "10:00", "endTime": "09:00", "title": "Must roll back"}, c, csrf, uuid.NewString()), 422)
 	unchanged := object(t, req(s, "GET", path, nil, c, ""), 200)
 	if unchanged["title"] != "Practice" || unchanged["revision"] != float64(1) {
 		t.Fatal(unchanged)

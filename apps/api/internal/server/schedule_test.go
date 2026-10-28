@@ -55,7 +55,6 @@ func TestScheduleUndoConflictsExpiryOwnershipAndValidation(t *testing.T) {
 		{"scheduledDate": "2030-02-30", "startTime": nil, "endTime": nil, "expectedRevision": 1},
 		{"scheduledDate": "not-a-date", "startTime": nil, "endTime": nil, "expectedRevision": 1},
 		{"scheduledDate": "2030-10-19", "startTime": "23:45", "endTime": "00:15", "expectedRevision": 1},
-		{"scheduledDate": "2030-10-18", "startTime": nil, "endTime": nil, "expectedRevision": 1},
 		{"scheduledDate": "2030-10-19", "startTime": "09:00", "endTime": nil, "expectedRevision": 1},
 		{"scheduledDate": "2030-10-19", "expectedRevision": 1},
 	} {

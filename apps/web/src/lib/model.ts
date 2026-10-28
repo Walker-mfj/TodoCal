@@ -16,6 +16,7 @@ export type Draft = {
   endTime?: string;
   deadline?: string;
   estimatedPomodoros?: string;
+  focusMinutes?: string;
   cadence?: string;
   intervalDays?: number;
   endDate?: string;
@@ -55,6 +56,8 @@ export function taskPayload(
   zone: string,
 ): components["schemas"]["TaskInput"] {
   if (!d.title.trim()) throw new FieldError("title", "Add a task title.");
+  if (d.focusMinutes && (!Number.isInteger(Number(d.focusMinutes)) || Number(d.focusMinutes) < 1 || Number(d.focusMinutes) > 180))
+    throw new FieldError("focusMinutes", "Choose a session duration between 1 and 180 minutes.");
   if (
     !!d.startTime !== !!d.endTime ||
     (d.startTime && (!d.scheduledDate || d.startTime >= d.endTime!))
@@ -112,6 +115,7 @@ export function taskPayload(
     startTime: d.startTime || null,
     endTime: d.endTime || null,
     deadline,
+    focusMinutes: d.focusMinutes ? Number(d.focusMinutes) : null,
     estimatedPomodoros: d.estimatedPomodoros
       ? Number(d.estimatedPomodoros)
       : null,
@@ -130,6 +134,7 @@ export function draftFromTask(task: Task, zone: string): Draft {
           .toFormat("yyyy-MM-dd'T'HH:mm")
       : "",
     estimatedPomodoros: task.estimatedPomodoros?.toString() || "",
+    focusMinutes: task.focusMinutes?.toString() || "",
   };
 }
 export function slotDraft(

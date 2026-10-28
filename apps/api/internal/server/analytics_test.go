@@ -30,29 +30,29 @@ func TestPeriodWeightedPlansDistinctEventsAndReopen(t *testing.T) {
 	if m["percentage"] != float64(10) || m["planned"] != float64(10) || m["completedTasks"] != float64(1) {
 		t.Fatal(m)
 	}
-	// Moving a completed task adds another daily occurrence but not another distinct completion.
+	// Explicitly moving a task corrects its scheduled-day contribution without duplicating completion.
 	object(t, command(s, "PATCH", "/api/v1/tasks/"+a["id"].(string), map[string]any{"scheduledDate": "2030-10-15", "expectedRevision": a["revision"]}, c, csrf, uuid.NewString()), 200)
 	m = report()["metrics"].(map[string]any)
-	if m["completed"] != float64(2) || m["completedTasks"] != float64(1) {
+	if m["completed"] != float64(1) || m["completedTasks"] != float64(1) {
 		t.Fatal(m)
 	}
 	b := complete(create(nil), true)
 	m = report()["metrics"].(map[string]any)
-	if m["completedTasks"] != float64(2) || m["planned"] != float64(11) {
+	if m["completedTasks"] != float64(2) || m["planned"] != float64(10) {
 		t.Fatal(m)
 	}
 	complete(b, false)
 	if report()["metrics"].(map[string]any)["completedTasks"] != float64(1) {
 		t.Fatal("same-day reopen counted")
 	}
-	// Reopening the moved task preserves the earlier finalized completion event.
+	// Explicit reopening corrects the earlier completion.
 	current := object(t, req(s, "GET", "/api/v1/tasks/"+a["id"].(string), nil, c, ""), 200)
 	complete(current, false)
-	if report()["metrics"].(map[string]any)["completedTasks"] != float64(1) {
-		t.Fatal("historical event lost")
+	if report()["metrics"].(map[string]any)["completedTasks"] != float64(0) {
+		t.Fatal("reopened completion retained")
 	}
 	create("2030-10-16")
-	if report()["metrics"].(map[string]any)["planned"] != float64(11) {
+	if report()["metrics"].(map[string]any)["planned"] != float64(10) {
 		t.Fatal("future plan counted")
 	}
 	other, _ := register(t, s, "analytics-other@example.com")
@@ -164,7 +164,7 @@ func TestAnalyticsTimezoneChangeDoesNotDoubleCountFocus(t *testing.T) {
 	}
 }
 
-func TestReopenOnRevisitedFinalizedDatePreservesCompletionHistory(t *testing.T) {
+func TestReopenOnRevisitedFinalizedDateCorrectsCompletionHistory(t *testing.T) {
 	for _, scheduled := range []bool{true, false} {
 		t.Run(map[bool]string{true: "planned", false: "completion-only"}[scheduled], func(t *testing.T) {
 			s, _ := testServer(t)
@@ -183,10 +183,10 @@ func TestReopenOnRevisitedFinalizedDatePreservesCompletionHistory(t *testing.T) 
 			now = now.Add(time.Second)
 			object(t, command(s, "POST", path, map[string]any{"complete": false, "expectedRevision": 2}, c, csrf, uuid.NewString()), 200)
 			day := object(t, req(s, "GET", "/api/v1/reports/days/2030-10-19", nil, c, ""), 200)
-			if day["completedTasks"] != float64(1) {
+			if day["completedTasks"] != float64(0) {
 				t.Fatalf("finalized completion lost: %+v", day)
 			}
-			if scheduled && day["completed"] != float64(1) {
+			if scheduled && day["completed"] != float64(0) {
 				t.Fatal("snapshot changed", day)
 			}
 		})

@@ -6,6 +6,11 @@ import {
   slotDraft,
 } from "../src/lib/model";
 describe("task scheduling", () => {
+  it("preserves a per-task focus duration independently of its schedule", () => {
+    expect(taskPayload({ title: "Read", focusMinutes: "40", estimatedPomodoros: "2", scheduledDate: "2020-01-01", startTime: "09:00", endTime: "09:30" }, "Asia/Tokyo")).toMatchObject({ focusMinutes: 40, estimatedPomodoros: 2, scheduledDate: "2020-01-01", endTime: "09:30" });
+    expect(taskPayload({ title: "Read" }, "Asia/Tokyo")).toMatchObject({ focusMinutes: null });
+    for (const value of ["0", "181", "1.5", "abc"]) expect(() => taskPayload({ title: "Read", focusMinutes: value }, "Asia/Tokyo")).toThrow("1 and 180");
+  });
   it("accepts a title without a Pomodoro or schedule", () => {
     expect(taskPayload({ title: "Read a book" }, "Asia/Tokyo")).toMatchObject({
       title: "Read a book",

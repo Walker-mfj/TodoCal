@@ -120,6 +120,7 @@ func Start(ctx context.Context, tx pgx.Tx, user string, taskID *string, kind str
 		return state, &tasks.Fault{409, "focus_active", "End the current timer before starting another."}
 	}
 	var title *string
+	var taskMinutes *int
 	if taskID != nil {
 		if kind != "focus" {
 			return state, tasks.Invalid("Breaks cannot be linked to a task")
@@ -135,6 +136,7 @@ func Start(ctx context.Context, tx pgx.Tx, user string, taskID *string, kind str
 			return state, e
 		}
 		title = &task.Title
+		taskMinutes = task.FocusMinutes
 	}
 	var minutes int64
 	e = tx.QueryRow(ctx, `SELECT CASE $2 WHEN 'focus' THEN focus_minutes WHEN 'short_break' THEN short_break_minutes ELSE long_break_minutes END FROM settings WHERE user_id=$1`, user, kind).Scan(&minutes)
@@ -142,6 +144,9 @@ func Start(ctx context.Context, tx pgx.Tx, user string, taskID *string, kind str
 		return state, e
 	}
 	id := uuid.NewString()
+	if taskMinutes != nil {
+		minutes = int64(*taskMinutes)
+	}
 	if len(duration) > 0 {
 		if duration[0] < 1 || duration[0] > 180 {
 			return State{}, tasks.Invalid("Duration must be between 1 and 180 minutes")
@@ -216,4 +221,42 @@ func Change(ctx context.Context, tx pgx.Tx, user, id, action string, revision in
 		return State{}, e
 	}
 	return Active(ctx, tx, user, now)
+}
+
+type TaskHistory struct {
+	ActualFocusSeconds int64      `json:"actualFocusSeconds"`
+	Sessions           []*Session `json:"sessions"`
+}
+
+func History(ctx context.Context, tx pgx.Tx, user, id string, now time.Time) (TaskHistory, error) {
+	out := TaskHistory{Sessions: []*Session{}}
+	parsed, err := uuid.Parse(id)
+	if err != nil {
+		return out, tasks.Missing()
+	}
+	var exists bool
+	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM tasks WHERE user_id=$1 AND id=$2)`, user, parsed.String()).Scan(&exists)
+	if err != nil {
+		return out, err
+	}
+	if !exists {
+		return out, tasks.Missing()
+	}
+	if err = settle(ctx, tx, user, now); err != nil {
+		return out, err
+	}
+	rows, err := tx.Query(ctx, `SELECT `+columns+` FROM focus_sessions WHERE user_id=$1 AND task_id=$2 AND kind='focus' ORDER BY sequence DESC`, user, parsed.String())
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		session, e := scan(rows, now)
+		if e != nil {
+			return out, e
+		}
+		out.Sessions = append(out.Sessions, session)
+		out.ActualFocusSeconds += session.FocusSeconds
+	}
+	return out, rows.Err()
 }

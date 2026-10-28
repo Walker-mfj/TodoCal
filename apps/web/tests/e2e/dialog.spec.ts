@@ -66,8 +66,11 @@ test("calendar slot changes retain content; only edited drafts need a close deci
   ).toHaveValue("weekly");
   await expect(page.getByRole("alertdialog")).toBeHidden();
   const close = page.getByRole("button", { name: "Close editor", exact: true });
-  await close.click();
-  const dialog = page.getByRole("alertdialog", { name: "Close editor?" });
+  await page.getByLabel("Task title").focus();
+  await page.keyboard.press("Escape");
+  const dialog = page.getByRole("alertdialog", {
+    name: "Discard unsaved changes?",
+  });
   await expect(dialog).toBeVisible();
   await expect(
     dialog.getByRole("button", { name: "Keep editing" }),
@@ -78,7 +81,7 @@ test("calendar slot changes retain content; only edited drafts need a close deci
   ).toBeFocused();
   await page.keyboard.press("Shift+Tab");
   await expect(
-    dialog.getByRole("button", { name: "Close editor" }),
+    dialog.getByRole("button", { name: "Discard changes" }),
   ).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(
@@ -90,9 +93,9 @@ test("calendar slot changes retain content; only edited drafts need a close deci
   ).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
-  await expect(close).toBeFocused();
+  await expect(page.getByLabel("Task title")).toBeFocused();
   await close.click();
-  await dialog.getByRole("button", { name: "Close editor" }).click();
+  await dialog.getByRole("button", { name: "Discard changes" }).click();
   await expect(page.getByLabel("Task title")).toBeHidden();
   await page
     .getByRole("button", { name: "New task", exact: true })

@@ -42,7 +42,7 @@ Task/group/settings writes also require an `Idempotency-Key` (16–128 character
 
 `POST /api/v1/series` accepts `task`, `cadence` (`daily`, `interval`, `weekly`), optional `intervalDays`, and nullable inclusive `endDate`. Creation generates the first occurrence; calendar reads and catch-up generate only finite ranges. `GET /api/v1/series/{id}` returns current owned metadata and revision for display and safe stopping. Each occurrence has an independent task ID and immutable `(seriesId, originalOccurrenceDate)` identity. `POST /api/v1/series/{id}/stop` cancels future incomplete occurrences while retaining today's and historical/completed records.
 
-Ended days are finalized before domain reads/mutations. Catch-up uses at most 31 calendar days per transaction and a persisted watermark; the user command runs only after all necessary batches finish. A zone change first settles the old zone; forward jumps seal crossed dates at change time, and backward jumps never reopen snapshots. Future DST gaps are skipped with an explicit calendar warning and no missed-task penalty. An overlap resolves to the earlier instant; unfinalized future gap predictions are reevaluated after zone changes.
+Ended days are finalized before domain reads/mutations. Catch-up uses at most 31 calendar days per transaction and a persisted watermark; the user command runs only after all necessary batches finish. A zone change first settles the old zone; forward jumps seal crossed dates at change time, and backward jumps preserve snapshots until an explicit task adjustment. Future DST gaps are skipped with an explicit calendar warning and no missed-task penalty. An overlap resolves to the earlier instant; unfinalized future gap predictions are reevaluated after zone changes.
 
 Run the worker in another terminal:
 
@@ -78,7 +78,7 @@ Install test engines with `cd apps/web && npx playwright install firefox webkit`
 
 Private query caches are scoped to the account and cleared on session expiry, logout, or account change. Successful authenticated API responses include `X-Account-ID`; the client refuses a response from a different account before caching it. A task editor draft is stored in sessionStorage under its owner ID, including its original revision and an uncertain command's exact payload/idempotency key. Re-authentication can restore only that account's draft; explicit logout removes that account's drafts. Group/settings drafts and uncertain commands are also stored per owner and cleared on explicit logout. Settings conflict recovery offers reapply or discard against the latest revision. Other tabs send invalidation hints, while the API remains authoritative. Visible pages refresh every 15 seconds and on focus/reconnect. Disconnected writes are disabled. The form retains invalid/conflicting input and lets the user discard a conflicting draft and reload.
 
-Calendar times are rendered as account-local wall-clock labels, independent of the browser timezone. Deadline inputs are converted through the account's IANA zone; nonexistent DST times are rejected. Finalized calendar/day details use immutable snapshot entries. Progress grids include all tasks regardless of calendar/list filters; future and no-plan days have no completion percentage.
+Calendar times are rendered as account-local wall-clock labels, independent of the browser timezone. Deadline inputs are converted through the account's IANA zone; nonexistent DST times are rejected. Finalized calendar/day details retain saved plans; explicit task changes revise the affected entries and Analytics. Progress grids include all tasks regardless of calendar/list filters; future and no-plan days have no completion percentage.
 
 Compose persists development data in the `focus_pg` volume. `docker compose stop` stops PostgreSQL without deleting data. Local credentials in Compose are development-only. No public service has been deployed.
 
@@ -105,3 +105,10 @@ Focus analytics allocate saved intervals using the current account timezone, sho
 See [MVP acceptance](docs/verification/mvp-acceptance.md) for criteria 1–50, review findings and known limits, and [local operations](docs/verification/operations.md) for configuration, migrations and backup/recovery. Run `make test-operations` for an isolated database restart and dump/restore rehearsal; it requires Python 3 and never modifies the development database.
 
 Acceptance hardening evidence, accessibility scope and remaining Safari permission gate: [hardening results](docs/verification/hardening-results.md). Run `make test-load` for the isolated synthetic load harness; the measured profile is in [load acceptance](docs/verification/load-acceptance.md).
+
+
+### Task history and quick focus
+
+Tasks can be created, edited, completed, reopened, or soft-deleted on past dates. Completing early preserves the schedule and records `completedAt`; Analytics separates scheduled-plan completion from the actual completion date. Deleted tasks offer a 10-second `Task deleted · Undo` toast, without a Recently deleted tab. Repeating tasks offer deletion of one occurrence or stopping future incomplete occurrences; stopping can also be undone from the toast.
+
+Optional focus plans store a Pomodoro goal and per-task duration. Quick Focus appears on Calendar hover or keyboard focus; active cards show Pause or Resume. The task duration takes precedence over Settings, even without a goal. Sessions retain independent targets and actual active time, allow exceeding the plan, and never reschedule or auto-complete a task. Running and paused sessions reserve the single active slot. Each recurring occurrence has its own focus history. Migration `000009_task_history_focus` adds these fields and backfills existing completion timestamps.

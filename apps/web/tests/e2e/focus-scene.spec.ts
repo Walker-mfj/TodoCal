@@ -18,7 +18,8 @@ test("focus scene custom duration persists, pauses, exits and resumes", async ({
     .click();
   await page.getByRole("button", { name: "New task", exact: true }).click();
   await page.getByLabel("Task title").fill("A focused session");
-  await page.getByLabel("Estimated Pomodoros (optional)").fill("2");
+  await page.getByLabel("Plan focus", { exact: true }).check();
+  await page.getByLabel("Planned Pomodoros").fill("2");
   await page.getByRole("button", { name: "Create task", exact: true }).click();
   await page.getByRole("button", { name: /^A focused session/ }).click();
   await page
@@ -26,10 +27,14 @@ test("focus scene custom duration persists, pauses, exits and resumes", async ({
     .click();
   const dialog = page.getByRole("dialog", { name: "Focus timer", exact: true });
   await expect(dialog.getByRole("heading")).toHaveText("A focused session");
-  await expect(dialog.getByLabel("Task", {exact:true})).toContainText("A focused session");
-  await dialog.getByLabel("Task", {exact:true}).selectOption("");
+  await expect(dialog.getByLabel("Task", { exact: true })).toContainText(
+    "A focused session",
+  );
+  await dialog.getByLabel("Task", { exact: true }).selectOption("");
   await expect(dialog.getByRole("heading")).toHaveText("One thing at a time.");
-  await dialog.getByLabel("Task", {exact:true}).selectOption({label:"A focused session · 2 Pomodoro"});
+  await dialog
+    .getByLabel("Task", { exact: true })
+    .selectOption({ label: "A focused session · 2 Pomodoros" });
 
   await dialog.getByLabel("Duration").fill("0");
   await expect(
@@ -51,7 +56,7 @@ test("focus scene custom duration persists, pauses, exits and resumes", async ({
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await page.reload();
-  await page.getByRole("button", { name: "Focus timer", exact: true }).click();
+  await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel("Duration")).toHaveValue("42");
   await expect(
     dialog.getByRole("button", { name: "Resume", exact: true }),

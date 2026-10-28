@@ -1,4 +1,5 @@
 "use client";
+import { SidebarPanel } from "../components/sidebar-panel";
 import { AccountMenu } from "../components/account-menu";
 import { ToastProvider, ToastNotice } from "../components/toast";
 import type { CalendarDraft } from "../features/calendar/draft-preview";
@@ -18,7 +19,6 @@ import {
   Plus,
   LogOut,
   Search,
-  X,
   ArrowUpRight,
   PanelLeftClose,
   PanelLeftOpen,
@@ -37,6 +37,10 @@ import { TimerPanel } from "../features/focus/TimerPanel";
 import { useSession, useOwnedQuery } from "./providers";
 import { AuthScreen } from "../features/auth/auth-screen";
 import { TaskEditor } from "../features/tasks/editor";
+import {
+  RecoveryToast,
+  type RecoveryItem,
+} from "../features/tasks/recovery-toast";
 import { TaskDetail } from "../features/tasks/detail";
 import { TaskRow } from "../features/tasks/task-row";
 import { Groups } from "../features/tasks/groups";
@@ -107,6 +111,22 @@ function AccountWorkspace() {
     [view, setView] = useState("all"),
     [cursor, setCursor] = useState(""),
     [message, setMessage] = useState("");
+  const navigationKey = `focus:navigation:${account.user.id}`;
+  const [navigationReady, setNavigationReady] = useState(false);
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(sessionStore.getItem(navigationKey) || "null");
+      if (saved && ["calendar", "tasks", "progress", "groups", "settings"].includes(saved.page)) {
+        updatePage(saved.page);
+        setShowFocus(saved.focus === true);
+      }
+    } catch { /* Ignore obsolete navigation state. */ }
+    setNavigationReady(true);
+  }, [navigationKey]);
+  useEffect(() => {
+    if (navigationReady) sessionStore.setItem(navigationKey, JSON.stringify({ page, focus: showFocus }));
+  }, [navigationKey, navigationReady, page, showFocus]);
+  const [recovery, setRecovery] = useState<RecoveryItem | null>(null);
   const [saveNotice, setSaveNotice] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   useEffect(() => {
@@ -219,8 +239,9 @@ function AccountWorkspace() {
     ) {
       if (
         !(await confirm("Unsaved changes will be discarded.", {
-          title: "Close editor?",
-          confirmLabel: "Close editor",
+          title: "Discard unsaved changes?",
+          confirmLabel: "Discard changes",
+          destructive: true,
           cancelLabel: "Keep editing",
         }))
       )
@@ -247,25 +268,12 @@ function AccountWorkspace() {
     updatePage(next);
   };
   const complete = async (task: Task) => {
-    const move =
-      task.status !== "complete" &&
-      !!task.scheduledDate &&
-      task.scheduledDate > date;
-    if (
-      move &&
-      !(await confirm("Move this future task to today and complete it?", {
-        title: "Complete future task?",
-        confirmLabel: "Move and complete",
-      }))
-    )
-      return;
     void command.run(
       `/tasks/${task.id}/completion`,
       "POST",
       {
         complete: task.status !== "complete",
         expectedRevision: task.revision,
-        moveToToday: move,
       },
       () => setPanel(null),
     );
@@ -418,6 +426,19 @@ function AccountWorkspace() {
         id="main"
         className={`workspace ${page === "calendar" ? "calendar-workspace" : ""}`}
       >
+        {recovery && (
+          <RecoveryToast
+            key={`${recovery.kind}:${recovery.id}:${recovery.revision}`}
+            item={recovery}
+            execute={execute}
+            connected={connected}
+            onRestored={() => {
+              setRecovery(null);
+              setSaveNotice("Restored · Analytics updated");
+            }}
+            onDismiss={() => setRecovery(null)}
+          />
+        )}
         {scheduling.busy && (
           <ToastNotice duration={0}>Saving calendar change…</ToastNotice>
         )}
@@ -532,9 +553,7 @@ function AccountWorkspace() {
         {(message || command.error) && (
           <ToastNotice
             tone={
-              !command.error &&
-              (message.startsWith("Past days are read-only") ||
-                message.startsWith("Confirm the pending save"))
+              !command.error && message.startsWith("Confirm the pending save")
                 ? "warning"
                 : "error"
             }
@@ -652,6 +671,9 @@ function AccountWorkspace() {
                 </p>
               ) : null}
               <Calendar
+                focus={focus}
+                defaultFocusMinutes={account.settings.focusMinutes}
+                onOpenFocus={() => setShowFocus(true)}
                 draftDisabled={editorState.blocked}
                 onDay={(date) => open({ type: "day", date })}
                 draftPreview={
@@ -669,12 +691,6 @@ function AccountWorkspace() {
                   open({ type: "detail", task, historical })
                 }
                 onCreate={(seed) => {
-                  if (seed.scheduledDate! < date) {
-                    setMessage(
-                      "Past days are read-only. Choose today or a future date.",
-                    );
-                    return;
-                  }
                   if (panel?.type === "new" || panel?.type === "edit") {
                     if (editorState.blocked) {
                       setMessage(
@@ -932,6 +948,7 @@ function AccountWorkspace() {
       </main>
       {panel?.type === "new" || panel?.type === "edit" ? (
         <TaskEditor
+          defaultFocusMinutes={account.settings.focusMinutes}
           key={panel.type === "edit" ? panel.task.id : "new"}
           onStateChange={setEditorState}
           onDraftChange={page === "calendar" ? setDraftPreview : undefined}
@@ -969,9 +986,11 @@ function AccountWorkspace() {
         />
       ) : panel?.type === "detail" ? (
         <TaskDetail
+          defaultFocusMinutes={account.settings.focusMinutes}
           key={panel.task.id + String(panel.historical)}
           task={panel.task}
           historical={!!panel.historical}
+          zone={account.settings.timezone}
           groups={allGroups}
           execute={execute}
           disabled={
@@ -988,23 +1007,28 @@ function AccountWorkspace() {
             setFocusTask(panel.task);
             setShowFocus(true);
           }}
-          onDeleted={() => setPanel(null)}
+          onDeleted={(task) => {
+            setPanel(null);
+            setRecovery({
+              kind: "task",
+              id: task.id,
+              revision: task.revision + 1,
+            });
+          }}
+          onStopped={(id, revision) => {
+            setPanel(null);
+            setRecovery({ kind: "series", id, revision });
+          }}
         />
       ) : panel?.type === "day" ? (
-        <aside className="detail-panel day-detail">
-          <div className="panel-heading">
-            <div>
-              <p className="eyebrow">DAILY PROGRESS</p>
-              <h2>{dateLabel(panel.date, "EEEE, MMM d")}</h2>
-            </div>
-            <button
-              className="icon-button"
-              aria-label="Close day details"
-              onClick={() => setPanel(null)}
-            >
-              <X size={18} />
-            </button>
-          </div>
+        <SidebarPanel
+          className="day-detail"
+          label="Day details"
+          eyebrow="DAILY PROGRESS"
+          title={dateLabel(panel.date, "EEEE, MMM d")}
+          closeLabel="Close day details"
+          onClose={() => setPanel(null)}
+        >
           {day.isPending ? (
             <p>Loading day…</p>
           ) : day.error ? (
@@ -1021,7 +1045,7 @@ function AccountWorkspace() {
                 </p>
                 <small>
                   {day.data.finalized
-                    ? `Finalized in ${day.data.timezone}`
+                    ? `Historical plan · ${day.data.timezone} · editable`
                     : panel.date > date
                       ? "Planned for the future"
                       : "Live progress · all tasks"}
@@ -1072,7 +1096,7 @@ function AccountWorkspace() {
               </>
             )
           )}
-        </aside>
+        </SidebarPanel>
       ) : null}
     </div>
   );

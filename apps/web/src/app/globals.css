@@ -1569,115 +1569,8 @@ input[type="datetime-local"] {
   }
 }
 
-.app-dialog {
-  margin: auto;
-  width: min(440px, calc(100vw - 32px));
-  max-height: calc(100dvh - 48px);
-  overflow: auto;
-  padding: 28px;
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  background: var(--color-panel);
-  color: var(--color-ink);
-  box-shadow: 0 20px 70px #0003;
-}
-.app-dialog::backdrop {
-  background: var(--color-overlay);
-}
-.app-dialog h2 {
-  margin: 16px 0 10px;
-  font-size: 22px;
-}
-.app-dialog p {
-  color: var(--color-muted);
-  line-height: 1.6;
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-.app-dialog-icon {
-  display: inline-flex;
-  padding: 10px;
-  border-radius: 10px;
-  background: var(--color-accent-soft);
-  color: var(--color-accent);
-}
-.app-dialog-icon.destructive {
-  background: color-mix(in srgb, #ba3030 12%, var(--color-panel));
-  color: var(--color-ink);
-}
-.app-dialog-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 26px;
-}
-.app-dialog-actions button {
-  min-height: 42px;
-  padding: 10px 18px;
-}
-.app-dialog-actions .dialog-danger {
-  background: #b42332;
-  border-color: #b42332;
-  color: #fff;
-}
 
 /* Shared decisions: clear hierarchy, safe dismissal, and a separated action bar. */
-.app-dialog {
-  padding: 28px 0 0;
-  width: min(460px, calc(100vw - 32px));
-  border-radius: 16px;
-}
-.app-dialog-close {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 36px;
-  height: 36px;
-  border: 0;
-  background: transparent;
-  color: var(--color-muted);
-}
-.app-dialog-close:hover {
-  background: var(--color-side);
-  color: var(--color-ink);
-}
-.app-dialog-heading {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin: 0 50px 16px 28px;
-}
-.app-dialog-icon {
-  flex-shrink: 0;
-}
-.app-dialog-eyebrow {
-  display: block;
-  color: var(--color-muted);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  margin-bottom: 5px;
-}
-.app-dialog h2 {
-  margin: 0;
-  font-size: 21px;
-  line-height: 1.3;
-}
-.app-dialog > p {
-  padding: 0 28px;
-  font-size: 14px;
-}
-.app-dialog-actions {
-  padding: 18px 28px;
-  margin-top: 24px;
-  border-top: 1px solid var(--color-border);
-  background: var(--color-side);
-}
-.app-dialog-actions button {
-  border-radius: 8px;
-  font-weight: 600;
-}
 .fc .fc-event-draft {
   border: 0 !important;
   outline: 1px dashed var(--color-accent);
@@ -1705,16 +1598,6 @@ input[type="datetime-local"] {
   flex-wrap: wrap;
 }
 @media (max-width: 480px) {
-  .app-dialog-heading {
-    margin-left: 20px;
-    gap: 10px;
-  }
-  .app-dialog > p {
-    padding: 0 20px;
-  }
-  .app-dialog-actions {
-    padding: 16px 20px;
-  }
 }
 
 /* Keep the calendar and its controls inside the desktop workspace. */
@@ -2145,28 +2028,6 @@ input[type="datetime-local"] {
   width: 100%;
   align-self: center;
 }
-.app-dialog {
-  border-radius: 20px;
-  box-shadow: 0 24px 100px #0004;
-}
-.app-dialog-heading {
-  align-items: flex-start;
-  margin-top: 12px;
-}
-.app-dialog-icon {
-  border-radius: 50%;
-  padding: 14px;
-}
-.app-dialog-actions {
-  background: transparent;
-  border-top: 0;
-  padding-top: 8px;
-  gap: 12px;
-}
-.app-dialog-actions button {
-  flex: 1;
-  min-height: 44px;
-}
 .notice,
 .error {
   border-radius: 10px;
@@ -2231,12 +2092,6 @@ button.danger:hover:not(:disabled) {
   color: var(--color-ink);
   border-color: #b42332;
 }
-.app-dialog-actions .dialog-danger:hover:not(:disabled),
-.app-dialog-actions .dialog-danger:focus-visible {
-  background: #8f1827;
-  border-color: #8f1827;
-  color: #fff;
-}
 .task-editor > form > fieldset {
   padding: 6px;
   scroll-padding: 8px;
@@ -2292,46 +2147,6 @@ textarea:focus-visible {
 }
 .sidebar-collapsed .focus-preference {
   justify-content: center;
-}
-.app-dialog {
-  padding-top: 24px;
-  border-radius: 16px;
-  width: min(440px, calc(100vw - 32px));
-}
-.app-dialog-heading {
-  margin: 8px 48px 18px 24px;
-  gap: 12px;
-  align-items: center;
-}
-.app-dialog-icon {
-  padding: 12px;
-  border-radius: 12px;
-}
-.app-dialog-icon.destructive {
-  background: color-mix(in srgb, #b42332 10%, var(--color-panel));
-  color: var(--color-ink);
-}
-.app-dialog-eyebrow {
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-.app-dialog h2 {
-  font-size: 20px;
-}
-.app-dialog > p {
-  padding: 0 24px;
-  font-size: 14px;
-  line-height: 1.7;
-}
-.app-dialog-actions {
-  margin-top: 24px;
-  padding: 18px 24px;
-  background: var(--color-side);
-  border-top: 1px solid var(--color-border);
-}
-.app-dialog::backdrop {
-  backdrop-filter: blur(4px);
 }
 @media (max-width: 600px) {
   .focus-preference {
@@ -2908,3 +2723,228 @@ select {
 
 .form-row > .group-color-field { flex: 1; min-width: 0; }
 .color-label { display: block; font-weight: 600; margin-bottom: 6px; }
+
+/* Shared modal layout: confirmations and recurrence scope decisions. */
+.app-dialog {
+  margin: auto;
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-panel);
+  color: var(--color-ink);
+  box-shadow: 0 20px 70px #0003;
+}
+.app-dialog::backdrop {
+  background: var(--color-overlay);
+  backdrop-filter: blur(4px);
+}
+.app-dialog-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.app-dialog-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+.app-dialog-icon.destructive {
+  background: var(--priority-high-bg);
+  color: var(--priority-high-ink);
+}
+.app-dialog h2 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+.app-dialog .app-dialog-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-muted);
+}
+.app-dialog-close:hover:not(:disabled) {
+  background: var(--color-side);
+  color: var(--color-ink);
+}
+.app-dialog > p {
+  margin: 0 0 12px;
+  color: var(--color-muted);
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.app-dialog-actions {
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 24px;
+}
+.app-dialog-actions > button {
+  flex: 0 1 auto;
+  min-width: 0;
+  min-height: 42px;
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.app-dialog-actions:has(> button:nth-child(3)) > button {
+  flex: 1;
+}
+.app-dialog-actions .dialog-danger {
+  background: #b42332;
+  border-color: #b42332;
+  color: #fff;
+}
+.app-dialog-actions .dialog-danger:hover:not(:disabled),
+.app-dialog-actions .dialog-danger:focus-visible {
+  background: #8f1827;
+  border-color: #8f1827;
+  color: #fff;
+}
+:root {
+  --priority-high-ink: #a62d38;
+  --priority-high-bg: #fcebed;
+  --priority-medium-ink: #80600e;
+  --priority-medium-bg: #fff3d3;
+  --priority-low-ink: #536071;
+  --priority-low-bg: #edf0f4;
+}
+[data-mode="dark"] {
+  --priority-high-ink: #ffb3bb;
+  --priority-high-bg: #512d35;
+  --priority-medium-ink: #f4d17a;
+  --priority-medium-bg: #453b23;
+  --priority-low-ink: #c1cbd8;
+  --priority-low-bg: #343e4b;
+}
+@media (max-width: 480px) {
+  .app-dialog {
+    padding: 20px;
+  }
+  .app-dialog-heading {
+    gap: 10px;
+  }
+  .app-dialog h2 {
+    font-size: 18px;
+  }
+  .app-dialog-actions {
+    flex-direction: column;
+  }
+  .app-dialog-actions > button {
+    width: 100%;
+  }
+}
+.priority-badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  flex-shrink: 0;
+  gap: 4px;
+  padding: 3px 6px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.025em;
+  white-space: nowrap;
+}
+.task-row > .priority-badge {
+  align-self: center;
+}
+.priority-high {
+  color: var(--priority-high-ink);
+  background: var(--priority-high-bg);
+}
+.priority-medium {
+  color: var(--priority-medium-ink);
+  background: var(--priority-medium-bg);
+}
+.priority-low {
+  color: var(--priority-low-ink);
+  background: var(--priority-low-bg);
+}
+.priority-compact {
+  padding: 2px;
+}
+/* Priority stays separate from the event's group color. */
+.fc-event-main {
+  container-type: inline-size;
+}
+.event-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-width: 0;
+  width: 100%;
+}
+.event-heading .event-time {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.event-heading .priority-badge {
+  align-self: center;
+}
+.calendar-task-content {
+  gap: 3px;
+}
+.calendar-task-content .event-repeat {
+  position: static;
+  margin-top: auto;
+  align-self: flex-end;
+  line-height: 1;
+}
+.fc .calendar-task-content.compact {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+.calendar-task-content.compact .event-title {
+  order: 0;
+  flex: 1;
+}
+.calendar-task-content.compact .draft-badge {
+  order: 1;
+}
+.calendar-task-content.compact .event-heading {
+  order: 2;
+  width: auto;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+@container (max-width: 130px) {
+  .event-heading .priority-label {
+    display: none;
+  }
+  .event-heading .priority-badge {
+    padding: 2px;
+  }
+}

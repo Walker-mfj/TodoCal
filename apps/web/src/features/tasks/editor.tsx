@@ -1,10 +1,13 @@
 "use client";
+import { SidebarPanel } from "../../components/sidebar-panel";
+import { Dialog } from "../../components/dialog";
+import { priorityLabels } from "../../components/priority-badge";
 import type { CalendarDraft } from "../calendar/draft-preview";
 import { useConfirm } from "../../components/app-dialog";
 import { sessionStore } from "../../lib/session-storage";
 import { ValidatedForm } from "../../components/validated-form";
 import { useEffect, useRef, useState } from "react";
-import { X, Repeat2 } from "lucide-react";
+import { Repeat2 } from "lucide-react";
 import {
   apiFetch,
   ApiError,
@@ -34,7 +37,9 @@ export function TaskEditor({
   onClose,
   onStateChange,
   onDraftChange,
+  defaultFocusMinutes = 25,
 }: {
+  defaultFocusMinutes?: number;
   owner: string;
   zone: string;
   groups: Group[];
@@ -49,12 +54,18 @@ export function TaskEditor({
 }) {
   const confirm = useConfirm();
   const [scopePrompt, setScopePrompt] = useState(false);
-  const scopeDialog = useRef<HTMLDialogElement>(null);
   const [seriesRevision, setSeriesRevision] = useState<number | null>(null);
   const [seriesError, setSeriesError] = useState("");
   const [fieldError, setFieldError] = useState<FieldError | null>(null);
   const initial = useRef<Draft>(
-    task ? draftFromTask(task, zone) : { title: "", ...seed },
+    task
+      ? {
+          ...draftFromTask(task, zone),
+          ...(task.estimatedPomodoros && !task.focusMinutes
+            ? { focusMinutes: String(defaultFocusMinutes) }
+            : {}),
+        }
+      : { title: "", ...seed },
   );
   const [baseline, setBaseline] = useState(initial.current);
   const lastSeed = useRef(seed);
@@ -67,7 +78,17 @@ export function TaskEditor({
   }, []);
   const storageKey = `focus:draft:${owner}:${task?.id || "new"}`;
   const [draft, setDraft] = useState<Draft>(
-    task ? draftFromTask(task, zone) : { title: "", ...seed },
+    task
+      ? {
+          ...draftFromTask(task, zone),
+          ...(task.estimatedPomodoros && !task.focusMinutes
+            ? { focusMinutes: String(defaultFocusMinutes) }
+            : {}),
+        }
+      : { title: "", ...seed },
+  );
+  const [planFocus, setPlanFocus] = useState(
+    !!(task?.estimatedPomodoros || seed?.estimatedPomodoros),
   );
   const [ready, setReady] = useState(false);
   const [baseRevision, setBaseRevision] = useState(task?.revision);
@@ -90,6 +111,7 @@ export function TaskEditor({
               }
             : parsed.draft,
         );
+        setPlanFocus(!!parsed.draft.estimatedPomodoros);
         setBaseline(parsed.baseline || initial.current);
         setPending(parsed.pending || null);
         setSeriesRevision(parsed.seriesRevision ?? null);
@@ -112,9 +134,6 @@ export function TaskEditor({
       active = false;
     };
   }, [task?.seriesId, ready, owner, seriesRevision]);
-  useEffect(() => {
-    if (scopePrompt) scopeDialog.current?.showModal();
-  }, [scopePrompt]);
   const dirty = fingerprint(draft) !== fingerprint(baseline) || !!pending;
   useEffect(() => {
     if (!ready) return;
@@ -184,8 +203,9 @@ export function TaskEditor({
     if (
       dirty &&
       !(await confirm("Unsaved changes will be discarded.", {
-        title: "Close editor?",
-        confirmLabel: "Close editor",
+        title: "Discard unsaved changes?",
+        confirmLabel: "Discard changes",
+        destructive: true,
         cancelLabel: "Keep editing",
       }))
     )
@@ -267,17 +287,19 @@ export function TaskEditor({
             ? "description"
             : /priority/i.test(e.message)
               ? "priority"
-              : /pomodoro/i.test(e.message)
-                ? "estimatedPomodoros"
-                : /deadline/i.test(e.message)
-                  ? "deadline"
-                  : /end time|both start/i.test(e.message)
-                    ? "endTime"
-                    : /local time|HH:mm/i.test(e.message)
-                      ? "startTime"
-                      : /date|daily plan/i.test(e.message)
-                        ? "scheduledDate"
-                        : null;
+              : /focus.*minutes|focus duration/i.test(e.message)
+                ? "focusMinutes"
+                : /pomodoro/i.test(e.message)
+                  ? "estimatedPomodoros"
+                  : /deadline/i.test(e.message)
+                    ? "deadline"
+                    : /end time|both start/i.test(e.message)
+                      ? "endTime"
+                      : /local time|HH:mm/i.test(e.message)
+                        ? "startTime"
+                        : /date|daily plan/i.test(e.message)
+                          ? "scheduledDate"
+                          : null;
         if (field) setFieldError(new FieldError(field, e.message));
         else setError(errorMessage(e));
       } else setError(errorMessage(e));
@@ -292,26 +314,15 @@ export function TaskEditor({
     }
   };
   return (
-    <aside
-      className="detail-panel task-editor"
-      aria-label={task ? "Edit task" : "New task"}
+    <SidebarPanel
+      className="task-editor"
+      label={task ? "Edit task" : "New task"}
+      title={task ? "Edit task" : "New task"}
+      eyebrow={task ? "TASK DETAILS" : "MAKE A LITTLE ROOM"}
+      closeLabel="Close editor"
+      disabled={busy || !ready}
+      onClose={close}
     >
-      <div className="panel-heading">
-        <div>
-          <p className="eyebrow">
-            {task ? "TASK DETAILS" : "MAKE A LITTLE ROOM"}
-          </p>
-          <h2>{task ? "Edit task" : "New task"}</h2>
-        </div>
-        <button
-          className="icon-button"
-          aria-label="Close editor"
-          disabled={busy}
-          onClick={close}
-        >
-          <X size={18} />
-        </button>
-      </div>
       {task?.seriesId && (
         <p className="notice">
           <Repeat2 size={14} /> When saving, choose this occurrence or all
@@ -379,8 +390,10 @@ export function TaskEditor({
                 value={draft.priority || "medium"}
                 onChange={(e) => change("priority", e.target.value)}
               >
-                {["low", "medium", "high"].map((p) => (
-                  <option key={p}>{p}</option>
+                {(["low", "medium", "high"] as const).map((p) => (
+                  <option key={p} value={p}>
+                    {priorityLabels[p]}
+                  </option>
                 ))}
               </select>
             </label>
@@ -479,18 +492,66 @@ export function TaskEditor({
               )}
             </>
           )}
-          <label>
-            Estimated Pomodoros (optional)
+          <label className="checkbox-label">
             <input
-              type="number"
-              min={1}
-              max={2147483647}
-              name="estimatedPomodoros"
-              value={draft.estimatedPomodoros || ""}
-              onChange={(e) => change("estimatedPomodoros", e.target.value)}
-              placeholder="No timer needed"
+              type="checkbox"
+              checked={planFocus}
+              onChange={(e) => {
+                setPlanFocus(e.target.checked);
+                setDraft((d) => ({
+                  ...d,
+                  estimatedPomodoros: e.target.checked ? "1" : "",
+                  focusMinutes: e.target.checked
+                    ? d.focusMinutes || String(defaultFocusMinutes)
+                    : "",
+                }));
+                setFieldError(null);
+              }}
             />
+            Plan focus
           </label>
+          {planFocus && (
+            <>
+              <div className="form-row">
+                <label>
+                  Planned Pomodoros
+                  <input
+                    type="number"
+                    required
+                    min={1}
+                    max={2147483647}
+                    name="estimatedPomodoros"
+                    value={draft.estimatedPomodoros}
+                    onChange={(e) =>
+                      change("estimatedPomodoros", e.target.value)
+                    }
+                  />
+                </label>
+                <label>
+                  Session length (minutes)
+                  <input
+                    type="number"
+                    required
+                    min={1}
+                    max={180}
+                    name="focusMinutes"
+                    value={draft.focusMinutes ?? String(defaultFocusMinutes)}
+                    onChange={(e) => change("focusMinutes", e.target.value)}
+                  />
+                </label>
+              </div>
+              <p>
+                Planned Focus Time:{" "}
+                {Number(draft.estimatedPomodoros) *
+                  Number(draft.focusMinutes ?? defaultFocusMinutes)}{" "}
+                min
+              </p>
+              <small>
+                Focus time is separate from your calendar schedule. Completing
+                focus does not complete the task.
+              </small>
+            </>
+          )}
         </fieldset>
         {error && (
           <p role="alert" className="error">
@@ -536,48 +597,35 @@ export function TaskEditor({
         </button>
       </ValidatedForm>
       {scopePrompt && (
-        <dialog
-          ref={scopeDialog}
-          className="app-dialog"
-          aria-labelledby="recurring-edit-title"
-          onCancel={() => setScopePrompt(false)}
+        <Dialog
+          title="Edit repeating task"
+          icon={Repeat2}
+          onDismiss={() => setScopePrompt(false)}
+          description="Apply changes to this occurrence, or all occurrences from today onward? Other historical occurrences stay unchanged. Date changes shift the other occurrences by the same number of days."
+          actions={
+            <>
+              <button type="button" onClick={() => void save("one")}>
+                This occurrence
+              </button>
+              <button
+                type="button"
+                className="primary"
+                disabled={seriesRevision === null}
+                onClick={() => void save("all")}
+              >
+                All occurrences
+              </button>
+            </>
+          }
         >
-          <div className="app-dialog-heading">
-            <h2 id="recurring-edit-title">Edit repeating task</h2>
-          </div>
-          <p>
-            Apply changes to this occurrence, or all occurrences from today
-            onward? Finalized history stays unchanged. Date changes shift the
-            other occurrences by the same number of days.
-          </p>
           {seriesError && (
             <p role="alert" className="error">
               {seriesError}
             </p>
           )}
-          <div className="app-dialog-actions">
-            <button
-              type="button"
-              autoFocus
-              onClick={() => setScopePrompt(false)}
-            >
-              Cancel
-            </button>
-            <button type="button" onClick={() => void save("one")}>
-              This occurrence
-            </button>
-            <button
-              type="button"
-              className="primary"
-              disabled={seriesRevision === null}
-              onClick={() => void save("all")}
-            >
-              All occurrences
-            </button>
-          </div>
-        </dialog>
+        </Dialog>
       )}
-    </aside>
+    </SidebarPanel>
   );
 }
 

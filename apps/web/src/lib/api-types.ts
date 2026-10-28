@@ -126,6 +126,63 @@ export interface paths {
     patch: operations["updateTask"];
     trace?: never;
   };
+  "/tasks/{id}/restore": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["ResourceID"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Restore a soft-deleted task at its deleted revision, including its historical plan. */
+    post: operations["restoreTask"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/series/{id}/restore": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["ResourceID"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Undo stopping a series. Fails atomically if any affected occurrence changed. */
+    post: operations["restoreSeries"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/tasks/{id}/focus": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["ResourceID"];
+      };
+      cookie?: never;
+    };
+    /** @description Owned occurrence focus sessions, including active elapsed time, newest first. */
+    get: operations["taskFocusHistory"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/tasks/{id}/schedule": {
     parameters: {
       query?: never;
@@ -137,7 +194,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Atomically change only the schedule and issue an owned 10-second undo token bound to the resulting revision. All three nullable schedule fields are required. Finalized target dates are rejected. */
+    /** @description Atomically change only the schedule and issue an owned 10-second undo token bound to the resulting revision. All three nullable schedule fields are required. Historical targets update the saved daily plan. */
     post: operations["rescheduleTask"];
     delete?: never;
     options?: never;
@@ -175,7 +232,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Completion never requires Pomodoro. Unscheduled completion stays unscheduled. Completing a future task requires moveToToday=true. Reopening invalidates same-day completion events; prior-day events remain valid. */
+    /** @description Completion never requires Pomodoro. Unscheduled completion stays unscheduled. Early completion preserves the scheduled date and time. Reopening clears completedAt and updates historical analytics. */
     post: operations["completeTask"];
     delete?: never;
     options?: never;
@@ -514,6 +571,8 @@ export interface components {
       endTime?: string | null;
       /** Format: date-time */
       deadline?: string | null;
+      /** @description Per-task focus duration; null uses Settings. */
+      focusMinutes?: number | null;
       estimatedPomodoros?: number | null;
     };
     /** @description Omitted editable fields are retained. Explicit null clears nullable fields. Status is changed only through the completion endpoint. */
@@ -542,6 +601,8 @@ export interface components {
       endTime?: string | null;
       /** Format: date-time */
       deadline?: string | null;
+      /** @description Per-task focus duration; null uses Settings. */
+      focusMinutes?: number | null;
       estimatedPomodoros?: number | null;
       expectedRevision: number;
     };
@@ -562,7 +623,18 @@ export interface components {
       endTime: string | null;
       /** Format: date-time */
       deadline: string | null;
+      /** @description Per-task focus duration; null uses Settings. */
+      focusMinutes?: number | null;
       estimatedPomodoros: number | null;
+      /** Format: date-time */
+      completedAt?: string | null;
+      /** Format: date-time */
+      deletedAt?: string | null;
+      /** @description Sum of completed and ended focus session fractions, independent of current task duration. */
+      focusProgress?: number;
+      actualFocusSeconds?: number;
+      recurrenceCadence?: string | null;
+      recurrenceIntervalDays?: number | null;
       /** Format: uuid */
       id: string;
       /** @enum {string} */
@@ -606,8 +678,16 @@ export interface components {
     CompletionInput: {
       complete: boolean;
       expectedRevision: number;
-      /** @default false */
-      moveToToday: boolean;
+      /**
+       * Format: date-time
+       * @description Explicit completion instant, no later than now. Defaults to now on first completion.
+       */
+      completedAt?: string | null;
+      /**
+       * @deprecated
+       * @description Ignored. Completion preserves the schedule.
+       */
+      moveToToday?: boolean;
     };
     GroupInput: {
       name: string;
@@ -1009,6 +1089,94 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Task"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  restoreTask: {
+    parameters: {
+      query?: never;
+      header: {
+        "X-CSRF-Token": components["parameters"]["CSRF"];
+        /** @description Generate once per intended command. Retry the identical method, request URI, and JSON bytes with the same key. A different request using the key returns 409. Keys are scoped to the account. */
+        "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["ResourceID"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ExpectedRevision"];
+      };
+    };
+    responses: {
+      /** @description Restored */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Task"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  restoreSeries: {
+    parameters: {
+      query?: never;
+      header: {
+        "X-CSRF-Token": components["parameters"]["CSRF"];
+        /** @description Generate once per intended command. Retry the identical method, request URI, and JSON bytes with the same key. A different request using the key returns 409. Keys are scoped to the account. */
+        "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["ResourceID"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ExpectedRevision"];
+      };
+    };
+    responses: {
+      /** @description Restored */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RecurrenceSeries"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  taskFocusHistory: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["ResourceID"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Focus history */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            actualFocusSeconds: number;
+            sessions: components["schemas"]["FocusSession"][];
+          };
         };
       };
       default: components["responses"]["Error"];

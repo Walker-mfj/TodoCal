@@ -46,3 +46,9 @@ func (s *Server) changeFocus(w http.ResponseWriter, r *http.Request) {
 		return out, 200, e
 	})
 }
+
+func (s *Server) taskFocus(w http.ResponseWriter, r *http.Request) {
+	s.view(w, r, func(tx pgx.Tx, p Principal, zone string, now time.Time) (any, error) {
+		return focus.History(r.Context(), tx, p.ID, r.PathValue("id"), now)
+	})
+}

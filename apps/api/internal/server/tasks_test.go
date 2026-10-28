@@ -154,9 +154,8 @@ func TestTaskFutureCompletionAndReopenEvents(t *testing.T) {
 	c, csrf := register(t, s, "future@example.com")
 	task := object(t, command(s, "POST", "/api/v1/tasks", map[string]any{"title": "Future", "scheduledDate": "2030-04-02", "startTime": "09:07", "endTime": "10:03"}, c, csrf, uuid.NewString()), 201)
 	id := task["id"].(string)
-	object(t, command(s, "POST", "/api/v1/tasks/"+id+"/completion", map[string]any{"complete": true, "expectedRevision": 1}, c, csrf, uuid.NewString()), 422)
-	done := object(t, command(s, "POST", "/api/v1/tasks/"+id+"/completion", map[string]any{"complete": true, "expectedRevision": 1, "moveToToday": true}, c, csrf, uuid.NewString()), 200)
-	if done["scheduledDate"] != "2030-04-01" || done["startTime"] != "09:07" || done["endTime"] != "10:03" {
+	done := object(t, command(s, "POST", "/api/v1/tasks/"+id+"/completion", map[string]any{"complete": true, "expectedRevision": 1}, c, csrf, uuid.NewString()), 200)
+	if done["scheduledDate"] != "2030-04-02" || done["completedAt"] != "2030-04-01T12:00:00Z" || done["startTime"] != "09:07" || done["endTime"] != "10:03" {
 		t.Fatal("move changed time precision", done)
 	}
 	object(t, command(s, "POST", "/api/v1/tasks/"+id+"/completion", map[string]any{"complete": false, "expectedRevision": 2}, c, csrf, uuid.NewString()), 200)

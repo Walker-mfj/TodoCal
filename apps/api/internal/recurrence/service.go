@@ -85,10 +85,36 @@ func Create(ctx context.Context, tx pgx.Tx, user, zone string, now time.Time, in
 	if e != nil {
 		return out, e
 	}
-	// Create the first occurrence, then materialize only requested ranges and elapsed days.
-	return out, Materialize(ctx, tx, user, zone, *in.Task.ScheduledDate, localdate.Add(*in.Task.ScheduledDate, 1), now)
+	// An explicit historical series creation may add occurrences to finalized
+	// days. Only this newly created series bypasses their materialization guard.
+	loc, err := time.LoadLocation(zone)
+	if err != nil {
+		return out, err
+	}
+	end := localdate.Add(*in.Task.ScheduledDate, 1)
+	if todayEnd := localdate.Add(now.In(loc).Format("2006-01-02"), 1); todayEnd > end {
+		end = todayEnd
+	}
+	if in.EndDate != nil && localdate.Add(*in.EndDate, 1) < end {
+		end = localdate.Add(*in.EndDate, 1)
+	}
+	for from := *in.Task.ScheduledDate; from < end; {
+		to := localdate.Add(from, 93)
+		if to > end {
+			to = end
+		}
+		if err = Materialize(ctx, tx, user, zone, from, to, now, out.ID); err != nil {
+			return out, err
+		}
+		from = to
+	}
+	return out, nil
 }
-func Materialize(ctx context.Context, tx pgx.Tx, user, zone, from, to string, now time.Time) error {
+func Materialize(ctx context.Context, tx pgx.Tx, user, zone, from, to string, now time.Time, explicitSeries ...string) error {
+	explicit := ""
+	if len(explicitSeries) > 0 {
+		explicit = explicitSeries[0]
+	}
 	if _, e := localdate.Parse(from); e != nil {
 		return tasks.Invalid("Invalid range start")
 	}
@@ -136,7 +162,7 @@ func Materialize(ctx context.Context, tx pgx.Tx, user, zone, from, to string, no
 				continue
 			}
 			var exists bool
-			e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM tasks WHERE user_id=$1 AND series_id=$2 AND original_occurrence_date=$3) OR EXISTS(SELECT 1 FROM recurrence_exceptions WHERE user_id=$1 AND series_id=$2 AND original_occurrence_date=$3) OR EXISTS(SELECT 1 FROM daily_snapshots WHERE user_id=$1 AND date=$4)`, user, sr.ID, original, date).Scan(&exists)
+			e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM tasks WHERE user_id=$1 AND series_id=$2 AND original_occurrence_date=$3) OR EXISTS(SELECT 1 FROM recurrence_exceptions WHERE user_id=$1 AND series_id=$2 AND original_occurrence_date=$3) OR ($2::text<>$5 AND EXISTS(SELECT 1 FROM daily_snapshots WHERE user_id=$1 AND date=$4))`, user, sr.ID, original, date, explicit).Scan(&exists)
 			if e != nil {
 				return e
 			}
@@ -176,7 +202,7 @@ func Materialize(ctx context.Context, tx pgx.Tx, user, zone, from, to string, no
 				}
 				continue
 			}
-			t, err := tasks.Scan(tx.QueryRow(ctx, `INSERT INTO tasks(user_id,id,title,description,group_id,priority,scheduled_date,start_time,end_time,deadline,estimated_pomodoros,created_at,updated_at,series_id,original_occurrence_date) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12,$13,$14) RETURNING `+tasks.Columns, user, uuid.NewString(), in.Title, in.Description, in.GroupID, in.Priority, date, in.StartTime, in.EndTime, in.Deadline, in.EstimatedPomodoros, effective, sr.ID, original))
+			t, err := tasks.Scan(tx.QueryRow(ctx, `INSERT INTO tasks(user_id,id,title,description,group_id,priority,scheduled_date,start_time,end_time,deadline,estimated_pomodoros,created_at,updated_at,series_id,original_occurrence_date,focus_minutes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12,$13,$14,$15) RETURNING `+tasks.Columns, user, uuid.NewString(), in.Title, in.Description, in.GroupID, in.Priority, date, in.StartTime, in.EndTime, in.Deadline, in.EstimatedPomodoros, effective, sr.ID, original, in.FocusMinutes))
 			if err != nil {
 				return err
 			}
@@ -239,6 +265,18 @@ func Stop(ctx context.Context, tx pgx.Tx, user, zone, id string, now time.Time, 
 		if e = tasks.Delete(ctx, tx, user, zone, now, t); e != nil {
 			return nil, e
 		}
+	}
+	undo := map[string]int64{}
+	for _, t := range affected {
+		undo[t.ID] = t.Revision + 1
+	}
+	raw, e := json.Marshal(undo)
+	if e != nil {
+		return nil, e
+	}
+	_, e = tx.Exec(ctx, `UPDATE recurrence_series SET stop_undo=$3 WHERE user_id=$1 AND id=$2`, user, id, raw)
+	if e != nil {
+		return nil, e
 	}
 	return map[string]any{"id": id, "revision": rev + 1, "stoppedAfter": today}, nil
 }
@@ -405,9 +443,51 @@ func applyFields(base, edited tasks.Input, fields map[string]json.RawMessage) ta
 			base.EndTime = edited.EndTime
 		case "deadline":
 			base.Deadline = edited.Deadline
+		case "focusMinutes":
+			base.FocusMinutes = edited.FocusMinutes
 		case "estimatedPomodoros":
 			base.EstimatedPomodoros = edited.EstimatedPomodoros
 		}
 	}
 	return base
+}
+
+// RestoreStop checks the series and every cancelled occurrence before restoring
+// anything; the surrounding account transaction makes failures atomic.
+func RestoreStop(ctx context.Context, tx pgx.Tx, user, zone, id string, now time.Time, revision int64) (Series, error) {
+	sr, err := Get(ctx, tx, user, id)
+	if err != nil {
+		return sr, err
+	}
+	if sr.Revision != revision || sr.StoppedAfter == nil {
+		return sr, tasks.Conflict()
+	}
+	var raw []byte
+	err = tx.QueryRow(ctx, `SELECT stop_undo FROM recurrence_series WHERE user_id=$1 AND id=$2`, user, sr.ID).Scan(&raw)
+	if err != nil {
+		return sr, err
+	}
+	if raw == nil {
+		return sr, tasks.Conflict()
+	}
+	var affected map[string]int64
+	if err = json.Unmarshal(raw, &affected); err != nil {
+		return sr, err
+	}
+	for taskID, rev := range affected {
+		t, e := tasks.GetDeleted(ctx, tx, user, taskID)
+		if e != nil || t.Revision != rev {
+			return sr, tasks.Conflict()
+		}
+	}
+	for taskID, rev := range affected {
+		if _, err = tasks.Restore(ctx, tx, user, zone, taskID, now, rev); err != nil {
+			return sr, err
+		}
+	}
+	_, err = tx.Exec(ctx, `UPDATE recurrence_series SET stopped_after=NULL,stop_undo=NULL,revision=revision+1 WHERE user_id=$1 AND id=$2`, user, sr.ID)
+	if err != nil {
+		return sr, err
+	}
+	return Get(ctx, tx, user, sr.ID)
 }

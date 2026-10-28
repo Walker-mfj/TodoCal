@@ -25,13 +25,13 @@ export function AnalyticsSummary({
           <span>Plan completion</span>
           <Ring value={m.percentage} ratio={completionRatio(m)} />
           <small>
-            {m.completed}/{m.planned} planned occurrences
+            By scheduled date · {m.completed}/{m.planned} planned occurrences
           </small>
         </article>
         <article className="metric">
           <span>Completed tasks</span>
           <strong>{m.completedTasks}</strong>
-          <small>Distinct tasks · includes unscheduled</small>
+          <small>By completion date · includes unscheduled</small>
         </article>
         <article className="metric">
           <span>Focus time</span>

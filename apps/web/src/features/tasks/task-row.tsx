@@ -1,4 +1,5 @@
 "use client";
+import { PriorityBadge } from "../../components/priority-badge";
 import { useEffect, useRef } from "react";
 import { Draggable } from "@fullcalendar/interaction";
 import { Check, Repeat2, GripVertical } from "lucide-react";
@@ -74,7 +75,7 @@ export function TaskRow({
         <span className="completed-label">Completed</span>
       )}
       {task.seriesId && <Repeat2 size={14} aria-label="Repeating" />}
-      <span className={`priority ${task.priority}`}>{task.priority}</span>
+      <PriorityBadge priority={task.priority} />
     </div>
   );
 }

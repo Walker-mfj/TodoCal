@@ -69,7 +69,7 @@ test("calendar previews create/edit drafts without saving; slot selection retarg
   await page.getByRole("button", { name: "Close editor", exact: true }).click();
   await page
     .getByRole("alertdialog")
-    .getByRole("button", { name: "Close editor", exact: true })
+    .getByRole("button", { name: "Discard changes", exact: true })
     .click();
   await expect(preview).toHaveCount(0);
   const original = page

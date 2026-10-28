@@ -1,0 +1,221 @@
+.fc .focus-card.calendar-task-content {
+  position: relative;
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: 3px 28px 3px 4px;
+  overflow: hidden;
+}
+.focus-card .focus-card-main {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+.focus-card .event-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.focus-card .priority-badge {
+  flex: none;
+}
+.focus-card .focus-clocks {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  color: #b65145;
+}
+.focus-card .focus-clocks small {
+  font-size: 9px;
+}
+.focus-stopwatch {
+  display: inline-flex;
+  position: relative;
+  width: 10px;
+  height: 13px;
+  align-items: flex-end;
+  flex: none;
+}
+.focus-stopwatch::before {
+  content: "";
+  position: absolute;
+  width: 4px;
+  height: 2px;
+  top: 0;
+  left: 3px;
+  background: currentColor;
+  border-radius: 1px;
+}
+.focus-stopwatch > span {
+  width: 10px;
+  height: 10px;
+  border: 1.2px solid currentColor;
+  border-radius: 50%;
+  background: conic-gradient(currentColor var(--clock-fill), transparent 0);
+}
+.focus-card .focus-card-footer {
+  margin-top: auto;
+  font-size: 9px;
+  padding-right: 48px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fc .focus-card.calendar-task-content .event-repeat {
+  position: absolute;
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  right: 4px;
+  bottom: 3px;
+  top: auto;
+  margin: 0;
+  font-size: 9px;
+}
+.focus-card .quick-focus {
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+}
+.focus-card:hover .quick-focus,
+.focus-card:focus-within .quick-focus,
+.fc-event:focus .quick-focus,
+.focus-card.focus-active .quick-focus {
+  opacity: 1;
+}
+.focus-card .quick-focus button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 22px;
+  min-width: 22px;
+  padding: 2px;
+  border: 0;
+  border-radius: 4px;
+  background: #fff7ef;
+  color: #823c32;
+  cursor: pointer;
+}
+.focus-card .quick-focus button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+}
+.focus-card .quick-focus button:disabled {
+  cursor: wait;
+  opacity: 0.5;
+}
+.fc .focus-card.calendar-task-content.compact {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 0 25px 0 3px;
+  gap: 3px;
+}
+.focus-card.compact .focus-card-main {
+  width: 100%;
+}
+.fc .focus-card.calendar-task-content.compact .event-title {
+  font-size: 11px;
+  flex: 0 1 auto;
+}
+.fc .focus-card.calendar-task-content.compact .event-repeat {
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%);
+}
+.focus-card.compact .quick-focus {
+  top: 50%;
+  transform: translateY(-50%);
+}
+.focus-card.compact.focus-active {
+  padding-right: 64px !important;
+}
+.focus-card .quick-focus-time {
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+.focus-card.compact.focus-active .event-repeat,
+.focus-card.compact.focus-available:hover .event-repeat,
+.focus-card.compact.focus-available:focus-within .event-repeat,
+.fc-event:focus .focus-card.compact.focus-available .event-repeat {
+  opacity: 0;
+}
+.calendar-focus-notice {
+  position: fixed;
+  z-index: 1000;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(520px, calc(100vw - 32px));
+  background: #fffaf3;
+  border: 1px solid #d8cbbb;
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 8px 30px #0002;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: #40352d;
+}
+@media (pointer: coarse) {
+  .focus-card .quick-focus {
+    opacity: 1;
+  }
+  .focus-card .quick-focus button {
+    min-width: 44px;
+    min-height: 22px;
+  }
+  .fc .focus-card.calendar-task-content {
+    padding-right: 46px;
+    min-height: 22px;
+  }
+  .fc .focus-card.calendar-task-content.compact {
+    padding-right: 46px;
+  }
+  .focus-card.compact.focus-active {
+    padding-right: 82px !important;
+  }
+  .focus-card.compact.focus-available .event-repeat {
+    opacity: 0;
+  }
+}
+
+.focus-stopwatch > span::after {
+  content: "";
+  position: absolute;
+  width: 1px;
+  height: 4px;
+  background: var(--clock-hand, currentColor);
+  left: 5px;
+  top: 5px;
+  transform: rotate(35deg);
+  transform-origin: bottom;
+}
+.focus-clock-narrow-count {
+  display: none;
+}
+@container (max-width: 120px) {
+  .focus-card .focus-clocks .focus-stopwatch:nth-child(n + 2),
+  .focus-card .focus-clock-overflow {
+    display: none;
+  }
+  .focus-card .focus-clock-narrow-count {
+    display: inline;
+  }
+  .focus-card .priority-label {
+    display: none;
+  }
+}

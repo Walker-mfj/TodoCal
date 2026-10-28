@@ -1,4 +1,8 @@
 "use client";
+import type { FocusController } from "../focus/useFocus";
+import { CalendarEventContent } from "./event-content";
+import "./event-content.css";
+import { priorityLabels } from "../../components/priority-badge";
 import { draftEvent, type CalendarDraft } from "./draft-preview";
 import { useMemo, useEffect, useRef } from "react";
 import FullCalendar from "@fullcalendar/react";
@@ -29,7 +33,13 @@ export default function Calendar({
   onSchedule,
   onScheduleError,
   onDay,
+  focus,
+  defaultFocusMinutes,
+  onOpenFocus,
 }: {
+  focus: FocusController;
+  defaultFocusMinutes: number;
+  onOpenFocus: () => void;
   draftPreview?: CalendarDraft | null;
   draftDisabled?: boolean;
   days: Day[];
@@ -89,7 +99,6 @@ export default function Calendar({
               filter(e.task) &&
               !(
                 draftPreview?.taskId === e.task.id &&
-                !day.finalized &&
                 (draftEvent(draftPreview) || !draftPreview.draft.scheduledDate)
               ),
           )
@@ -99,7 +108,7 @@ export default function Calendar({
             start: day.date + (task.startTime ? `T${task.startTime}:00` : ""),
             end: task.endTime ? `${day.date}T${task.endTime}:00` : undefined,
             allDay: !task.startTime,
-            editable: !day.finalized && !disabled,
+            editable: !disabled,
             classNames: [
               task.status === "complete" ? "event-complete" : "",
               day.finalized ? "event-historical" : "",
@@ -207,11 +216,6 @@ export default function Calendar({
         droppable={!disabled}
         eventResizableFromStart
         snapDuration="00:15:00"
-        eventAllow={(info) =>
-          info.startStr.slice(0, 10) >= today &&
-          !days.find((day) => day.date === info.startStr.slice(0, 10))
-            ?.finalized
-        }
         eventDrop={(arg) => {
           try {
             if (arg.oldEvent.extendedProps.draft) {
@@ -298,45 +302,38 @@ export default function Calendar({
           arg.view.calendar.unselect();
         }}
         eventClick={(arg) => {
+          if ((arg.jsEvent.target as HTMLElement).closest(".quick-focus"))
+            return;
           const task = arg.event.extendedProps.task as Task | undefined;
           if (task) onTask(task, Boolean(arg.event.extendedProps.historical));
         }}
         eventContent={(arg) => (
-          <div
-            className={`event-content ${arg.event.start && arg.event.end && +arg.event.end - +arg.event.start <= 1800000 ? "compact" : ""}`}
-            title={`${arg.timeText} ${arg.event.title}`}
-          >
-            <span className="event-time">
-              {arg.event.extendedProps.task?.status === "complete" ? "✓ " : ""}
-              {arg.timeText}
-              {arg.event.extendedProps.task?.priority === "high" && (
-                <span title="High priority" aria-label="High priority">
-                  {" "}
-                  · !
-                </span>
-              )}
-            </span>
-            <span className="event-title">
-              {arg.event.extendedProps.task?.status === "complete" && (
-                <span className="event-done" aria-label="Completed">
-                  ✓{" "}
-                </span>
-              )}
-              {arg.event.title}
-            </span>
-            {arg.event.extendedProps.draft && (
-              <span className="draft-badge">Draft</span>
-            )}
-            {arg.event.extendedProps.task?.seriesId && (
-              <span
-                className="event-repeat"
-                aria-label="Repeating"
-                title="Repeating task"
-              >
-                ↻
-              </span>
-            )}
-          </div>
+          <CalendarEventContent
+            task={arg.event.extendedProps.task}
+            focus={focus}
+            defaultFocusMinutes={defaultFocusMinutes}
+            onOpenFocus={onOpenFocus}
+            title={arg.event.title}
+            timeText={arg.timeText}
+            priority={
+              arg.event.extendedProps.task?.priority ??
+              (arg.event.extendedProps.draft
+                ? (arg.event.extendedProps.priority ?? "medium")
+                : undefined)
+            }
+            compact={
+              arg.event.allDay ||
+              arg.view.type === "dayGridMonth" ||
+              Boolean(
+                arg.event.start &&
+                arg.event.end &&
+                +arg.event.end - +arg.event.start <= 1800000,
+              )
+            }
+            complete={arg.event.extendedProps.task?.status === "complete"}
+            draft={Boolean(arg.event.extendedProps.draft)}
+            repeating={Boolean(arg.event.extendedProps.task?.seriesId)}
+          />
         )}
         eventDidMount={(arg) => {
           if (arg.event.extendedProps.draft) {
@@ -354,9 +351,10 @@ export default function Calendar({
           arg.el.setAttribute("role", "button");
           arg.el.setAttribute(
             "aria-label",
-            `${arg.event.title}, ${arg.event.extendedProps.task.status === "complete" ? "Completed" : "To do"}, ${arg.event.startStr}`,
+            `${arg.event.title}, ${priorityLabels[arg.event.extendedProps.task.priority as Task["priority"]]} priority, ${arg.event.extendedProps.task.status === "complete" ? "Completed" : "To do"}, ${arg.event.startStr}`,
           );
           arg.el.onkeydown = (e) => {
+            if (e.target !== arg.el) return;
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
               onTask(

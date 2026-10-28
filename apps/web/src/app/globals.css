@@ -2890,3 +2890,61 @@ select {
 .priority-compact {
   padding: 2px;
 }
+/* Priority stays separate from the event's group color. */
+.fc-event-main {
+  container-type: inline-size;
+}
+.event-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-width: 0;
+  width: 100%;
+}
+.event-heading .event-time {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.event-heading .priority-badge {
+  align-self: center;
+}
+.calendar-task-content {
+  gap: 3px;
+}
+.calendar-task-content .event-repeat {
+  position: static;
+  margin-top: auto;
+  align-self: flex-end;
+  line-height: 1;
+}
+.fc .calendar-task-content.compact {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+.calendar-task-content.compact .event-title {
+  order: 0;
+  flex: 1;
+}
+.calendar-task-content.compact .draft-badge {
+  order: 1;
+}
+.calendar-task-content.compact .event-heading {
+  order: 2;
+  width: auto;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+@container (max-width: 130px) {
+  .event-heading .priority-label {
+    display: none;
+  }
+  .event-heading .priority-badge {
+    padding: 2px;
+  }
+}

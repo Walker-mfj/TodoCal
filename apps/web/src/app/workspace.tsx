@@ -656,6 +656,9 @@ function AccountWorkspace() {
                 </p>
               ) : null}
               <Calendar
+                focus={focus}
+                defaultFocusMinutes={account.settings.focusMinutes}
+                onOpenFocus={() => setShowFocus(true)}
                 draftDisabled={editorState.blocked}
                 onDay={(date) => open({ type: "day", date })}
                 draftPreview={

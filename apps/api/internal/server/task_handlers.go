@@ -82,9 +82,10 @@ func (s *Server) editTask(w http.ResponseWriter, r *http.Request) {
 func (s *Server) completeTask(w http.ResponseWriter, r *http.Request) {
 	s.mutate(w, r, func(tx pgx.Tx, p Principal, zone string, now time.Time, raw []byte) (any, int, error) {
 		var in struct {
-			Complete         *bool `json:"complete"`
-			ExpectedRevision int64 `json:"expectedRevision"`
-			MoveToToday      bool  `json:"moveToToday"`
+			Complete         *bool      `json:"complete"`
+			ExpectedRevision int64      `json:"expectedRevision"`
+			CompletedAt      *time.Time `json:"completedAt"`
+			MoveToToday      bool       `json:"moveToToday"`
 		}
 		if e := parseInput(raw, &in); e != nil {
 			return nil, 0, e
@@ -99,7 +100,7 @@ func (s *Server) completeTask(w http.ResponseWriter, r *http.Request) {
 		if old.Revision != in.ExpectedRevision {
 			return nil, 0, tasks.Conflict()
 		}
-		t, e := tasks.Complete(r.Context(), tx, p.ID, zone, now, old, *in.Complete, in.MoveToToday)
+		t, e := tasks.Complete(r.Context(), tx, p.ID, zone, now, old, *in.Complete, in.MoveToToday, in.CompletedAt)
 		return t, 200, e
 	})
 }
@@ -121,7 +122,7 @@ func (s *Server) deleteTask(w http.ResponseWriter, r *http.Request) {
 		if old.Revision != in.ExpectedRevision {
 			return nil, 0, tasks.Conflict()
 		}
-		return map[string]bool{"ok": true}, 200, tasks.Delete(r.Context(), tx, p.ID, zone, now, old)
+		return map[string]any{"ok": true, "revision": old.Revision + 1}, 200, tasks.Delete(r.Context(), tx, p.ID, zone, now, old)
 	})
 }
 func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
@@ -197,5 +198,26 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 			items = items[:limit]
 		}
 		return map[string]any{"items": items, "nextCursor": next}, nil
+	})
+}
+
+func (s *Server) restoreTask(w http.ResponseWriter, r *http.Request) {
+	s.mutate(w, r, func(tx pgx.Tx, p Principal, zone string, now time.Time, raw []byte) (any, int, error) {
+		revision, e := expected(raw)
+		if e != nil {
+			return nil, 0, e
+		}
+		t, e := tasks.Restore(r.Context(), tx, p.ID, zone, r.PathValue("id"), now, revision)
+		return t, 200, e
+	})
+}
+func (s *Server) restoreSeries(w http.ResponseWriter, r *http.Request) {
+	s.mutate(w, r, func(tx pgx.Tx, p Principal, zone string, now time.Time, raw []byte) (any, int, error) {
+		revision, e := expected(raw)
+		if e != nil {
+			return nil, 0, e
+		}
+		sr, e := recurrence.RestoreStop(r.Context(), tx, p.ID, zone, r.PathValue("id"), now, revision)
+		return sr, 200, e
 	})
 }

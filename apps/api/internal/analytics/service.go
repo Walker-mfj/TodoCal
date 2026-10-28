@@ -101,7 +101,7 @@ func day(ctx context.Context, tx pgx.Tx, user, zone, date string, now, cutoff ti
 		out.Percentage = nil
 		return out, nil
 	}
-	rows, e := tx.Query(ctx, `SELECT DISTINCT task_id::text FROM task_events WHERE user_id=$1 AND kind='completed' AND local_date=$2::date AND occurred_at<=$3 AND (invalidated_at IS NULL OR invalidated_at>$3) ORDER BY task_id::text`, user, date, minTime(now, cutoff))
+	rows, e := tx.Query(ctx, `SELECT id::text FROM tasks WHERE user_id=$1 AND status='complete' AND deleted_at IS NULL AND (completed_at AT TIME ZONE $4)::date=$2::date AND completed_at<=$3 ORDER BY id::text`, user, date, minTime(now, cutoff), zone)
 	if e != nil {
 		return out, e
 	}

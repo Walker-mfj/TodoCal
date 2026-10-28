@@ -80,7 +80,7 @@ export function CalendarEventContent({
         title={`${timeText} ${title}`}
       >
         <div className="focus-card-main">
-          {priority && <PriorityBadge priority={priority} compact={compact} />}
+          {priority && <PriorityBadge priority={priority} compact />}
           <span className="event-title">
             {complete && (
               <span className="event-done" aria-label="Completed">
@@ -160,10 +160,14 @@ export function CalendarEventContent({
               aria-label={`${action} focus for ${title}${own ? "" : ` · ${minutes} min`}`}
               title={`${action} focus${own ? "" : ` · ${minutes} min`}`}
               onClick={() => {
-                if (own)
+                if (own) {
                   focus.change(active.status === "paused" ? "resume" : "pause");
-                else if (active) setConflict(true);
-                else if (task) focus.start("focus", task.id, minutes);
+                  if (active.status === "paused") onOpenFocus?.();
+                } else if (active) setConflict(true);
+                else if (task) {
+                  focus.start("focus", task.id, minutes);
+                  onOpenFocus?.();
+                }
               }}
             >
               {own && active.status === "running" ? (

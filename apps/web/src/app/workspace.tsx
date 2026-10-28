@@ -111,6 +111,21 @@ function AccountWorkspace() {
     [view, setView] = useState("all"),
     [cursor, setCursor] = useState(""),
     [message, setMessage] = useState("");
+  const navigationKey = `focus:navigation:${account.user.id}`;
+  const [navigationReady, setNavigationReady] = useState(false);
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(sessionStore.getItem(navigationKey) || "null");
+      if (saved && ["calendar", "tasks", "progress", "groups", "settings"].includes(saved.page)) {
+        updatePage(saved.page);
+        setShowFocus(saved.focus === true);
+      }
+    } catch { /* Ignore obsolete navigation state. */ }
+    setNavigationReady(true);
+  }, [navigationKey]);
+  useEffect(() => {
+    if (navigationReady) sessionStore.setItem(navigationKey, JSON.stringify({ page, focus: showFocus }));
+  }, [navigationKey, navigationReady, page, showFocus]);
   const [recovery, setRecovery] = useState<RecoveryItem | null>(null);
   const [saveNotice, setSaveNotice] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);

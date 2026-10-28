@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSession } from "../../app/providers";
+import { today } from "../../lib/model";
 import type { Task, Settings } from "../../lib/model";
 import { kindLabel, timerLabel } from "./clock";
 import type { FocusController, FocusKind } from "./useFocus";
@@ -19,20 +20,21 @@ export function TimerPanel({
   onFree: () => void;
 }) {
   const { session, read } = useSession();
+  const focusDate = today(settings.timezone);
   const choices = useQuery({
-    queryKey: [session?.user.id, "focus-task-choices"],
+    queryKey: [session?.user.id, "focus-task-choices", focusDate],
     queryFn: async ({ signal }) => {
       const result: Task[] = [];
       let cursor: string | null = null;
       do {
-        const params = new URLSearchParams({ limit: "100", view: "all" });
+        const params = new URLSearchParams({ limit: "100", view: "today" });
         if (cursor) params.set("cursor", cursor);
         const page = await read<{ items: Task[]; nextCursor: string | null }>(
           `/tasks?${params}`,
           { signal, owner: session?.user.id },
         );
         result.push(
-          ...page.items.filter((t) => t.status !== "complete"),
+          ...page.items.filter((t) => t.scheduledDate === focusDate),
         );
         cursor = page.nextCursor;
       } while (cursor);
@@ -142,6 +144,7 @@ export function TimerPanel({
                 </option>
               ))}
             </select>
+            <small>Today’s tasks · {focusDate}. Open another day’s task from Calendar to focus on it.</small>
             {choices.isPending && <small>Loading tasks…</small>}
             {choices.error && (
               <button type="button" onClick={() => void choices.refetch()}>

@@ -66,7 +66,7 @@ it("shows actual partial focus adjacent to title and permits excess clocks", () 
   expect(document.querySelectorAll(".focus-stopwatch")).toHaveLength(3);
 });
 it("starts focus by keyboard without opening details or initiating a drag", async () => {
-  const { focus, click, pointer } = card({
+  const { focus, open, click, pointer } = card({
     estimatedPomodoros: null,
     focusMinutes: null,
   });
@@ -77,6 +77,7 @@ it("starts focus by keyboard without opening details or initiating a drag", asyn
   button.focus();
   await userEvent.keyboard("{Enter}");
   expect(focus.start).toHaveBeenCalledWith("focus", "task", 30);
+  expect(open).toHaveBeenCalledOnce();
   expect(click).not.toHaveBeenCalled();
   expect(pointer).not.toHaveBeenCalled();
 });
@@ -107,7 +108,7 @@ it.each([
   ["running", "Pause", "pause"],
   ["paused", "Resume", "resume"],
 ])("keeps %s controls on completed tasks", async (status, label, action) => {
-  const { focus } = card(
+  const { focus, open } = card(
     { status: "complete" },
     { active: { taskId: "task", kind: "focus", status } },
   );
@@ -116,6 +117,7 @@ it.each([
     screen.getByRole("button", { name: `${label} focus for Read` }),
   );
   expect(focus.change).toHaveBeenCalledWith(action);
+  expect(open).toHaveBeenCalledTimes(action === "resume" ? 1 : 0);
 });
 it("hides new focus on done tasks and disables requests while busy", () => {
   card({ status: "complete" });

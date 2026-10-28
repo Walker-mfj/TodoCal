@@ -17,6 +17,9 @@
   min-width: 0;
   overflow: hidden;
 }
+.focus-card:not(.compact) .focus-card-main {
+  min-height: 22px;
+}
 .focus-card .event-title {
   flex: 0 1 auto;
   min-width: 0;
@@ -26,6 +29,9 @@
 }
 .focus-card .priority-badge {
   flex: none;
+  align-self: center;
+  background: transparent;
+  padding: 0;
 }
 .focus-card .focus-clocks {
   display: inline-flex;
@@ -84,7 +90,7 @@
 .focus-card .quick-focus {
   position: absolute;
   right: 2px;
-  top: 2px;
+  top: 3px;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -105,8 +111,8 @@
   padding: 2px;
   border: 0;
   border-radius: 4px;
-  background: #fff7ef;
-  color: #823c32;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
   cursor: pointer;
 }
 .focus-card .quick-focus button:focus-visible {

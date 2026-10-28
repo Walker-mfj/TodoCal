@@ -56,7 +56,7 @@ test("focus scene custom duration persists, pauses, exits and resumes", async ({
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await page.reload();
-  await page.getByRole("button", { name: "Focus timer", exact: true }).click();
+  await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel("Duration")).toHaveValue("42");
   await expect(
     dialog.getByRole("button", { name: "Resume", exact: true }),

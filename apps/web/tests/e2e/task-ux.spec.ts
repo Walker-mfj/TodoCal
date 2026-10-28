@@ -151,7 +151,8 @@ test("compact calendar quick focus supports keyboard, pause and competing tasks"
     name: "Pause focus for Read compact",
   });
   await expect(pause).toBeVisible();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "Focus timer", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Close focus timer" }).click();
   expect((await card.boundingBox())!.height).toBe(initialHeight);
   await pause.click();
   await expect(
@@ -174,6 +175,8 @@ test("compact calendar quick focus supports keyboard, pause and competing tasks"
     .getByRole("button", { name: "Resume focus for Read compact" })
     .focus();
   await page.keyboard.press("Space");
+  await expect(page.getByRole("dialog", { name: "Focus timer", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Close focus timer" }).click();
   await expect(pause).toBeVisible();
   const saved = await (await page.request.get(`/api/v1/tasks/${a.id}`)).json();
   expect(saved.scheduledDate).toBe(today);

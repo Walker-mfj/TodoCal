@@ -79,7 +79,7 @@ func (s *Auth) Register(ctx context.Context, in Credentials, ip string) (Session
 		return SessionResult{}, e
 	}
 	defer tx.Rollback(ctx)
-	u := User{uuid.NewString(), email}
+	u := User{ID: uuid.NewString(), Email: email}
 	_, e = repository.InsertAccount(ctx, tx, u.ID, u.Email, hash)
 	if e != nil {
 		var pe *pgconn.PgError

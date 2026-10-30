@@ -94,7 +94,7 @@ func Start(ctx context.Context, tx pgx.Tx, user string, taskID *string, kind str
 		return state, e
 	}
 	if state.Active != nil {
-		return state, &Fault{"focus_active", "End the current timer before starting another."}
+		return state, &Fault{Code: "focus_active", Message: "End the current timer before starting another."}
 	}
 	var title *string
 	var taskMinutes *int

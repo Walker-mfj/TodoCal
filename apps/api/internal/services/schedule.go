@@ -63,7 +63,7 @@ func UndoSchedule(ctx context.Context, tx pgx.Tx, user, zone, id string, now tim
 		return Task{}, err
 	}
 	if consumed != nil || !now.Before(expires) {
-		return Task{}, &Fault{"undo_expired", "This undo is no longer available"}
+		return Task{}, &Fault{Code: "undo_expired", Message: "This undo is no longer available"}
 	}
 	old, err := GetTask(ctx, tx, user, taskID)
 	if err != nil {

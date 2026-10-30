@@ -57,8 +57,7 @@ export function CalendarEventContent({
   const units =
     (task?.focusProgress ?? actual / (minutes * 60)) +
     (own
-      ? Math.max(0, active.targetSeconds - remaining) /
-        active.targetSeconds
+      ? Math.max(0, active.targetSeconds - remaining) / active.targetSeconds
       : 0);
   const count = Math.max(planned, Math.ceil(units));
   const label = `${Math.round(actual / 60)}${planned ? ` / ${planned * minutes}` : ""} min focus`;
@@ -70,10 +69,7 @@ export function CalendarEventContent({
     : "Start";
   const time = `${Math.floor(remaining / 60)
     .toString()
-    .padStart(
-      2,
-      "0",
-    )}:${(remaining % 60).toString().padStart(2, "0")}`;
+    .padStart(2, "0")}:${(remaining % 60).toString().padStart(2, "0")}`;
   const recurrence =
     task?.recurrenceCadence === "daily"
       ? "Daily"

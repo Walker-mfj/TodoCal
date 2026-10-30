@@ -157,7 +157,7 @@ func (s *Auth) Password(ctx context.Context, p Principal, in PasswordInput, ip s
 	if e != nil {
 		return e
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	var hash string
 	e = repository.LockAccountPassword(ctx, tx, p.ID, &hash)
 	if e != nil {

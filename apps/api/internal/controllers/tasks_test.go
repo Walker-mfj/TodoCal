@@ -104,7 +104,9 @@ func TestTaskWriteRollsBackWhenEventFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _, _ = p.Exec(context.Background(), `ALTER TABLE task_events DROP CONSTRAINT test_reject_events`) })
+	t.Cleanup(func() {
+		_, _ = p.Exec(context.Background(), `ALTER TABLE task_events DROP CONSTRAINT test_reject_events`)
+	})
 	object(t, command(s, "POST", "/api/v1/tasks", map[string]any{"title": "Must roll back"}, c, csrf, uuid.NewString()), 500)
 	var tasks, receipts int
 	if e := p.QueryRow(context.Background(), `SELECT (SELECT count(*) FROM tasks),(SELECT count(*) FROM mutation_receipts)`).Scan(&tasks, &receipts); e != nil {

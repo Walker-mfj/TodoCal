@@ -1,0 +1,19 @@
+.toast-message {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.toast-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 10px;
+}
+:global(.toast-content) .toast-actions button {
+  margin: 0;
+  flex-shrink: 0;
+}
+:global(.toast-content) .toast-actions small {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}

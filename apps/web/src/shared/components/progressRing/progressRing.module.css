@@ -1,0 +1,55 @@
+.progress-ring {
+  width: 72px;
+  height: 72px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--level) var(--progress),
+    var(--color-border) 0
+  );
+  position: relative;
+}
+.progress-ring > span {
+  display: grid;
+  place-items: center;
+  width: 59px;
+  height: 59px;
+  border-radius: 50%;
+  background: var(--color-panel);
+  color: var(--level);
+  font-size: 17px;
+  font-weight: 700;
+}
+.progress-ring:global(.small) {
+  width: 40px;
+  height: 40px;
+}
+.progress-ring:global(.small) > span {
+  width: 33px;
+  height: 33px;
+  font-size: 10px;
+}
+.progress-ring:global(.empty) {
+  background: transparent;
+  border: 2px dashed var(--color-border);
+}
+.progress-ring:global(.small) {
+  font-size: 11px;
+}
+
+.ring-check {
+  position: absolute;
+  right: -3px;
+  top: -3px;
+  width: 17px;
+  height: 17px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--level);
+  color: var(--color-panel);
+  font-size: 11px;
+  font-style: normal;
+}

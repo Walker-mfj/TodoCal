@@ -1,0 +1,44 @@
+.group-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.group-row strong {
+  flex: 1;
+  font-size: 13px;
+}
+.group-list {
+  margin: 20px 0 30px;
+}
+.color-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.color-swatch {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  border: 3px solid var(--color-panel);
+  box-shadow: 0 0 0 1px var(--color-border);
+}
+.color-swatch[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--color-ink);
+}
+.color-swatch:hover:not(:disabled) {
+  background: var(--swatch);
+}
+
+:global(.form-row) > .group-color-field {
+  flex: 1;
+  min-width: 0;
+}
+.color-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+}

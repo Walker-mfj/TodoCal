@@ -1,0 +1,92 @@
+package controllers
+
+import (
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"io"
+	"log/slog"
+	"net/http"
+	"strings"
+	"time"
+
+	"focuscalendar/internal/middleware"
+	"focuscalendar/internal/monitoring"
+	"focuscalendar/internal/router"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+type Server struct {
+	monitor     *monitoring.Reporter
+	ingestLimit ingestLimiter
+	pool        *pgxpool.Pool
+	origin      string
+	secure      bool
+	now         func() time.Time
+}
+
+func New(p *pgxpool.Pool, origin string, secure bool) *Server {
+	return &Server{pool: p, origin: strings.TrimRight(origin, "/"), secure: secure, now: time.Now}
+}
+func (s *Server) Handler() http.Handler {
+	return middleware.Security(s.observe(router.New(s)), s.origin)
+}
+func (s *Server) Health(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, map[string]string{"status": "ok"})
+}
+func (s *Server) Ready(w http.ResponseWriter, r *http.Request) {
+	if e := s.pool.Ping(r.Context()); e != nil {
+		fail(w, 503, "unavailable", "Database unavailable")
+		return
+	}
+	writeJSON(w, 200, map[string]string{"status": "ready"})
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(v)
+}
+func fail(w http.ResponseWriter, status int, code, message string) {
+	writeJSON(w, status, map[string]any{"error": map[string]any{"code": code, "message": message, "requestId": w.Header().Get("X-Request-ID")}})
+}
+func internal(w http.ResponseWriter, err error) {
+	if reporter, ok := w.(interface{ ReportError(error) }); ok {
+		reporter.ReportError(err)
+	}
+	slog.Error("request failed", "requestId", w.Header().Get("X-Request-ID"), "type", errorType(err))
+	fail(w, 500, "internal", "Something went wrong. Please try again.")
+}
+func errorType(err error) string {
+	if err == nil {
+		return "none"
+	}
+	return "database_or_internal"
+}
+func decode(w http.ResponseWriter, r *http.Request, v any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, 16384)
+	d := json.NewDecoder(r.Body)
+	d.DisallowUnknownFields()
+	if err := d.Decode(v); err != nil {
+		fail(w, 422, "validation", "Check the request fields")
+		return false
+	}
+	if err := d.Decode(new(any)); !errors.Is(err, io.EOF) {
+		fail(w, 422, "validation", "Send one JSON object")
+		return false
+	}
+	return true
+}
+func randomToken(n int) string {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		panic("secure random unavailable")
+	}
+	return hex.EncodeToString(b)
+}
+func tokenHash(v string) string { h := sha256.Sum256([]byte(v)); return hex.EncodeToString(h[:]) }
+func equal(a, b string) bool    { return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1 }

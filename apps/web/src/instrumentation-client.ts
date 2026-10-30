@@ -1,5 +1,5 @@
 import * as Sentry from "@sentry/browser";
-import { reportBrowserError } from "./lib/monitoring";
+import { reportBrowserError } from "./shared/utils/monitoring";
 
 if (process.env.NEXT_PUBLIC_MONITORING_ENABLED === "true") {
   Sentry.init({

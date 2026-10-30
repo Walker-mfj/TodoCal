@@ -8,7 +8,7 @@
     "start": "next start --hostname 127.0.0.1",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "generate:api": "openapi-typescript ../../api/openapi.yaml -o src/lib/api-types.ts && prettier --write src/lib/api-types.ts",
+    "generate:api": "openapi-typescript ../../api/openapi.yaml -o src/shared/api/apiTypes.generated.ts && prettier --write src/shared/api/apiTypes.generated.ts",
     "test:e2e": "playwright test",
     "format": "prettier --write src tests *.ts *.json"
   },
@@ -41,6 +41,7 @@
     "openapi-typescript": "7.13.0",
     "prettier": "3.9.10",
     "typescript": "5.9.3",
+    "vite": "8.3.4",
     "vitest": "5.0.5"
   },
   "type": "module"

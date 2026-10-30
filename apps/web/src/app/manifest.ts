@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
-import androidIcon192 from "../../assets/icons/android-chrome-192x192.png";
-import androidIcon512 from "../../assets/icons/android-chrome-512x512.png";
+import androidIcon192 from "../../assets/icons/androidChrome192x192.png";
+import androidIcon512 from "../../assets/icons/androidChrome512x512.png";
 
 export const dynamic = "force-static";
 

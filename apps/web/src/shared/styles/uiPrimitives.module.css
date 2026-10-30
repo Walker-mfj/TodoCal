@@ -1,0 +1,165 @@
+.muted {
+  color: var(--color-muted);
+}
+.eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--color-muted);
+  margin-bottom: 10px;
+}
+.primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-on-accent);
+  font-weight: 600;
+}
+.primary:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--color-accent) 85%, var(--color-ink));
+}
+.wide {
+  width: 100%;
+}
+.text-button {
+  border: 0;
+  background: transparent;
+  padding: 8px 0;
+  color: var(--color-accent);
+}
+.icon-button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  flex-shrink: 0;
+}
+.danger {
+  color: #b34545;
+}
+[data-mode="dark"] .danger {
+  color: #f0a0a0;
+}
+.error {
+  padding: 12px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.notice {
+  padding: 12px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.error {
+  background: color-mix(in srgb, #ba4747 10%, var(--color-panel));
+  color: var(--color-ink);
+  border: 1px solid color-mix(in srgb, #ba4747 55%, var(--color-border));
+}
+.notice {
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-border);
+}
+.notice button {
+  margin-left: 8px;
+}
+.error button {
+  margin-left: 8px;
+}
+.notice svg {
+  vertical-align: middle;
+}
+.loading {
+  padding: 64px;
+  text-align: center;
+  color: var(--color-muted);
+}
+.form-row {
+  display: flex;
+  gap: 12px;
+}
+.form-row > label {
+  flex: 1;
+}
+.check-label {
+  flex-direction: row;
+  align-items: center;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1.08;
+  letter-spacing: -0.7px;
+}
+.brand-mark {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  overflow: hidden;
+}
+.brand-mark img {
+  /* The supplied artwork includes transparent margins. Center its visible icon. */
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: block;
+  width: 140%;
+  height: 140%;
+  max-width: none;
+  object-fit: contain;
+}
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.zero {
+  --level: var(--color-level-zero);
+}
+.starting {
+  --level: var(--color-level-start);
+}
+.building {
+  --level: var(--color-level-steady);
+}
+.strong {
+  --level: var(--color-level-near);
+}
+.complete {
+  --level: var(--color-level-complete);
+}
+.empty {
+  --level: var(--color-level-zero);
+}
+@media (max-width: 480px) {
+  .form-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.notice {
+  border-radius: 10px;
+  padding: 14px 16px;
+  border-left-width: 4px;
+}
+.error {
+  border-radius: 10px;
+  padding: 14px 16px;
+  border-left-width: 4px;
+}
+button.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, #b42332 12%, var(--color-panel));
+  color: var(--color-ink);
+  border-color: #b42332;
+}

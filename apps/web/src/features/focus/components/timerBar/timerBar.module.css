@@ -1,0 +1,39 @@
+.timer-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  margin: 16px 0;
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-accent);
+  border-radius: 8px;
+}
+.timer-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+}
+.timer-digits {
+  font-variant-numeric: tabular-nums;
+  font-size: 23px;
+  font-weight: 650;
+}
+.timer-state {
+  font-size: 12px;
+  color: var(--color-muted);
+  margin-right: auto;
+}
+.timer-bar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+@media (max-width: 1000px) {
+  .focus-bar {
+    flex-wrap: wrap;
+  }
+}

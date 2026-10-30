@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/getsentry/sentry-go"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/getsentry/sentry-go"
 )
 
 func TestSanitizeDiscardsPrivateFields(t *testing.T) {

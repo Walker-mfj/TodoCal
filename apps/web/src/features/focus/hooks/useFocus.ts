@@ -14,11 +14,6 @@ export function useFocus() {
     execute,
     `focus:command:${session!.user.id}:timer`,
   );
-  const anchor = useRef({ at: performance.now(), version: 0 });
-  if (anchor.current.version !== query.dataUpdatedAt) {
-    anchor.current = { at: performance.now(), version: query.dataUpdatedAt };
-  }
-  const [tick, setTick] = useState(performance.now());
   const audio = useRef<AudioContext | null>(null);
   const previous = useRef<string | null>(null);
   const checked = useRef("");
@@ -27,10 +22,6 @@ export function useFocus() {
       ? "unsupported"
       : Notification.permission,
   );
-  useEffect(() => {
-    const id = setInterval(() => setTick(performance.now()), 250);
-    return () => clearInterval(id);
-  }, []);
   useEffect(
     () => () => {
       void audio.current?.close();
@@ -39,22 +30,20 @@ export function useFocus() {
   );
   const state = query.data;
   const active = state?.active;
-  const remaining = active
-    ? remainingSeconds(
-        active,
-        anchor.current.at,
-        Math.max(tick, anchor.current.at),
-      )
-    : 0;
+  // No tick at this level anymore: schedule a single refetch for the moment
+  // the running session expires, so the server can confirm completion.
   useEffect(() => {
-    if (active?.status === "running" && remaining === 0 && connected) {
-      const key = `${active.id}:${active.revision}:${query.dataUpdatedAt}`;
-      if (checked.current !== key) {
-        checked.current = key;
-        void query.refetch();
-      }
-    }
-  }, [active, remaining, connected, query.dataUpdatedAt]);
+    if (active?.status !== "running" || !connected) return;
+    const key = `${active.id}:${active.revision}:${query.dataUpdatedAt}`;
+    if (checked.current === key) return;
+    const at = performance.now();
+    const ms = remainingSeconds(active, at, at) * 1000;
+    const id = setTimeout(() => {
+      checked.current = key;
+      void query.refetch();
+    }, ms + 300);
+    return () => clearTimeout(id);
+  }, [active, connected, query.dataUpdatedAt]);
   useEffect(() => {
     if (
       previous.current &&
@@ -118,7 +107,6 @@ export function useFocus() {
     query,
     state,
     active,
-    remaining,
     command,
     connected,
     permission,

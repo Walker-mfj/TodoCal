@@ -9,6 +9,7 @@ import { Pause, Play, Repeat2 } from "lucide-react";
 import { PriorityBadge } from "../../../tasks/components/priorityBadge/priorityBadge";
 import type { Task } from "../../../../shared/api/domainTypes";
 import type { FocusController } from "../../../focus/hooks/useFocus";
+import { useRemaining } from "../../../focus/hooks/useRemaining";
 
 type CardTask = Task & {
   focusMinutes?: number | null;
@@ -47,10 +48,16 @@ export function CalendarEventContent({
   const planned = task?.estimatedPomodoros || 0;
   const active = focus?.active;
   const own = !!task && active?.taskId === task.id && active.kind === "focus";
+  // Only the event that owns the running session ticks; every other
+  // event passes null here and stays static.
+  const remaining = useRemaining(
+    own ? active : null,
+    focus?.query?.dataUpdatedAt ?? 0,
+  );
   const units =
     (task?.focusProgress ?? actual / (minutes * 60)) +
     (own
-      ? Math.max(0, active.targetSeconds - (focus?.remaining ?? 0)) /
+      ? Math.max(0, active.targetSeconds - remaining) /
         active.targetSeconds
       : 0);
   const count = Math.max(planned, Math.ceil(units));
@@ -61,12 +68,12 @@ export function CalendarEventContent({
       ? "Resume"
       : "Pause"
     : "Start";
-  const time = `${Math.floor((focus?.remaining || 0) / 60)
+  const time = `${Math.floor(remaining / 60)
     .toString()
     .padStart(
       2,
       "0",
-    )}:${((focus?.remaining || 0) % 60).toString().padStart(2, "0")}`;
+    )}:${(remaining % 60).toString().padStart(2, "0")}`;
   const recurrence =
     task?.recurrenceCadence === "daily"
       ? "Daily"

@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { Timer } from "lucide-react";
 import { timerLabel } from "../../utils/clock";
 import type { FocusController } from "../../hooks/useFocus";
+import { useRemaining } from "../../hooks/useRemaining";
 export function FloatingFocus({
   focus,
   onOpen,
@@ -43,6 +44,7 @@ export function FloatingFocus({
     top: number;
     moved: boolean;
   } | null>(null);
+  const remaining = useRemaining(focus.active, focus.query.dataUpdatedAt);
   if (hidden) return null;
   return (
     <div
@@ -99,7 +101,7 @@ export function FloatingFocus({
         }}
       >
         <Timer size={23} />
-        {focus.active && <small>{timerLabel(focus.remaining)}</small>}
+        {focus.active && <small>{timerLabel(remaining)}</small>}
       </button>
     </div>
   );

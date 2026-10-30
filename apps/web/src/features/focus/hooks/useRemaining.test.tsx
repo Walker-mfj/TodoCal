@@ -28,7 +28,7 @@ it("keeps newly mounted clocks synchronized with an existing session", () => {
 
     // Opening a panel must not restart the old snapshot at 25:00.
     const second = render(<Clock receivedAt={receivedAt} />);
-    expect(second.getByText("24:00")).toBeInTheDocument();
+    expect(screen.getAllByText("24:00")).toHaveLength(2);
     first.unmount();
     second.unmount();
   } finally {

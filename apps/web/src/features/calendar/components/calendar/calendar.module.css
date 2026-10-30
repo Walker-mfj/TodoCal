@@ -1,0 +1,190 @@
+.calendar-wrap {
+  padding: 18px 14px 0;
+}
+:where(.calendar-wrap) :global(.fc) {
+  --fc-border-color: var(--color-border);
+  --fc-page-bg-color: var(--color-panel);
+  --fc-neutral-bg-color: var(--color-side);
+  --fc-today-bg-color: var(--color-accent-soft);
+  --fc-event-bg-color: var(--color-work);
+  --fc-event-text-color: var(--color-ink);
+  --fc-button-bg-color: var(--color-panel);
+  --fc-button-border-color: var(--color-border);
+  --fc-button-text-color: var(--color-muted);
+  --fc-button-hover-bg-color: var(--color-accent-soft);
+  --fc-button-hover-border-color: var(--color-border);
+  --fc-button-active-bg-color: var(--color-accent-soft);
+  --fc-button-active-border-color: var(--color-border);
+  font-size: 11px;
+}
+:where(.calendar-wrap) :global(.fc) :global(.fc-toolbar-title) {
+  font-size: 14px;
+  font-weight: 600;
+}
+:where(.calendar-wrap)
+  :global(.fc)
+  :global(.fc-toolbar):global(.fc-header-toolbar) {
+  margin-bottom: 18px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+:where(.calendar-wrap) :global(.fc) :global(.fc-button) {
+  font-size: 11px;
+  padding: 6px 9px;
+  border-radius: 5px;
+  box-shadow: none !important;
+}
+:where(.calendar-wrap) :global(.fc) :global(.fc-timegrid-slot) {
+  height: 27px;
+}
+:where(.calendar-wrap) :global(.fc) :global(.fc-col-header-cell) {
+  font-weight: 500;
+  font-size: 10px;
+  padding: 9px 0;
+}
+:where(.calendar-wrap) :global(.fc) :global(.fc-timegrid-slot-label) {
+  color: var(--color-muted);
+  font-size: 9px;
+}
+:where(.calendar-wrap) :global(.fc) :global(.fc-timegrid-axis-cushion) {
+  font-size: 9px;
+  color: var(--color-muted);
+}
+:where(.calendar-wrap) :global(.fc) :global(.fc-timegrid-event) {
+  border: 0;
+  border-left: 3px solid;
+  border-radius: 4px;
+  padding: 3px;
+  box-shadow: none !important;
+}
+:where(.calendar-wrap) :global(.fc) :global(.fc-daygrid-event) {
+  background: var(--color-work);
+  border: 0;
+  border-left: 3px solid;
+  border-radius: 3px;
+  color: var(--color-ink);
+  padding: 3px;
+  white-space: normal;
+}
+:where(.calendar-wrap) :global(.fc) :global(.fc-daygrid-event-dot) {
+  display: none;
+}
+:where(.calendar-wrap) :global(.event-historical) {
+  border-style: solid;
+}
+:where(.calendar-wrap) :global(.fc) :global(.fc-scroller-liquid-absolute) {
+  overflow-y: auto !important;
+}
+.calendar-wrap :global(.fc-timegrid-body) {
+  max-height: none;
+}
+@media (max-width: 1200px) {
+  :where(.calendar-wrap) :global(.fc) :global(.fc-toolbar-title) {
+    font-size: 12px;
+  }
+}
+:where(.calendar-wrap) :global(.fc-event-mirror) {
+  opacity: 0.7;
+}
+:where(.calendar-wrap) :global(.fc-event-resizer) {
+  min-height: 8px;
+}
+:where(.calendar-wrap) :global(.calendar-progress) {
+  display: block;
+  margin: 3px auto 0;
+  padding: 2px 5px;
+  border: 0;
+  color: var(--level);
+  font-size: 10px;
+  background: transparent;
+}
+@media (max-width: 1000px) {
+  .calendar-wrap {
+    overflow-x: auto;
+  }
+}
+@media (max-width: 1000px) {
+  .calendar-wrap :global(.fc) {
+    min-width: 660px;
+  }
+}
+:where(.calendar-wrap) :global(.fc) :global(.fc-event-draft) {
+  border: 0 !important;
+  outline: 1px dashed var(--color-accent);
+  outline-offset: -1px;
+  background: var(--color-accent-soft) !important;
+  color: var(--color-ink) !important;
+  box-shadow: 0 0 0 2px var(--color-panel);
+  cursor: default;
+}
+:where(.calendar-wrap)
+  :global(.fc)
+  :global(.fc-event-draft)
+  :global(.fc-event-main) {
+  color: var(--color-ink);
+}
+:where(.calendar-wrap) :global(.fc-event-draft) :global(.draft-badge) {
+  display: inline-block;
+  width: fit-content;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--color-panel);
+  color: var(--color-accent);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+:where(.calendar-wrap) :global(.fc) :global(.event-complete) {
+  opacity: 1;
+  background: var(--color-success-soft);
+  border-left-color: var(--color-success) !important;
+}
+:where(.calendar-wrap)
+  :global(.fc)
+  :global(.event-complete)
+  :global(.fc-event-main) {
+  color: var(--color-success);
+}
+:where(.calendar-wrap) :global(.event-complete) :global(.event-title) {
+  text-decoration: line-through;
+}
+@media (max-width: 1000px) {
+  .calendar-wrap :global(.fc) {
+    min-width: 0;
+  }
+}
+@media (max-width: 600px) {
+  .calendar-wrap :global(.fc) {
+    min-width: 440px;
+  }
+}
+:where(.calendar-wrap) :global(.fc) :global(.fc-timegrid-event-short) {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+:where(.calendar-wrap)
+  :global(.fc)
+  :global(.fc-timegrid-event-short)
+  :global(.fc-event-main) {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+:where(.calendar-wrap)
+  :global(.fc)
+  :global(.fc-event-draft):global(.fc-event-draggable) {
+  cursor: grab;
+}
+:where(.calendar-wrap)
+  :global(.fc)
+  :global(.fc-event-draft):global(.fc-event-dragging) {
+  cursor: grabbing;
+}
+:where(.calendar-wrap)
+  :global(.fc)
+  :global(.fc-timegrid-event-short)
+  :global(.draft-badge) {
+  display: none;
+}
+:where(.calendar-wrap) :global(.fc-event-main) {
+  container-type: inline-size;
+}

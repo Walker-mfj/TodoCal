@@ -1,0 +1,30 @@
+.settings-card {
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 24px;
+}
+.settings-card {
+  max-width: 750px;
+}
+.settings-card h2 {
+  margin-bottom: 12px;
+}
+.settings-card form {
+  margin-top: 26px;
+}
+.settings-card label {
+  font-size: 12px;
+}
+.settings-card :global(.muted) {
+  font-size: 12px;
+}
+.settings-card button {
+  font-size: 12px;
+}
+@media (max-width: 480px) {
+  .settings-card {
+    padding: 12px;
+    min-width: 0;
+  }
+}

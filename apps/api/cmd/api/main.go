@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"focuscalendar/internal/database"
+	"focuscalendar/internal/middleware"
 	"log/slog"
 	"net/http"
 	"os"
@@ -13,7 +15,7 @@ import (
 	_ "time/tzdata"
 
 	"focuscalendar/internal/config"
-	"focuscalendar/internal/server"
+	"focuscalendar/internal/controllers"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -43,16 +45,16 @@ func run() error {
 		return errors.New("database connection failed")
 	}
 	if *migrateOnly {
-		if err = server.Migrate(startup, pool); err != nil {
+		if err = database.Migrate(startup, pool); err != nil {
 			return errors.New("database migration failed")
 		}
 		slog.Info("migrations applied")
 		return nil
 	}
-	app := server.New(pool, cfg.Origin, cfg.Secure)
+	app := controllers.New(pool, cfg.Origin, cfg.Secure)
 	closeMonitoring := app.EnableMonitoring(os.Getenv("BETTER_STACK_DSN"), os.Getenv("RENDER_GIT_COMMIT"))
 	defer closeMonitoring()
-	api := &http.Server{Addr: cfg.Address, Handler: server.ProxyHandler(app.Handler(), os.Getenv("PROXY_SECRET")), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
+	api := &http.Server{Addr: cfg.Address, Handler: middleware.ProxyHandler(app.Handler(), os.Getenv("PROXY_SECRET")), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
 	done := make(chan error, 1)
 	go func() { done <- api.ListenAndServe() }()
 	slog.Info("API listening", "address", cfg.Address)

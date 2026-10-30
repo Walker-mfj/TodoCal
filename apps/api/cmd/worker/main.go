@@ -4,7 +4,8 @@ import (
 	"context"
 	"flag"
 	"focuscalendar/internal/config"
-	"focuscalendar/internal/planning"
+	"focuscalendar/internal/workers"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 	"log/slog"
 	"os"
@@ -30,7 +31,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer pool.Close()
-	sweeper := &planning.Sweeper{}
+	sweeper := &workers.Sweeper{}
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 	for {

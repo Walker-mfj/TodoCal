@@ -2,11 +2,19 @@
 
 A desktop web task calendar with optional Pomodoro and daily, weekly, and monthly completion analytics.
 
-**Stack:** Next.js frontend, Go REST API, PostgreSQL. The approved visual prototype is in `docs/ui-demo`; it is separate from the production app.
+**Stack:** Next.js frontend, Go REST API, PostgreSQL. The approved visual prototype is in `docs/uiDemo`; it is separate from the production app.
+
+## Code organization
+
+The frontend lives in `apps/web/src`: `app` contains Next.js entry points, `home` composes the main screen at `/`, `features` owns each product feature, and `shared` holds reusable infrastructure and UI. Feature code is grouped into `components`, `hooks`, `utils`, `types`, and `constants` as needed. Components own their adjacent CSS Modules; global styles are reserved for reset, tokens, and page foundations.
+
+The Go backend lives in `apps/api/internal`: HTTP controllers call services, services coordinate business rules and transactions, and repositories own persistence. Database migrations remain embedded in the database package. API and worker executables stay under `apps/api/cmd`.
+
+Custom file and folder names use camelCase; CSS classes use kebab-case. Framework-required names and existing migration names remain unchanged. See the [structure design](docs/superpowers/specs/folderStructureDesign.md) and [implementation plan](docs/superpowers/plans/folderStructurePlan.md) for ownership rules and verification requirements.
 
 ## Current implementation
 
-The backend provides account registration, login/logout, password changes, task CRUD and completion, group CRUD, account settings, filtering, pagination, and database migrations. Owned writes use account transactions, idempotency keys, and revision checks. Daily/every-N-days/weekly recurrence, calendar ranges, finalized daily plans, and a background catch-up worker are also implemented. The TodoCal workspace now connects to these APIs: authentication, task/group/settings forms, Day/Week/Month calendar, repeating tasks, account themes, and week/month grids of authoritative daily progress with drilldown. Calendar drag/drop, edge resizing, external task scheduling, and server-authoritative 10-second Undo are implemented. Optional account-wide Pomodoro is implemented with task-linked/free focus, pause/resume/early end, manual breaks, capped server time, and persistent cross-device state. Server-backed weekly/monthly analytics now include weighted plan completion, distinct completed tasks, focus time, Pomodoros, completed-plan days, matched prior-period comparisons, and daily drilldown. Final acceptance evidence and known limits are documented in `docs/verification/mvp-acceptance.md`. The visual prototype remains separate.
+The backend provides account registration, login/logout, password changes, task CRUD and completion, group CRUD, account settings, filtering, pagination, and database migrations. Owned writes use account transactions, idempotency keys, and revision checks. Daily/every-N-days/weekly recurrence, calendar ranges, finalized daily plans, and a background catch-up worker are also implemented. The TodoCal workspace now connects to these APIs: authentication, task/group/settings forms, Day/Week/Month calendar, repeating tasks, account themes, and week/month grids of authoritative daily progress with drilldown. Calendar drag/drop, edge resizing, external task scheduling, and server-authoritative 10-second Undo are implemented. Optional account-wide Pomodoro is implemented with task-linked/free focus, pause/resume/early end, manual breaks, capped server time, and persistent cross-device state. Server-backed weekly/monthly analytics now include weighted plan completion, distinct completed tasks, focus time, Pomodoros, completed-plan days, matched prior-period comparisons, and daily drilldown. Final acceptance evidence and known limits are documented in `docs/verification/mvpAcceptance.md`. The visual prototype remains separate.
 
 ## Local development
 
@@ -92,9 +100,9 @@ Compose persists development data in the `focus_pg` volume. `docker compose stop
 
 ## Product references
 
-- [Specification](docs/specs/2026-10-19-focus-calendar-mvp.md)
-- [Implementation plan](docs/superpowers/plans/2026-10-19-focus-calendar-mvp.md)
-- [Approved UI](docs/ui-demo/design-decision.md)
+- [Specification](docs/specs/focusCalendarMvp20261019.md)
+- [Implementation plan](docs/superpowers/plans/focusCalendarMvp20261019.md)
+- [Approved UI](docs/uiDemo/designDecision.md)
 
 Calendar gestures snap changed edges to 15 minutes; form inputs retain minute precision. External drops default to 30 minutes, untimed drops clear the time, and Month moves preserve existing times. Failed saves restore the previous event; uncertain commands retain their exact retry key. Undo is owner-scoped, expires on the server, and refuses to overwrite a concurrent edit.
 
@@ -102,9 +110,9 @@ Focus analytics allocate saved intervals using the current account timezone, sho
 
 ## Acceptance and recovery
 
-See [MVP acceptance](docs/verification/mvp-acceptance.md) for criteria 1–50, review findings and known limits, and [local operations](docs/verification/operations.md) for configuration, migrations and backup/recovery. Run `make test-operations` for an isolated database restart and dump/restore rehearsal; it requires Python 3 and never modifies the development database.
+See [MVP acceptance](docs/verification/mvpAcceptance.md) for criteria 1–50, review findings and known limits, and [local operations](docs/verification/operations.md) for configuration, migrations and backup/recovery. Run `make test-operations` for an isolated database restart and dump/restore rehearsal; it requires Python 3 and never modifies the development database.
 
-Acceptance hardening evidence, accessibility scope and remaining Safari permission gate: [hardening results](docs/verification/hardening-results.md). Run `make test-load` for the isolated synthetic load harness; the measured profile is in [load acceptance](docs/verification/load-acceptance.md).
+Acceptance hardening evidence, accessibility scope and remaining Safari permission gate: [hardening results](docs/verification/hardeningResults.md). Run `make test-load` for the isolated synthetic load harness; the measured profile is in [load acceptance](docs/verification/loadAcceptance.md).
 
 
 ### Task history and quick focus

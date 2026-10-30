@@ -1,0 +1,9 @@
+* {
+  box-sizing: border-box;
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -11,7 +11,7 @@ Live deployment (2026-10-25):
 - Render dashboard: https://dashboard.render.com/web/srv-dbf0ekks728c73dmd6ig
 - Neon project: `delicate-moon-70365012`, production branch `br-icy-feather-b4u8imu4`.
 - Render currently deploys from `codex/free-deployment` automatically. Moving the local branch to `main` does not change the Render dashboard setting.
-- `.github/workflows/deploy-frontend.yml` deploys the frontend on pushes to `main`, or manual runs on `main`, once the workflow is pushed and the secrets below are configured. Local merges alone do not deploy anything. Manual frontend deployment remains available with `npm run deploy` from `deploy/cloudflare`.
+- `.github/workflows/deployFrontend.yml` deploys the frontend on pushes to `main`, or manual runs on `main`, once the workflow is pushed and the secrets below are configured. Local merges alone do not deploy anything. Manual frontend deployment remains available with `npm run deploy` from `deploy/cloudflare`.
 
 ## Frontend deployment from GitHub
 

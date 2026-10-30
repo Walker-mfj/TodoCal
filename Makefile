@@ -18,7 +18,7 @@ api-dev:
 test-go:
 	cd apps/api && TEST_DATABASE_URL= go test -race -count=1 ./...
 test-integration:
-	sh scripts/test-integration.sh
+	sh scripts/testIntegration.sh
 build-api:
 	mkdir -p .local
 	cd apps/api && go build -o ../../.local/focus-api ./cmd/api
@@ -46,12 +46,12 @@ generate-api-types:
 
 .PHONY: test-e2e
 test-e2e:
-	sh scripts/test-e2e.sh $(E2E_ARGS)
+	sh scripts/testE2e.sh $(E2E_ARGS)
 
 .PHONY: test-operations
 test-operations: build-api
-	python3 scripts/test-operations.py
+	python3 scripts/testOperations.py
 
 .PHONY: test-load
 test-load:
-	python3 scripts/test-load.py
+	python3 scripts/testLoad.py

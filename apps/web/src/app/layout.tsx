@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Providers } from "./providers";
-import "./globals.css";
+import "../shared/styles/tokens.css";
+import "../shared/styles/reset.css";
+import "../shared/styles/globals.css";
 export const metadata: Metadata = {
   title: "TodoCal — Tasks & Calendar",
   description:

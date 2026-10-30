@@ -1,0 +1,78 @@
+package repository
+
+import (
+	"context"
+	"time"
+
+	"focuscalendar/internal/models"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+)
+
+func ReadGroupPresentation(ctx context.Context, db DBTX, userID string, groupID *string, resultGroupName **string, resultGroupColor **string) error {
+	return db.QueryRow(ctx, `SELECT name,color FROM groups WHERE user_id=$1 AND id=$2`, userID, groupID).Scan(resultGroupName, resultGroupColor)
+}
+
+func ListScheduledTasks(ctx context.Context, db DBTX, userID string, date string) ([]models.Task, error) {
+	rows, err := db.Query(ctx, `SELECT `+TaskColumns+` FROM tasks WHERE user_id=$1 AND scheduled_date=$2 AND deleted_at IS NULL ORDER BY start_time NULLS FIRST,id`, userID, date)
+	if err != nil {
+		return nil, err
+	}
+	return collect(rows, func(row pgx.Row) (models.Task, error) { return ScanTask(row) })
+}
+
+func ListHistoricalTaskStates(ctx context.Context, db DBTX, userID string, date string, cutoff time.Time) ([]models.Task, error) {
+	rows, err := db.Query(ctx, `WITH latest AS (SELECT DISTINCT ON(task_id) task_id,kind,after_state FROM task_events WHERE user_id=$1 AND (occurred_at<$3 OR historical_adjustment) ORDER BY task_id,occurred_at DESC,(after_state->>'revision')::bigint DESC) SELECT after_state FROM latest WHERE kind<>'deleted' AND after_state->>'scheduledDate'=$2 ORDER BY after_state->>'startTime' NULLS FIRST,task_id`, userID, date, cutoff)
+	if err != nil {
+		return nil, err
+	}
+	return collect(rows, func(row pgx.Row) (models.Task, error) { return scanHistoricalTask(row) })
+}
+
+func SnapshotExists(ctx context.Context, db DBTX, userID string, date string, resultExists *bool) error {
+	return db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM daily_snapshots WHERE user_id=$1 AND date=$2)`, userID, date).Scan(resultExists)
+}
+
+func DayHasHistory(ctx context.Context, db DBTX, userID string, date string, resultTouched *bool) error {
+	return db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM task_events WHERE user_id=$1 AND after_state->>'scheduledDate'=$2) OR EXISTS(SELECT 1 FROM recurrence_exceptions WHERE user_id=$1 AND original_occurrence_date=$2::date)`, userID, date).Scan(resultTouched)
+}
+
+func InsertSnapshot(ctx context.Context, db DBTX, userID string, date string, zone string, planned int, completed int, now time.Time) (pgconn.CommandTag, error) {
+	return db.Exec(ctx, `INSERT INTO daily_snapshots(user_id,date,timezone,planned,completed,finalized_at) VALUES($1,$2,$3,$4,$5,$6)`, userID, date, zone, planned, completed, now)
+}
+
+func InsertSnapshotEntry(ctx context.Context, db DBTX, userID string, date string, taskID string, state []byte) (pgconn.CommandTag, error) {
+	return db.Exec(ctx, `INSERT INTO daily_plan_entries(user_id,date,task_id,task_state) VALUES($1,$2,$3,$4)`, userID, date, taskID, state)
+}
+
+func ReadPlanningCursor(ctx context.Context, db DBTX, userID string, resultThrough **string) error {
+	return db.QueryRow(ctx, `SELECT caught_up_through::text FROM planning_state WHERE user_id=$1`, userID).Scan(resultThrough)
+}
+
+func FindFirstUnsettledDate(ctx context.Context, db DBTX, userID string, today string, next *string, resultFirst **string) error {
+	return db.QueryRow(ctx, `SELECT min(d)::text FROM (
+ SELECT (after_state->>'scheduledDate')::date AS d FROM task_events WHERE user_id=$1 AND after_state->>'scheduledDate' IS NOT NULL
+ UNION SELECT GREATEST(start_date,COALESCE($3::date,start_date)) FROM recurrence_series WHERE user_id=$1 AND (end_date IS NULL OR end_date>=GREATEST(start_date,COALESCE($3::date,start_date))) AND (stopped_after IS NULL OR stopped_after>=GREATEST(start_date,COALESCE($3::date,start_date)))
+ ) candidates WHERE d<$2::date AND NOT EXISTS(SELECT 1 FROM daily_snapshots WHERE user_id=$1 AND date=d)`, userID, today, next).Scan(resultFirst)
+}
+
+func AdvancePlanningCursor(ctx context.Context, db DBTX, userID string, through string) (pgconn.CommandTag, error) {
+	return db.Exec(ctx, `INSERT INTO planning_state(user_id,caught_up_through) VALUES($1,$2) ON CONFLICT(user_id) DO UPDATE SET caught_up_through=GREATEST(planning_state.caught_up_through,EXCLUDED.caught_up_through)`, userID, through)
+}
+
+func ReadSnapshotSummary(ctx context.Context, db DBTX, userID string, date string, out *models.Day) error {
+	return db.QueryRow(ctx, `SELECT timezone,planned,completed FROM daily_snapshots WHERE user_id=$1 AND date=$2`, userID, date).Scan(&out.Timezone, &out.Planned, &out.Completed)
+}
+
+func ListSnapshotEntries(ctx context.Context, db DBTX, userID string, date string) ([]models.Entry, error) {
+	rows, err := db.Query(ctx, `SELECT task_state FROM daily_plan_entries WHERE user_id=$1 AND date=$2 ORDER BY task_state->'task'->>'startTime' NULLS FIRST,task_id`, userID, date)
+	if err != nil {
+		return nil, err
+	}
+	return collect(rows, func(row pgx.Row) (models.Entry, error) { return scanSnapshotEntry(row) })
+}
+
+func ClearInvalidTimeExceptions(ctx context.Context, db DBTX, userID string, today string) (pgconn.CommandTag, error) {
+	return db.Exec(ctx, `DELETE FROM recurrence_exceptions e WHERE e.user_id=$1 AND e.reason='invalid_local_time' AND e.original_occurrence_date >= $2::date AND NOT EXISTS(SELECT 1 FROM daily_snapshots s WHERE s.user_id=e.user_id AND s.date=e.original_occurrence_date)`, userID, today)
+}

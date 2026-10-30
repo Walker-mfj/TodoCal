@@ -80,6 +80,8 @@ test("calendar drag snaps, Undo restores, resize saves, and Month moves preserve
   await expect(
     page.getByRole("button", { name: "Undo", exact: true }),
   ).toBeVisible();
+  await expect(page.locator(".toast-actions")).toHaveCSS("display", "flex");
+  await expect(page.locator(".toast-actions")).toHaveCSS("gap", "12px");
   let current = await (
     await page.request.get(`/api/v1/tasks/${task.id}`)
   ).json();
@@ -515,4 +517,26 @@ test("repeating drag asks for scope; cancel, one and all preserve occurrence det
     startTime: "11:00",
     endTime: "12:00",
   });
+});
+
+test("completed calendar titles retain their strike-through after CSS scoping", async ({
+  page,
+}) => {
+  const { date, send } = await setup(page);
+  const task = await send("/tasks", {
+    title: "Completed style regression",
+    scheduledDate: date,
+    startTime: "09:00",
+    endTime: "10:00",
+  });
+  await send(`/tasks/${task.id}/completion`, {
+    complete: true,
+    expectedRevision: task.revision,
+  });
+  await page.reload();
+  const title = page
+    .locator(".fc .event-complete .event-title")
+    .filter({ hasText: "Completed style regression" });
+  await expect(title).toBeVisible();
+  await expect(title).toHaveCSS("text-decoration-line", "line-through");
 });

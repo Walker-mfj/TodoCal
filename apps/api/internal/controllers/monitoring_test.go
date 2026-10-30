@@ -81,7 +81,7 @@ func TestPanicRecoveryDoesNotReturnPartialSuccess(t *testing.T) {
 			s := New(nil, "http://localhost:3000", false)
 			h := s.observe(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if started {
-					w.Write([]byte("partial"))
+					_, _ = w.Write([]byte("partial"))
 				}
 				panic("sensitive panic")
 			}))

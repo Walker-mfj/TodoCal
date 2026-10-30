@@ -322,7 +322,7 @@ func TestWorkerBlockedAccountDoesNotStarveLaterAccounts(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	defer lock.Rollback(context.Background())
+	defer func() { _ = lock.Rollback(context.Background()) }()
 	if _, e = lock.Exec(context.Background(), `SELECT user_id FROM settings WHERE user_id=$1 FOR UPDATE`, first); e != nil {
 		t.Fatal(e)
 	}

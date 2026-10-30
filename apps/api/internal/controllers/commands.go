@@ -61,7 +61,7 @@ func (s *Server) mutate(w http.ResponseWriter, r *http.Request, op services.Oper
 		httpStatus = http.StatusCreated
 	}
 	w.WriteHeader(httpStatus)
-	w.Write(append(body, '\n'))
+	_, _ = w.Write(append(body, '\n'))
 }
 func (s *Server) view(w http.ResponseWriter, r *http.Request, op services.Query) {
 	p, ok := s.authenticate(w, r)

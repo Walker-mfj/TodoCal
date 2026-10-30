@@ -15,7 +15,7 @@ func WithTx(ctx context.Context, pool *pgxpool.Pool, userID string, fn func(pgx.
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(context.WithoutCancel(ctx))
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
 	var zone string
 	if err = tx.QueryRow(ctx, `SELECT timezone FROM settings WHERE user_id=$1 FOR UPDATE`, userID).Scan(&zone); err != nil {
 		return err

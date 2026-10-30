@@ -55,7 +55,9 @@ func mergePatch(raw []byte, current any, target any) error {
 	delete(patch, "expectedRevision")
 	old, _ := json.Marshal(current)
 	var merged map[string]json.RawMessage
-	json.Unmarshal(old, &merged)
+	if err := json.Unmarshal(old, &merged); err != nil {
+		return err
+	}
 	for k, v := range patch {
 		if _, ok := merged[k]; !ok {
 			return Invalid("Unknown editable field: " + k)

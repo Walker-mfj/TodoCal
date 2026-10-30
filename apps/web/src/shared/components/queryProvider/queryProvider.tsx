@@ -8,14 +8,8 @@ export function QueryProvider({ children }: { children: ReactNode }) {
         defaultOptions: {
           queries: {
             retry: false,
-            staleTime: 10_000,
             refetchOnWindowFocus: true,
             refetchOnReconnect: false,
-            refetchInterval: () =>
-              typeof document !== "undefined" &&
-              document.visibilityState === "visible"
-                ? 15_000
-                : false,
           },
           mutations: { retry: false },
         },

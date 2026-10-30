@@ -44,7 +44,7 @@ export function FloatingFocus({
     top: number;
     moved: boolean;
   } | null>(null);
-  const remaining = useRemaining(focus.active, focus.query.dataUpdatedAt);
+  const remaining = useRemaining(focus.active, focus.receivedAt);
   if (hidden) return null;
   return (
     <div

@@ -15,7 +15,7 @@ export function TimerBar({
   onOpen: () => void;
 }) {
   const a = focus.active;
-  const remaining = useRemaining(a, focus.query.dataUpdatedAt);
+  const remaining = useRemaining(a, focus.receivedAt);
   if (!a) return null;
   return (
     <section className={cx("timer-bar")} aria-label="Active timer">

@@ -18,7 +18,7 @@ function card(
 ) {
   const focus = {
     active: null,
-    query: { dataUpdatedAt: 0 },
+    receivedAt: performance.now(),
     blocked: false,
     start: vi.fn(),
     change: vi.fn(),

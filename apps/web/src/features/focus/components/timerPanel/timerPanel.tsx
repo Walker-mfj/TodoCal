@@ -75,7 +75,7 @@ export function TimerPanel({
     return () => document.removeEventListener("keydown", escape);
   }, [onClose]);
   const active = focus.active;
-  const remaining = useRemaining(active, focus.query.dataUpdatedAt);
+  const remaining = useRemaining(active, focus.receivedAt);
   const currentKind = active?.kind || kind;
   const minutes = Number(durations[currentKind]);
   const valid = Number.isInteger(minutes) && minutes >= 1 && minutes <= 180;

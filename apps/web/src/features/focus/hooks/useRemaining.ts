@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { remainingSeconds } from "../utils/clock";
 import type { FocusState } from "./useFocus";
 
@@ -7,16 +7,12 @@ type ActiveSession = NonNullable<FocusState["active"]>;
 
 // Countdown for the components that display it. The 250ms tick lives here,
 // inside the displaying component, instead of in the shared useFocus
-// controller: it runs only while a session is running, and it re-renders
-// only the component that shows the clock.
+// controller. Every display uses the same receivedAt anchor for this
+// server snapshot, including displays that mount after the timer starts.
 export function useRemaining(
   active: ActiveSession | null | undefined,
-  dataUpdatedAt: number,
+  receivedAt: number,
 ): number {
-  const anchor = useRef({ at: performance.now(), version: 0 });
-  if (anchor.current.version !== dataUpdatedAt) {
-    anchor.current = { at: performance.now(), version: dataUpdatedAt };
-  }
   const [tick, setTick] = useState(performance.now());
   const running = active?.status === "running";
   useEffect(() => {
@@ -27,7 +23,7 @@ export function useRemaining(
   if (!active) return 0;
   return remainingSeconds(
     active,
-    anchor.current.at,
-    Math.max(tick, anchor.current.at),
+    receivedAt,
+    Math.max(tick, performance.now(), receivedAt),
   );
 }

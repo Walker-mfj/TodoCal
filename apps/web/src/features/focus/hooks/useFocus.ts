@@ -1,15 +1,16 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useOwnedQuery } from "../../auth/hooks/useOwnedQuery";
 import { useSession } from "../../auth/components/sessionProvider/sessionProvider";
 import { useCommand } from "../../../shared/hooks/useCommand";
 import type { components } from "../../../shared/api/apiTypes.generated";
-import { remainingSeconds } from "../utils/clock";
 export type FocusState = components["schemas"]["FocusState"];
 export type FocusKind = components["schemas"]["FocusSession"]["kind"];
 export function useFocus() {
   const { session, execute, connected } = useSession();
   const query = useOwnedQuery<FocusState>("focus", "/focus");
+  const client = useQueryClient();
   const command = useCommand(
     execute,
     `focus:command:${session!.user.id}:timer`,
@@ -30,26 +31,49 @@ export function useFocus() {
   );
   const state = query.data;
   const active = state?.active;
+  // Anchor each server snapshot once in the shared controller. Newly mounted
+  // displays must not restart the countdown from the old elapsedSeconds.
+  const received = useRef({
+    version: query.dataUpdatedAt,
+    at: performance.now(),
+  });
+  if (received.current.version !== query.dataUpdatedAt) {
+    received.current = {
+      version: query.dataUpdatedAt,
+      at: performance.now(),
+    };
+  }
+  const receivedAt = received.current.at;
   // No tick at this level anymore: schedule a single refetch for the moment
   // the running session expires, so the server can confirm completion.
   useEffect(() => {
     if (active?.status !== "running" || !connected) return;
     const key = `${active.id}:${active.revision}:${query.dataUpdatedAt}`;
     if (checked.current === key) return;
-    const at = performance.now();
-    const ms = remainingSeconds(active, at, at) * 1000;
+    const ms = Math.max(
+      0,
+      (active.targetSeconds - active.elapsedSeconds) * 1000 -
+        (performance.now() - receivedAt),
+    );
     const id = setTimeout(() => {
       checked.current = key;
       void query.refetch();
     }, ms + 300);
     return () => clearTimeout(id);
-  }, [active, connected, query.dataUpdatedAt]);
+  }, [active, connected, query.dataUpdatedAt, receivedAt]);
   useEffect(() => {
     if (
       previous.current &&
       state?.last?.id === previous.current &&
       state.last.status === "completed"
     ) {
+      // GET /focus settles the session server-side; refresh derived views
+      // without refetching the already up-to-date focus query.
+      void client.invalidateQueries({
+        predicate: (entry) =>
+          entry.queryKey[0] === session!.user.id &&
+          entry.queryKey[1] !== "focus",
+      });
       if (session!.settings.sound && audio.current?.state === "running") {
         try {
           const ctx = audio.current,
@@ -76,7 +100,7 @@ export function useFocus() {
       }
     }
     previous.current = state?.active?.id || null;
-  }, [state, session]);
+  }, [state, session, client]);
   const primeSound = () => {
     if (!session!.settings.sound) return;
     try {
@@ -107,6 +131,7 @@ export function useFocus() {
     query,
     state,
     active,
+    receivedAt,
     command,
     connected,
     permission,

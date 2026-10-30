@@ -50,10 +50,7 @@ export function CalendarEventContent({
   const own = !!task && active?.taskId === task.id && active.kind === "focus";
   // Only the event that owns the running session ticks; every other
   // event passes null here and stays static.
-  const remaining = useRemaining(
-    own ? active : null,
-    focus?.query?.dataUpdatedAt ?? 0,
-  );
+  const remaining = useRemaining(own ? active : null, focus?.receivedAt ?? 0);
   const units =
     (task?.focusProgress ?? actual / (minutes * 60)) +
     (own

@@ -8,7 +8,7 @@ This is a **test contract and proposed regression checklist**, not a claim that 
 
 1. **Soft delete and restore:** Given a task with revision R, deleting returns the next revision and removes it from normal lists; after the 10-second toast disappears, a restore API request with the correct latest revision is still accepted (no server restore deadline today).
 2. **Historical adjustment:** Given a finalized day 3/5, explicitly backdating a completion/edit updates that day and recalculates the week/month summary; another task's captured entry is not silently rewritten.
-3. **Group removal:** Given a finalized day with a colored group, deleting that group does not change the captured historical group name/color or the day's planned/completed counts; live tasks lose their group.
+3. **Group removal, journaling and recovery:** Given a finalized day with a colored group, deleting that group does not change the captured historical group name/color or the day's planned/completed counts. All referencing task rows, **including soft-deleted tasks**, have `group_id = NULL` and their revision incremented. Only **non-deleted** affected tasks receive a new `group_cleared` event; soft-deleted affected tasks **do not** receive that event. Restoring a previously soft-deleted task requires its latest revision, keeps the group unset and records the regular `restored` event.
 4. **No plan vs zero progress:** Given zero planned tasks, return percentage `null` / display **No plan**; given five planned and zero completed, display **0%**.
 5. **Weighted rollup:** Given day A 1/1 and day B 0/9, display 10% for the combined period.
 6. **Unscheduled completion:** Completing an unscheduled task increments the completed-task metric but does not add a daily-plan denominator.

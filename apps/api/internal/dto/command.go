@@ -38,7 +38,9 @@ func (c Command) Schedule() (out models.ScheduleInput, err error) {
 		return
 	}
 	var fields map[string]json.RawMessage
-	json.Unmarshal(c, &fields)
+	if err := json.Unmarshal(c, &fields); err != nil {
+		return out, err
+	}
 	out.Present = map[string]bool{}
 	for key := range fields {
 		out.Present[key] = true

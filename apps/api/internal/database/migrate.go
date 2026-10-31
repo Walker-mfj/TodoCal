@@ -26,7 +26,7 @@ func Migrate(ctx context.Context, p *pgxpool.Pool) error {
 	if err != nil {
 		return err
 	}
-	defer m.Close()
+	defer func() { _, _ = m.Close() }()
 	err = m.Up()
 	if errors.Is(err, migrate.ErrNoChange) {
 		return nil

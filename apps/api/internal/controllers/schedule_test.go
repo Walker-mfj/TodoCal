@@ -87,7 +87,7 @@ func TestScheduleTransactionRollsBackWhenUndoCannotBeStored(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		p.Exec(context.Background(), `ALTER TABLE schedule_undos DROP CONSTRAINT reject_schedule_test`)
+		_, _ = p.Exec(context.Background(), `ALTER TABLE schedule_undos DROP CONSTRAINT reject_schedule_test`)
 	})
 	object(t, command(s, "POST", "/api/v1/tasks/"+id+"/schedule", map[string]any{"scheduledDate": "2030-10-19", "startTime": "09:00", "endTime": "09:30", "expectedRevision": 1}, c, csrf, uuid.NewString()), 500)
 	current := object(t, req(s, "GET", "/api/v1/tasks/"+id, nil, c, ""), 200)

@@ -10,6 +10,7 @@ import { today } from "../../../../shared/utils/dateUtils";
 import type { Task, Settings } from "../../../../shared/api/domainTypes";
 import { kindLabel, timerLabel } from "../../utils/clock";
 import type { FocusController, FocusKind } from "../../hooks/useFocus";
+import { useRemaining } from "../../hooks/useRemaining";
 export function TimerPanel({
   focus,
   task,
@@ -74,10 +75,11 @@ export function TimerPanel({
     return () => document.removeEventListener("keydown", escape);
   }, [onClose]);
   const active = focus.active;
+  const remaining = useRemaining(active, focus.receivedAt);
   const currentKind = active?.kind || kind;
   const minutes = Number(durations[currentKind]);
   const valid = Number.isInteger(minutes) && minutes >= 1 && minutes <= 180;
-  const seconds = active ? focus.remaining : valid ? minutes * 60 : 0;
+  const seconds = active ? remaining : valid ? minutes * 60 : 0;
   const ratio = active ? seconds / active.targetSeconds : 1;
   return (
     <section

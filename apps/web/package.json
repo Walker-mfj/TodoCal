@@ -10,7 +10,8 @@
     "test": "vitest run",
     "generate:api": "openapi-typescript ../../api/openapi.yaml -o src/shared/api/apiTypes.generated.ts && prettier --write src/shared/api/apiTypes.generated.ts",
     "test:e2e": "playwright test",
-    "format": "prettier --write src tests *.ts *.json"
+    "format": "prettier --write src tests *.ts *.json",
+    "format:check": "prettier --check src tests *.ts"
   },
   "dependencies": {
     "@fullcalendar/core": "6.1.22",

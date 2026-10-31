@@ -18,7 +18,7 @@ function card(
 ) {
   const focus = {
     active: null,
-    remaining: 90,
+    receivedAt: performance.now(),
     blocked: false,
     start: vi.fn(),
     change: vi.fn(),
@@ -110,7 +110,15 @@ it.each([
 ])("keeps %s controls on completed tasks", async (status, label, action) => {
   const { focus, open } = card(
     { status: "complete" },
-    { active: { taskId: "task", kind: "focus", status } },
+    {
+      active: {
+        taskId: "task",
+        kind: "focus",
+        status,
+        targetSeconds: 90,
+        elapsedSeconds: 0,
+      },
+    },
   );
   expect(screen.getByText("01:30")).toBeInTheDocument();
   await userEvent.click(

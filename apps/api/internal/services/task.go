@@ -17,10 +17,10 @@ import (
 
 type Fault = models.Fault
 
-func Invalid(message string) error { return &Fault{"validation", message} }
-func Missing() error               { return &Fault{"not_found", "Resource not found"} }
+func Invalid(message string) error { return &Fault{Code: "validation", Message: message} }
+func Missing() error               { return &Fault{Code: "not_found", Message: "Resource not found"} }
 func Conflict() error {
-	return &Fault{"revision_conflict", "This item changed. Refresh and try again."}
+	return &Fault{Code: "revision_conflict", Message: "This item changed. Refresh and try again."}
 }
 
 type TaskInput = models.TaskInput

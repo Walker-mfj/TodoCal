@@ -5,6 +5,7 @@ const cx = bindStyles(styles);
 
 import { Timer, Pause, Play } from "lucide-react";
 import type { FocusController } from "../../hooks/useFocus";
+import { useRemaining } from "../../hooks/useRemaining";
 import { kindLabel, timerLabel } from "../../utils/clock";
 export function TimerBar({
   focus,
@@ -14,6 +15,7 @@ export function TimerBar({
   onOpen: () => void;
 }) {
   const a = focus.active;
+  const remaining = useRemaining(a, focus.receivedAt);
   if (!a) return null;
   return (
     <section className={cx("timer-bar")} aria-label="Active timer">
@@ -26,19 +28,19 @@ export function TimerBar({
         role="timer"
         aria-label="Time remaining"
       >
-        {timerLabel(focus.remaining)}
+        {timerLabel(remaining)}
       </span>
       <span className={cx("timer-state")}>
         {a.status === "paused"
           ? "Paused"
           : !focus.connected
             ? "Offline · estimated"
-            : focus.remaining === 0
+            : remaining === 0
               ? "Confirming completion…"
               : kindLabel[a.kind]}
       </span>
       <button
-        disabled={focus.blocked || focus.remaining === 0}
+        disabled={focus.blocked || remaining === 0}
         onClick={() => focus.change(a.status === "paused" ? "resume" : "pause")}
         className={cx("", true)}
       >

@@ -106,7 +106,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await refresh();
       await client.invalidateQueries();
     };
-    const timer = setInterval(tick, 15_000);
     window.addEventListener("focus", tick);
     window.addEventListener("online", online);
     window.addEventListener("offline", offline);
@@ -116,7 +115,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       channel.current.onmessage = online;
     }
     return () => {
-      clearInterval(timer);
       window.removeEventListener("focus", tick);
       window.removeEventListener("online", online);
       window.removeEventListener("offline", offline);

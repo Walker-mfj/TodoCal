@@ -59,7 +59,7 @@ func register(t *testing.T, s *Server, email string) (*http.Cookie, string) {
 		t.Fatalf("register %d %s", w.Code, w.Body)
 	}
 	var out map[string]any
-	json.Unmarshal(w.Body.Bytes(), &out)
+	_ = json.Unmarshal(w.Body.Bytes(), &out)
 	return w.Result().Cookies()[0], out["csrfToken"].(string)
 }
 func TestAuthLifecycle(t *testing.T) {
@@ -95,7 +95,7 @@ func TestAuthLifecycle(t *testing.T) {
 		t.Fatal("logout ineffective")
 	}
 	c, _ = register(t, s, "expired@example.com")
-	p.Exec(context.Background(), "UPDATE auth_sessions SET expires_at=now()-interval '1 hour'")
+	_, _ = p.Exec(context.Background(), "UPDATE auth_sessions SET expires_at=now()-interval '1 hour'")
 	if w := req(s, "GET", "/api/v1/auth/me", nil, c, ""); w.Code != 401 {
 		t.Fatal("expired accepted")
 	}

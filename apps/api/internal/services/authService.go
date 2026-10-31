@@ -78,8 +78,8 @@ func (s *Auth) Register(ctx context.Context, in Credentials, ip string) (Session
 	if e != nil {
 		return SessionResult{}, e
 	}
-	defer tx.Rollback(ctx)
-	u := User{uuid.NewString(), email}
+	defer func() { _ = tx.Rollback(ctx) }()
+	u := User{ID: uuid.NewString(), Email: email}
 	_, e = repository.InsertAccount(ctx, tx, u.ID, u.Email, hash)
 	if e != nil {
 		var pe *pgconn.PgError
@@ -125,7 +125,7 @@ func (s *Auth) Login(ctx context.Context, in Credentials, ip string) (SessionRes
 	if e != nil {
 		return SessionResult{}, e
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	// Recheck under the same row lock used by password changes.
 	var currentHash string
 	e = repository.LockPasswordHash(ctx, tx, u.ID, &currentHash)
@@ -157,7 +157,7 @@ func (s *Auth) Password(ctx context.Context, p Principal, in PasswordInput, ip s
 	if e != nil {
 		return e
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	var hash string
 	e = repository.LockAccountPassword(ctx, tx, p.ID, &hash)
 	if e != nil {

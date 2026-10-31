@@ -108,9 +108,10 @@ app/ → home/ → features/ → shared/
                         └──────→ shared/api/
 ```
 
-- **`shared` must never import `features`, `home` or `app`.**
-- Compose cross-feature workflows in `home` where possible; avoid circular feature-to-feature imports.
-- Session provider and authentication hooks live in `features/auth`. Provider *wiring* stays in `app/providers.tsx`. Shared query infrastructure must not import auth just to get a session.
+- **`shared` must never import `features`, `home` or `app`.** Features must not import `home` or `app`.
+- Compose cross-feature workflows in `home` where possible; avoid deep imports of private components, hooks and editor-only types across features. Prefer small props/callbacks or a stable public feature API for deliberate dependencies; avoid circular feature imports.
+- **Promote code to `shared` only after real reuse:** it must serve multiple independent consumers and have no dependency on feature-private logic. Keep Task, Calendar and Focus business-specific behavior with its owning feature.
+- Session provider and authentication hooks live in `features/auth`. Provider *wiring* stays in `app/providers.tsx`. Auth access across features may use stable public exports; do not move `useOwnedQuery` unchanged into `shared` while it imports Auth. Shared query infrastructure must not import auth just to get a session.
 - The server owns task state, recurrence, scheduling, Focus time and analytics. React may manage drafts, UI state and cache invalidation, not duplicate server-authoritative business rules.
 - `apiTypes.generated.ts` is generated from `api/openapi.yaml`; **never edit generated types directly**.
 
@@ -127,7 +128,7 @@ app/ → home/ → features/ → shared/
 - Keep unit/component tests **next to the implementation** (`*.test.ts` / `*.test.tsx`).
 - Keep E2E workflows in `apps/web/tests/e2e/` and shared setup in `tests/setup.ts`.
 - New/relocated tests must be discoverable by Vitest; do not rely on their old directory.
-- A component split is not complete until it builds, typechecks and preserves its visible states.
+- A component split is not complete until it builds, typechecks and preserves its visible states. Split by coherent responsibility, not an arbitrary line limit; preserve one owner for drafts, session state and commands. Move styles and tests with the owning component.
 
 ## 4. Backend: `apps/api`
 
@@ -180,7 +181,7 @@ router → controllers → services → repository → PostgreSQL
 
 **Current implementation detail (verified):** `database.WithTx` locks the account's `settings` row using `SELECT ... FOR UPDATE`. `services.WithTx` can commit bounded catch-up batches before the final user-command transaction. Do not confuse this mechanism with a PostgreSQL advisory lock. Worker and HTTP operations follow the same service-level rules.
 
-For testability, define small interfaces **at the consumer only when needed**; don't introduce an interface for every query or a generic repository framework. Keep `*_test.go` adjacent to its package; use isolated database integration tests to verify transaction rollback and account isolation.
+For testability, define small interfaces **at the consumer only when needed**; don't introduce an interface for every query or a generic repository framework. Split oversized Go service **files by workflow within the existing `services` package**, preserving exported signatures and transaction boundaries. Keep `*_test.go` adjacent to its package; use isolated database integration tests to verify transaction rollback and account isolation.
 
 ## 5. Naming conventions and exceptions
 
@@ -232,16 +233,18 @@ On case-insensitive macOS filesystems, a case-only rename may need a **temporary
 
 Frontend `src/` paths in this table are relative to `apps/web`. Prefer an existing owner; **do not create a new folder just because a layer name appears in the tree**.
 
-## 7. Structural-change workflow (from approved design)
+## 7. Structural-change workflow
 
-For future structural changes, follow these safeguards without repeating unnecessary migrations:
+The planned frontend + Go cleanup is delivered in **one integrated implementation branch and one implementation PR**, with ordered internal checkpoints—not multiple PRs. Verify both apps together before marking that PR ready to merge; see [the integrated refactoring plan](refactoringPlan.md).
+
+For structural changes, follow these safeguards without repeating unnecessary migrations:
 
 1. **Inventory** current paths, callers, CSS, tests and baseline results; document the mapping before renaming.
 2. **Refactor web structure** by ownership, then update imports, test discovery and the generated-types pipeline.
 3. **Move component CSS** into local modules; verify style isolation, responsive, dark mode and FullCalendar behavior.
 4. **Refactor Go by layer**, moving HTTP, domain orchestration and SQL based on responsibility, not just by filename.
 5. **Update all consumers:** Makefile targets, scripts, assets, CI, Docker, Cloudflare builds, links and `go:embed` migration references.
-6. **Verify** after each stage; when practical, separate mechanical rename commits from behavioral refactors.
+6. **Verify** after each internal checkpoint. Separate commits inside the **same PR** are allowed for review, but do not split the planned FE/Go cleanup into multiple PRs. Run the full combined regression suite before merge.
 
 ### Verification checklist
 
@@ -270,8 +273,7 @@ For future structural changes, follow these safeguards without repeating unneces
 
 - [Project README](../../README.md)
 - [Feature documentation](../features/README.md)
-- [Frontend refactoring plan](frontendRefactoringPlan.md) — phased FE dependency and component cleanup.
-- [Go backend refactoring plan](goRefactoringPlan.md) — phased service and transaction-safe cleanup.
+- [Integrated FE + Go refactoring plan](refactoringPlan.md) — one implementation pass and one code PR with shared acceptance criteria.
 - [OpenAPI contract](../../api/openapi.yaml)
 - [Deployment guide](../../deploy/README.md)
 - [Web tooling instructions](../../apps/web/AGENTS.md)

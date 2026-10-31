@@ -248,8 +248,8 @@ For structural changes, follow these safeguards without repeating unnecessary mi
 
 ### Verification checklist
 
-- `make typecheck`, `make test-web` and `make build-web`.
-- `make test-go`, `make test-integration`, `make build-api` and `make build-worker`.
+- `make typecheck`, `make test-web` and `make build-web`; the integrated refactor must add **oxfmt `format:check`** and **oxlint `lint`** to the local/CI quality gates.
+- `make test-go`, `make test-integration`, `make build-api` and `make build-worker`; retain `gofmt`/`go vet` and add a reproducible local **`make lint-go`** running the same pinned `golangci-lint` version/config as CI.
 - `make generate-api-types` does not introduce unintended OpenAPI changes.
 - `make test-e2e` covers auth, tasks, calendar, Focus, analytics and settings.
 - Review visual states: light/dark, mobile/responsive, overlays, focus/hover, FullCalendar drag/resize.

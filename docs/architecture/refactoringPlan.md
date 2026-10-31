@@ -10,7 +10,7 @@
 
 ## 1. Scope and constraints
 
-**Included:** `apps/web/src`, `apps/api/internal`, colocated unit tests, Go integration tests, browser E2E tests, minimal import-boundary lint/CI rules, documentation and path updates required by the moves.
+**Included:** `apps/web/src`, `apps/api/internal`, colocated unit tests, Go integration tests, browser E2E tests, migration from Prettier to **oxfmt** and adoption of **oxlint** for FE, reproducible local **golangci-lint** and Go import checks, Makefile/npm scripts, CI and required documentation/path updates.
 
 **Not included:** Product changes, API paths or schemas, database migrations, visual redesign, new framework, microservices or Clean Architecture, generic repositories, empty placeholder folders, hand edits to `apiTypes.generated.ts`, or changes to deployment behavior.
 
@@ -66,6 +66,26 @@ app → home → features → shared
 - Keep one owner for form draft, API command, timers and session state. Moving JSX into children must not create redundant sources of truth.
 - Auth session/query features may expose an `index.ts` as a public boundary. **Do not move `useOwnedQuery` unchanged into `shared`** because it imports `useSession`.
 - Generated shared types remain sourced from `api/openapi.yaml`, not copied into each feature.
+
+### Quality-tooling decisions for this refactor (not installed yet)
+
+| Concern | Selected tool | Ownership / requirement |
+|---|---|---|
+| FE formatting | **oxfmt** replaces Prettier | Project-local dev dependency; one `format` and one `format:check` script; CI runs the read-only check |
+| FE lint | **oxlint**, **not ESLint** | Project-local dev dependency, committed config and `lint`/`lint:fix` scripts; React/Next.js/TypeScript/import rules selected and tested |
+| FE typecheck | **TypeScript `tsc --noEmit`** | Remains authoritative for typechecking; Oxlint is not a replacement |
+| Go formatting | **gofmt** | Existing formatter and CI check, plus local Makefile convenience command |
+| Go lint | **golangci-lint locally AND in CI** | Commit `.golangci.yml` (or selected v2-compatible config); pin a single tested CLI release for local installs and GitHub Action; add `make lint-go` |
+| Go static/type checks | **go vet + go build + go test** | Keep existing CI commands; Go compiler already checks types |
+| Architecture boundaries | Oxlint native rules where supported; narrow import-graph checks as needed | Enforce FE and Go forbidden edges; prove that CI catches a deliberately invalid import |
+
+**Version consistency:** Use `apps/web/package.json`/lockfile for oxfmt/oxlint; use one explicit **golangci-lint version** in the CI action and a documented, reproducible local binary installation mechanism. Prefer a downloaded pinned binary or a repo-managed tooling script outside `go.mod`; do **not** force every developer to install an unspecified global latest version or add the linter to runtime Go module dependencies. Check that the selected binary supports TodoCal's `go.mod` toolchain.
+
+**Frontend migration checklist:** Oxfmt is broadly Prettier-compatible, but defaults and generated output can differ. Migrate/review old formatter settings (especially `printWidth`), globs and ignore patterns, and avoid silently reformatting generated files or unrelated Markdown/CSS. Check `apps/web/package.json`'s `generate:api` script: it currently runs `prettier --write`; replace that call with oxfmt-compatible output **before removing Prettier**, ensuring OpenAPI types remain deterministic. Confirm the exact supported CLI/config syntax for the pinned version.
+
+**Oxlint rules:** Enable/test built-in React Hooks, Next.js, TypeScript and import checks as applicable, including cycle analysis where supported. Prefer builtin rules for restricted imports; if feature-ownership boundaries cannot be represented safely, use a small explicit repository-specific import graph check rather than silently switching to ESLint or depending on unsupported rules. Optional type-aware Oxlint requires an extra tool; do not enable it without deciding its cost/coverage and keeping `tsc` intact.
+
+**CI adoption:** Ensure local scripts and CI invoke the **same pinned binaries/configurations**. Address any pre-existing violations in this same refactor before treating the gates as passing; avoid blanket ignores. Keep formatter writes (`format`, `lint:fix`) separate from read-only gates (`format:check`, `lint`). These decisions apply to the **one combined FE + Go code PR**, not separate tooling PRs.
 
 **Existing ownership decisions:**
 
@@ -214,12 +234,16 @@ The numbered steps below are **checkpoints within one implementation PR**. Work 
 - [ ] Leave cohesive repository SQL in `repository`; do not add new generic abstractions.
 - [ ] Split oversized test files by scenario only if navigation and isolation improve; keep fixtures focused.
 
-### Step 5 — Architecture enforcement and end-to-end integration
+### Step 5 — Tooling migration, architecture gates and end-to-end integration
 
-- [ ] Add FE import lint/analysis for `shared → features/home/app`, `features → home/app` and circular dependencies; document legitimate public Auth dependencies.
-- [ ] Add lightweight Go package checks for forbidden layer edges (e.g. via `go list`); compiler already catches package cycles but not architecture policy.
-- [ ] Update affected imports, CSS references, test discovery, CI/scripts and documentation paths; no stale or duplicate implementations.
-- [ ] Run **all** FE and Go checks on the **complete combined branch** and fix any cross-module regressions.
+- [ ] Add pinned project-local **oxfmt** and **oxlint** dev dependencies to `apps/web/package.json` and update the npm lockfile.
+- [ ] Replace Prettier formatting with oxfmt: configure project-specific rules/ignore paths, retain public npm script names `format` and `format:check`, and update `generate:api` so it no longer calls Prettier. Avoid unrelated formatter churn and generated-code diffs.
+- [ ] Add Oxlint configuration, `lint` and `lint:fix` npm scripts. Include React Hooks, TypeScript, Next.js and import rules; check feature boundaries (`shared → features/home/app`, `features → home/app`) and circular dependencies. Add a small dedicated graph check **only** if needed for unsupported ownership rules.
+- [ ] Add **local Go lint** target `make lint-go` invoking a pinned `golangci-lint run` via an accessible local tool; commit a shared `.golangci.yml` (v2-compatible with selected CLI) and pin the **same** version in `.github/workflows/ci.yml`'s `api-lint` action. Maintain `go vet` and existing `gofmt` checks.
+- [ ] Add lightweight Go package architecture checks (e.g. `go list`) for forbidden layer edges; compiler already catches cycles but not TodoCal-specific layering.
+- [ ] Wire `npm run format:check`, `npm run lint`, `npm run typecheck`, `make lint-go`, Go format/vet/build/tests and architecture checks into local documented commands and CI. Ensure the exact same rules can be run by a developer before pushing.
+- [ ] Update affected imports, CSS references, tests, Makefile, tooling configs and documentation; remove stale Prettier dependencies and references **only after** all scripts (including API generation) have migrated.
+- [ ] Run **all** FE and Go checks on the **complete combined branch**. Verify quality tools report a deliberately introduced violation in an isolated test, and clean any intentional formatter-only diff.
 - [ ] Review the full **single PR** diff for unrelated formatting, generated files, accidental API/schema changes and feature work.
 
 ## 6. Required regression matrix
@@ -240,21 +264,28 @@ The numbered steps below are **checkpoints within one implementation PR**. Work 
 
 ## 7. Verification before merging
 
-Run against the **integrated single implementation PR** after completing all steps:
+**Target commands after tooling migration** (the newly proposed `lint` and `lint-go` scripts are **not available on current main**). Run locally and in CI on the **same integrated implementation branch**:
 
 ```bash
+# Read-only Go quality gates
+(cd apps/api && test -z "$(gofmt -l .)")
+make lint-go
+(cd apps/api && go vet ./...)
 make test-go
 make test-integration
 make build-api
 make build-worker
-(cd apps/api && go vet ./...)
 
-make typecheck
+# Read-only FE quality gates using the selected tools
+(cd apps/web && npm run format:check)  # oxfmt --check
+(cd apps/web && npm run lint)          # oxlint
+make typecheck                         # tsc --noEmit
 make test-web
 make build-web
 make test-e2e
-(cd apps/web && npm run format:check)
 ```
+
+For local edits, `npm run format` runs oxfmt and `npm run lint:fix` runs Oxlint fixes; neither should run in CI as an automatic write. Choose a tested fixed `golangci-lint` CLI version and keep its local installation and CI action aligned.
 
 - Also run the introduced FE/Go architecture checks; prove they reject an intentionally invalid edge in an isolated test.
 - Verify UI visually: calendar placement/drag, panel focus return, draft restore, light/dark, responsive behavior and FullCalendar overrides.
@@ -268,7 +299,7 @@ make test-e2e
 - [ ] Shared and feature dependency rules pass checks; no circular FE imports or Go forbidden package edges.
 - [ ] Components/hooks/styles owned correctly with one source of state and colocated tests.
 - [ ] Go service workflows cohesive; exported entry points and transactional invariants intact.
-- [ ] All Go, frontend, E2E, CI lint and architectural tests pass with documented output.
+- [ ] Project-local oxfmt/oxlint and Go `make lint-go` are configured, reproducible and run in CI. Full Go, frontend, E2E, format, lint, typecheck and architectural checks pass with documented output.
 - [ ] No unused duplicate files, speculative abstractions, unrelated reformatting or manual generated-type edits.
 - [ ] Final file layout matches [folderStructure.md](folderStructure.md); update that guide only to reflect real ownership changes.
 - [ ] Consolidated PR description lists moved files, intentional exceptions, risks and verification results.

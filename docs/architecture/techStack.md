@@ -93,15 +93,15 @@ This table reports **configuration that exists in the repository**, not confirma
 
 | Check | Frontend | Go backend |
 |---|---|---|
-| **Format** | **Configured:** Prettier via `npm run format:check`; runs in CI `web` job | **Configured:** `gofmt -l .` with nonempty-result failure in CI `api` job |
-| **Lint** | **Missing:** no ESLint dependency, lint script or FE ESLint CI step found | **Configured:** `golangci-lint` via `golangci/golangci-lint-action@v8` in `api-lint` CI job |
+| **Format** | **Current:** Prettier via `npm run format:check` in CI. **Selected for refactor:** project-local **oxfmt**, retaining `format`/`format:check` script names | **Current:** `gofmt -l .` in CI; keep it and offer a local Makefile command |
+| **Lint** | **Current:** no lint script configured. **Selected for refactor:** project-local **oxlint** with `lint` and `lint:fix`, React/Next.js/TS/import rules and CI gate; **do not add ESLint** | **Current:** `golangci-lint` only as a CI action. **Selected for refactor:** pinned CLI + shared config runnable locally via `make lint-go` and in CI |
 | **Typecheck** | **Configured:** `npm run typecheck` → `tsc --noEmit` with strict TypeScript; CI runs it | **Configured:** Go compiler via `go build ./...` in CI; no separate TypeScript-style typecheck command |
 | **Static analysis** | React/TS semantic lint is not separately configured | **Configured:** `go vet ./...` in CI |
 | **Unit tests** | **Configured:** Vitest `npm test` in CI | **Configured:** `go test -race -count=1 ./...` in CI |
 | **Integration** | Component/unit tests; full browser E2E separately available | **Configured:** `make test-integration` in its own CI job with PostgreSQL |
 | **Browser E2E** | Playwright `make test-e2e` available locally; **not part of the main CI workflow** | Go API exercised by Playwright as part of the full end-to-end app |
 
-**Note:** `npm run build` and `go build` are useful additional checks, but builds do not replace lint, runtime tests or database integration. The Go lint action is present without an explicit repository-level `.golangci.yml`; record its resolved rule configuration before assuming particular linters or import boundaries are enforced.
+**Note:** `npm run build` and `go build` are useful additional checks, but builds do not replace lint, runtime tests or database integration. The Go lint action is currently present without an explicit repository-level `.golangci.yml`; its rules/version need to be pinned and shared with local development. **Current** and **planned** status are intentionally distinguished above.
 
 ### Commands available now
 
@@ -122,16 +122,17 @@ make build-api
 make build-worker
 ```
 
-The `format` script (`npm run format`) **modifies** frontend files; `format:check` is read-only. The `gofmt -l` command only lists files that need formatting. Running `golangci-lint run` locally requires installing a compatible executable; the main Makefile does not currently define a Go lint target.
+The **current** `format` script (`npm run format`) uses Prettier and **modifies** frontend files; `format:check` is read-only. After migration, the same scripts should use **oxfmt**. `gofmt -l` only lists files requiring formatting. Today `golangci-lint run` is **not** a documented local Makefile target; the refactor should provide `make lint-go` backed by a pinned compatible executable.
 
-### Recommended quality gap closure (NOT YET IMPLEMENTED)
+### Selected quality improvements for the single refactor (NOT YET IMPLEMENTED)
 
-1. **Add ESLint to frontend** using a configuration compatible with the installed Next.js/React/TypeScript toolchain, React Hooks rules and feature import-boundary checks. Add `npm run lint` and a CI `web` step; confirm violations before enabling the gate.
-2. **Add a lightweight dependency-boundary check** for Go (`repository → services`, `services → controllers/router`, etc.), and avoid assuming `go vet` or `golangci-lint` enforces TodoCal-specific architecture rules automatically.
-3. **Consider E2E in CI** once browser installation, execution time and isolated database/ports are arranged. This is distinct from the E2E command already existing locally.
-4. **Optionally add root Makefile quality targets** that wrap existing checks (e.g. `format-check`, `lint`) after tooling is agreed; don't advertise them until implemented.
+1. **FE formatter — oxfmt:** install as a pinned project dev dependency and use it for `npm run format` and `npm run format:check` (`oxfmt --check`). Migrate existing Prettier behavior/config (including print width), ignore paths and **`generate:api`**, which currently invokes `prettier --write`. Remove Prettier only when generation and all scripts work with oxfmt; review formatting diffs and keep generated types unchanged unless required.
+2. **FE lint — oxlint:** install pinned, commit its configuration, add `npm run lint`/`lint:fix`, and enable appropriate React Hooks, Next.js, TypeScript and import rules. Use Oxlint's native cycle/import analysis when supported; if it cannot express TodoCal-specific feature ownership rules, supplement with a small import-boundary script. **Do not introduce ESLint as part of this plan.**
+3. **Go lint — local + CI:** commit a pinned `golangci-lint` version policy, config (e.g. `.golangci.yml`) and local `make lint-go` target invoking the same rules as CI. Prefer a repo-managed pinned binary installation helper/cache over a globally floating version or a runtime `go.mod` dependency; pin the version in the GitHub Action and confirm Go toolchain support.
+4. **Keep type/static checks:** preserve `tsc --noEmit`, `go vet ./...`, `go build ./...`, `gofmt`, unit/race and database integration tests. Add simple Go package-boundary checks where the linter does not enforce architecture rules.
+5. **CI:** run format, lint and type/build gates for FE and Go; consider Playwright E2E in CI once browsers, database and ports are isolated. Keep local and CI commands consistent and document exact results.
 
-These items can be included in the **single integrated FE + Go refactor implementation PR** specified by [refactoringPlan.md](refactoringPlan.md). This documentation update does **not** install linters or change CI behavior.
+These items belong to the **single FE + Go refactor implementation PR** specified in [refactoringPlan.md](refactoringPlan.md). This **documentation change does not install new packages or change CI**.
 
 ## 6. Dependency management policy
 

@@ -251,7 +251,7 @@ The following are **outside** this structural refactor, even when they touch the
 - Background Focus completion, scheduled reminders or Web Push.
 - Trash/retention policy, immutable original-history snapshots and Settings validation changes.
 
-See [the implementation backlog](../features/16-implementation-backlog.md) when that feature document is available on the target branch. A proposed feature is **not** considered shipped merely because its UI/component was reorganized.
+See the feature implementation backlog (`docs/features/16-implementation-backlog.md`, tracked in [PR #12](https://github.com/Walker-mfj/TodoCal/pull/12)) when that feature document is available on the target branch. A proposed feature is **not** considered shipped merely because its UI/component was reorganized.
 
 ### Related
 

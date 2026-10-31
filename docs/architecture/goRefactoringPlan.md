@@ -288,7 +288,7 @@ Keep the following in **separate** product implementation PRs, even if they touc
 - New retention or Trash recovery policy, and original-versus-adjusted historical baseline.
 - Settings validation contract changes, unless independently agreed and tested.
 
-The implementation backlog in [feature documentation](../features/16-implementation-backlog.md) tracks these functional changes. If that file is not yet merged into the target branch, do not infer that the functionality has shipped.
+The implementation backlog in the feature implementation backlog (`docs/features/16-implementation-backlog.md`, tracked in [PR #12](https://github.com/Walker-mfj/TodoCal/pull/12)) tracks these functional changes. If that file is not yet merged into the target branch, do not infer that the functionality has shipped.
 
 ## 10. Related documentation
 

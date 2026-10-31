@@ -16,7 +16,7 @@ Registration, login, logout, password changes, and personal settings (time zone,
 ## Key rules
 
 - Passwords are stored only as hashes; session and CSRF tokens are also stored only as hashes (`token_hash`, `csrf_hash`).
-- Revoking a session (logout / password change) sets `revoked_at` — the session dies immediately instead of waiting for expiry.
+- Logout revokes the **current** session by setting `revoked_at`. Password change revokes **other sessions** but keeps the session performing the change valid. Revoked sessions cannot be used on subsequent authenticated requests.
 - Every write request **revalidates the session inside its transaction** (`ValidateOwnedSession` in `Execute`), so revocation takes effect instantly.
 - `settings.revision` follows the same optimistic-concurrency rule as every other entity: a wrong `expectedRevision` returns 409.
 
@@ -57,7 +57,19 @@ flowchart TD
     C -->|Revalidated on every mutation| D{Not expired and not revoked}
     D -->|Yes| E[Operation allowed]
     D -->|Past expires_at| F[401 - sign in again]
-    B --> G[Logout / password change]
-    G --> H[Set revoked_at = now]
+    B --> G{Account action}
+    G -->|Logout| H[Revoke current session]
+    G -->|Password change| I[Keep current; revoke other sessions]
     H --> F
+    I --> J[Other devices must sign in again]
 ```
+
+## Session and device behavior
+
+- Login creates a seven-day session cookie. Signing in on another device creates a separate session; it does not log out the first device.
+- Logout terminates only the current session. Changing a password invalidates the other sessions and leaves the current session valid.
+- `Execute` rechecks ownership and session validity under the write transaction. Read endpoints are authenticated before `View`; do not treat this as a fresh session check *inside* every read transaction.
+- The browser must clear account-owned cached query data on logout/account switch. A cached browser view or installed PWA must not treat an expired cookie as proof of authentication.
+- If a login session expires or is revoked on another device, show a sign-in state on the next authenticated request rather than displaying an unconfirmed save as successful.
+
+See [settings](13-settings.md) for account preferences and [PWA/notifications](12-pwa-notifications.md) for device-local permissions.

@@ -14,7 +14,7 @@ Classify tasks into named, colored groups — the group color is the border colo
 ## Key rules
 
 - Name and color are validated both in the database (CHECK constraints) and in the service layer.
-- Deleting a group **does not delete its tasks**: each affected task is ungrouped (`group_id = NULL`) and gets its own event with `kind = 'group_cleared'`. This event is special: it does *not* trigger `refreshHistorical`, because ungrouping must not rewrite finalized-day statistics — old snapshots keep the group name/color as of finalization time (stored inside `daily_plan_entries.task_state`).
+- Deleting a group **does not delete its tasks**: each affected task (including soft-deleted rows that still reference the group) is ungrouped (`group_id = NULL`), revisioned, and journaled with `kind = 'group_cleared'`. That event deliberately skips `refreshHistorical`; old finalized entries preserve their captured group name/color. Group removal does not change their planned/completed totals.
 - Renaming/recoloring a group also uses optimistic concurrency (`expectedRevision`).
 
 ## Delete-group flow
@@ -27,3 +27,8 @@ flowchart TD
     D --> E[Calendar: tasks still shown<br/>without the group border color]
     C -.->|Never touches| F[(daily_plan_entries<br/>finalized-day snapshots<br/>keep the old name/color)]
 ```
+
+## Historical display policy
+
+- Live tasks immediately lose the deleted group's border color. A finalized-day entry may still show the historical group color/name captured in `daily_plan_entries.task_state`.
+- A later **explicit** edit to a task in a finalized day may adjust that entry; group deletion alone never silently rewrites the snapshot. See [historical adjustments](07-planning-finalization.md).

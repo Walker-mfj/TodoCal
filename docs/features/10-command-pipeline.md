@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Guarantee that every write command (mutation) in TodoCal never executes twice on a client retry, never overwrites data that changed underneath it, and always runs on top of fully settled history. Every other feature (tasks, groups, series, focus…) runs inside this frame.
+Prevent a **successfully receipted** write from being re-executed when the same account retries with the same Idempotency-Key and identical request payload; reject revision conflicts; and run business logic after required history settlement. Every other feature (tasks, groups, series, focus…) uses this pipeline.
 
 ## Two different mechanisms — do not confuse them
 
@@ -48,6 +48,13 @@ sequenceDiagram
 ## Notes
 
 - The per-user advisory lock serializes commands within one account; different accounts still run fully in parallel.
-- `Settle` runs *before* the business logic so a command always sees finalized history — e.g. creating a backdated task finds that day's snapshot already in place.
+- `Settle` runs *before* business logic. `WithTx` may **commit separate 31-day catch-up batches** and retry until settled, then run the user command + its idempotency receipt together in the final transaction. Thus a failed command does not necessarily roll back earlier successful history catch-up batches.
 - The receipt is written **in the same transaction** as the business change: either both commit or neither does — there is no state of "executed but no receipt".
-- Reads go through `View`: they still take the lock and run Settle, but have no receipt (the session is still revalidated).
+- Reads go through `View`: they take the per-account lock and run Settle without receipts. Authentication occurs at the request boundary; unlike `Execute`, `View` does **not** itself call `ValidateOwnedSession` inside its transaction. A separate requirement would be needed for strict in-transaction revocation checks on reads.
+
+## Retry and test contract
+
+- The idempotency key is scoped to the **account**. Reuse the same key and identical request bytes for an uncertain retry; using the same key with different input returns 409.
+- A successful write and its receipt share the **same** commit. A conflict/error before that commit does not create a successful receipt.
+- An account lock serializes transactions, but `Settle` may need multiple bounded transactions to catch up after inactivity.
+- Integration tests should cover concurrent retries with one key, same-key/different-body 409, stale `expectedRevision`, session revoked before mutation, and rollback before receipt insert.

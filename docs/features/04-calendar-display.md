@@ -30,7 +30,7 @@ flowchart TD
 
 - This is the **only path** by which a persisted task reaches the calendar grid. `eventContent` is only a renderer for events already in the array, not a second data source.
 - **The draft preview is a deliberate exception**: the task being created/edited is appended afterwards (`[...events, preview]`) so it shows even when it does not match the filter; its original is hidden from the filtered list at the same time to avoid showing it twice.
-- The day progress badge (`progress()`) reads the server numbers in `days` and is **not filtered** — with a filter active, the badge can count more tasks than are visible. (Whether the badge should follow the filter is a pending product decision.)
+- **Product decision: the progress badge always shows overall daily progress** from the server, independent of search, group, priority, or status filters. Label it **Overall daily progress** where context could be unclear; the badge may therefore count tasks not currently visible.
 - A `finalized` day only adds the `event-historical` CSS class (solid border) — it never hides events.
 - The day-detail panel (clicking a day) lists that day's `entries` **without** the filter; the "Without a date" section does reuse the same `filter()`.
 
@@ -47,3 +47,10 @@ flowchart LR
     P2 --> OUT
     P3 --> OUT
 ```
+
+## Empty state and historical interactions
+
+- A day with no plan returns a null percentage and must display **No plan**, not `0%`. A planned day with zero completed tasks displays `0%`. Future dates without a computed percentage show the existing upcoming-state label.
+- Day-detail entries remain unfiltered by calendar toolbar filters; make this explicit when the calendar grid is filtered.
+- Historical entries remain visible and selectable; a finalized CSS style is visual only. User-initiated changes to past tasks are allowed through the controlled historical-adjustment path, not by silently rewriting an original plan.
+- Draft previews deliberately bypass filters but are visually marked unsaved; dismissing the editor must remove the preview without changing persisted tasks.

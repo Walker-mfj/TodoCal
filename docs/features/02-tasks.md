@@ -17,7 +17,7 @@ The fields `actualFocusSeconds`, `focusProgress`, `recurrenceCadence`, and `recu
 
 - Validation: title must be 1–300 characters; times must come as a start/end pair, belong to a scheduled date, satisfy `end > start`, and the local time must actually *exist* in the user's time zone (blocks times falling into a DST gap).
 - Every edit/delete/complete sends `expectedRevision`; a mismatch returns 409 `revision_conflict` instead of blindly overwriting.
-- Delete is a **soft delete** (`deleted_at = now`, revision + 1) with a restore path within the allowed window; the frontend shows a recovery item immediately after deletion.
+- Delete is a **soft delete** (`deleted_at = now`, revision + 1). The frontend offers a short-lived **Undo toast** (currently 10 seconds); this is a UI visibility period, **not** an API-enforced restore expiry. The backend restore endpoint currently accepts a deleted task with a matching `expectedRevision` even after the toast disappears.
 - Completing sets `completed_at`; reopening clears it. The completion date can be edited manually, and superseded `completed` events are invalidated (`task_events.invalidated_at`) so the completion day is never double-counted.
 - Every change goes through `Event(...)`: it appends to `task_events` and, if the change touches a past day, updates that day's snapshot via `refreshHistorical` (see doc 07).
 
@@ -32,8 +32,8 @@ flowchart TD
     C -->|Reopen| B
     B -->|Delete| D[Soft delete<br/>deleted_at = now<br/>Event: deleted]
     C -->|Delete| D
-    D -->|Restore within window| B
-    D -->|Restore window passed| E[Gone from all views<br/>remains only in task_events]
+    D -->|Restore with matching revision| B
+    D --> E[Hidden from normal task views<br/>deleted task row and task_events retained]
     B -.->|If a recurrence occurrence:<br/>delete / date change writes recurrence_exceptions| X[(recurrence_exceptions)]
 ```
 
@@ -56,3 +56,12 @@ sequenceDiagram
         A-->>W: 200 + updated task
     end
 ```
+
+## Deletion, recovery, and completion semantics
+
+- A soft-deleted row remains in `tasks` for recovery and historical identity; it is not physically purged when the toast expires. Any future retention/expiry policy must be specified and enforced by the API before the documentation can promise one.
+- Restoring recovers the task's prior content/status (including a completed status) and creates another journal event. Re-check revisions to avoid restoring over intervening changes.
+- A manually specified `completedAt` may attribute completion to a different date. The journal and affected daily snapshots must be reconciled once; do not count superseded completion events twice.
+- Task completion is independent of the Pomodoro goal: hitting a planned number of sessions never silently marks a task complete.
+- User-initiated backdated edits can intentionally adjust finalized history. This exception is auditable and distinct from automatic rescheduling or group cleanup; see [day finalization](07-planning-finalization.md).
+- **Proposed recurring deletion UX (not yet implemented):** ask **This occurrence** or **This and following**. The latter cancels the selected original slot and all future slots, while retaining task/Focus audit records; see [implementation backlog](16-implementation-backlog.md).

@@ -270,6 +270,8 @@ For future structural changes, follow these safeguards without repeating unneces
 
 - [Project README](../../README.md)
 - [Feature documentation](../features/README.md)
+- [Frontend refactoring plan](frontendRefactoringPlan.md) — phased FE dependency and component cleanup.
+- [Go backend refactoring plan](goRefactoringPlan.md) — phased service and transaction-safe cleanup.
 - [OpenAPI contract](../../api/openapi.yaml)
 - [Deployment guide](../../deploy/README.md)
 - [Web tooling instructions](../../apps/web/AGENTS.md)

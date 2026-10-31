@@ -274,6 +274,7 @@ For structural changes, follow these safeguards without repeating unnecessary mi
 - [Project README](../../README.md)
 - [Feature documentation](../features/README.md)
 - [Integrated FE + Go refactoring plan](refactoringPlan.md) — one implementation pass and one code PR with shared acceptance criteria.
+- [Technology stack & dependencies](techStack.md) — technologies, library ownership, quality checks, and dependency policy.
 - [OpenAPI contract](../../api/openapi.yaml)
 - [Deployment guide](../../deploy/README.md)
 - [Web tooling instructions](../../apps/web/AGENTS.md)

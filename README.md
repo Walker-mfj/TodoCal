@@ -10,7 +10,7 @@ The frontend lives in `apps/web/src`: `app` contains Next.js entry points, `home
 
 The Go backend lives in `apps/api/internal`: HTTP controllers call services, services coordinate business rules and transactions, and repositories own persistence. Database migrations remain embedded in the database package. API and worker executables stay under `apps/api/cmd`.
 
-Custom file and folder names use camelCase; CSS classes use kebab-case. Framework-required names and existing migration names remain unchanged. See the [folder structure guide](docs/architecture/folderStructure.md) for the current layout, module ownership, dependency boundaries, and placement rules.
+Custom file and folder names use camelCase; CSS classes use kebab-case. Framework-required names and existing migration names remain unchanged. See the [folder structure guide](docs/architecture/folderStructure.md) for the current layout, module ownership, dependency boundaries, and placement rules. See the [technology stack guide](docs/architecture/techStack.md) for library usage rules and format/lint/typecheck coverage.
 
 ## Current implementation
 

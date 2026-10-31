@@ -38,3 +38,12 @@ flowchart TD
     F -->|Budget exhausted / DB error| X
     F -->|Reserved| G[Send to Better Stack]
 ```
+
+## Operational policy and gaps
+
+- The shared daily budget is system-wide; metrics such as **events dropped by rate limiter, deduplication, queue overflow, and exhausted budget** should be tracked separately from events accepted. These are operational visibility recommendations, not claims about existing dashboards.
+- Incident responders must not depend on raw message bodies because privacy scrubbing intentionally removes them. Use issue fingerprint, safe stack frames, release/version, and generic error class where available.
+- **Recommended runbook:** alert on an unusual error-rate increase or exhausted budget; inspect safe telemetry and deployment version; document how to rotate credentials and retry when the provider is unavailable. Provider outage must not block user mutations.
+- **Pending policy decisions:** retention for budget/telemetry records, monitoring access controls, and UTC-vs-account-local day boundary for the **system-wide** budget should be documented explicitly. Do not imply a per-user budget.
+
+Acceptance checks: scrubbing removes secrets, budget reservation is atomic across API instances, and monitoring transport failure cannot make a completed business command fail retroactively.

@@ -1,0 +1,39 @@
+# 13 — Settings & Personalization
+
+## Purpose
+
+Centralize account-level preferences and their effects on planning, recurrence, Focus and display.
+
+## Current data and behavior
+
+`settings` stores explicit IANA `timezone` (default UTC when no explicit value is provided), `appearance` (light/dark), default Focus/short-break/long-break durations, `sound`, and optimistic `revision`.
+
+- `PATCH /settings` requires `expectedRevision`; a stale revision returns 409 and should preserve the user's unsaved draft for review.
+- The API rejects missing/invalid IANA time zones and unknown appearance values. The UI currently constrains Focus to 1–180 minutes and breaks to 1–60 minutes; task-specific Focus duration is a separate 1–180 minute setting. Backend duration validation and UI input bounds are not fully identical for all settings, so these limits should be aligned in a future validation change.
+- Appearance changes should persist across reloads/devices without resetting drafts, navigation, running sessions, or task data.
+- A time-zone change calls `BeforeZoneChange` to seal dates crossed by a forward time-zone jump. Existing finalized plans retain their saved timezone; future local-date calculation uses the new zone. Future invalid-wall-time recurrence exceptions may be reevaluated.
+- A changed default Focus duration should affect **new** sessions, not mutate elapsed time, targets, or past sessions already persisted.
+- Notification permissions are **device/browser local**, not an account preference already persisted by this settings schema.
+
+## Product rules and edge cases
+
+- Display the time zone as an explicit IANA identifier (for example, Asia/Tokyo). Never silently replace it with the browser's zone.
+- Warn that changing timezone can alter what counts as “today,” due dates, which calendar day owns a completion, and when new recurring occurrences appear. Confirm before a change that may seal days.
+- Handle daylight-saving gaps/overlaps when creating timed tasks or recurrence; avoid time arithmetic using fixed 24-hour-day assumptions.
+- Show a clear response to a 409 (`Reload / Reapply local draft`). Never silently overwrite remote changes from another device.
+- If the user logs out or switches accounts, discard or isolate per-account settings caches and unsaved drafts.
+
+## Proposed, not yet implemented
+
+- Account-level push/reminder preferences (event toggles, lead time, quiet hours) and per-device push subscription controls.
+- Clearly named accessibility preferences beyond light/dark mode (e.g., reduced motion or a denser calendar) if product research supports them.
+
+## Acceptance
+
+1. A stale settings revision fails without losing draft input.
+2. Saving appearance updates UI and survives a reload.
+3. Changing timezone preserves historical snapshot timezone while applying new local-day boundaries to future planning.
+4. Modifying default Focus minutes never changes an already running session.
+5. Browser notification denial does not break Settings or Focus.
+
+Related: [auth](01-accounts-auth.md), [recurrence](06-recurrence.md), [finalization](07-planning-finalization.md), [PWA](12-pwa-notifications.md).

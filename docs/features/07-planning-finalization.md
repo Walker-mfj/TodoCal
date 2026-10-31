@@ -2,13 +2,13 @@
 
 ## Purpose
 
-Turn each elapsed day into a **fixed record**: what was planned that day (`planned`) and how much got done (`completed`). Weekly/monthly statistics therefore cannot be rewritten when a user edits or deletes old tasks later. Editing the past is still allowed, but only through a controlled path (historical adjustment) so snapshots and statistics stay consistent.
+Finalize each elapsed day into an **initial historical snapshot** of the plan and completion at that cutoff. Later unrelated operations must not silently rewrite it. However, a user can intentionally edit a past task: the controlled `historical_adjustment` path **does update the stored snapshot and historical percentages**. Therefore, the current snapshot is *not strictly immutable*; the immutable `task_events` journal records the adjustments.
 
 ## Data
 
 | Table | Role |
 |-------|------|
-| `daily_snapshots` | One row per (user, date): `timezone` at finalization time, `planned`, `completed`, `finalized_at`, `revision` |
+| `daily_snapshots` | One row per (user, date): `timezone` at finalization time, *current adjusted* `planned`/`completed`, `finalized_at`, `revision`. The first-finalized values are **not** retained in a separate immutable baseline column. |
 | `daily_plan_entries` | The per-task detail of a snapshot: `task_state` is a frozen copy holding the full task plus `groupName` and `groupColor` as of finalization |
 | `planning_state` | `caught_up_through`: the watermark — the last date Settle has fully processed for the user |
 
@@ -58,3 +58,14 @@ flowchart TD
 ```
 
 > Lesson from the 2026-10-26 "ghost task" bug: if a delete lands exactly in the window where "the date has no snapshot yet and the date is >= today", `refreshHistorical` skips it — but Finalize later rebuilds an entry from `task_events` that nobody removes, so the deleted task keeps appearing on the calendar even though `tasks.deleted_at` is set. Incident fix: delete the matching row from `daily_plan_entries` and recount the snapshot.
+
+## Historical baseline versus adjustments
+
+- **Initially finalized:** the entries and totals represent the accepted plan at local-day cutoff.
+- **Unrelated later edits:** must not rewrite that date automatically. Group deletion is an explicit non-adjusting exception; saved group presentation remains as captured.
+- **User-initiated backdated edit / completion / deletion / restore:** `Event` flags relevant old dates and `refreshHistorical` updates affected per-task entries and recounts `planned`/`completed`. Snapshot `revision` increases; historical reports can change.
+- **Auditability:** `task_events` keeps full before/after states. It supports examining how a historical result changed but **does not** mean the original finalized `daily_snapshots` row is still available as an immutable baseline.
+- **Future enhancement, not implemented:** if the product must display both "Original finalized" and "Adjusted" metrics, store immutable baseline/version records and show the adjustment reason and actor. Do not claim that distinction exists today.
+- **Catch-up:** `Settle` processes up to 31 days per transaction. `WithTx` may commit one or more catch-up batches before the final transaction running a command; do **not** describe all catch-up work for an inactive account as part of one giant atomic transaction.
+
+Acceptance: after an explicit old-day edit, daily totals, week/month rollups, and journal agree; deleting a group alone leaves past totals and captured presentation intact. See [analytics](09-analytics.md).

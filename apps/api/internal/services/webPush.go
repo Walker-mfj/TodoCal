@@ -37,7 +37,11 @@ func NewWebPushSender(publicKey, privateKey, subject string) (PushSender, error)
 		return nil, errors.New("invalid VAPID key pair")
 	}
 	u, e := url.Parse(subject)
-	if e != nil || !((u.Scheme == "mailto" && strings.Contains(u.Opaque, "@")) || (u.Scheme == "https" && u.Host != "")) {
+	if e != nil {
+		return nil, errors.New("VAPID subject must be a contact mailto or HTTPS URL")
+	}
+	validContact := (u.Scheme == "mailto" && strings.Contains(u.Opaque, "@")) || (u.Scheme == "https" && u.Host != "")
+	if !validContact {
 		return nil, errors.New("VAPID subject must be a contact mailto or HTTPS URL")
 	}
 	transport := &http.Transport{DialContext: publicPushDial, TLSHandshakeTimeout: 5 * time.Second, ResponseHeaderTimeout: 5 * time.Second}
@@ -90,6 +94,6 @@ func (s *webPushSender) Send(ctx context.Context, in models.PushInput, payload [
 	if e != nil {
 		return 0, errors.New("push delivery failed")
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	return response.StatusCode, nil
 }

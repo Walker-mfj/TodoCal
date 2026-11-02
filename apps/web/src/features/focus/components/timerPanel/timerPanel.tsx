@@ -312,6 +312,11 @@ export function TimerPanel({
         <p className={cx("focus-hint")}>
           One task. No rush. Your progress is saved one step at a time.
         </p>
+        <p className={cx("focus-hint")}>
+          Completion notifications here work while this tab is open and browser
+          permission is granted. Web Push reminders are configured separately in
+          Settings → Notifications. Timer sound is a separate setting.
+        </p>
         {focus.permission === "default" && (
           <button
             className={cx("focus-free", true)}

@@ -204,6 +204,7 @@ func UpdateFollowing(ctx context.Context, tx pgx.Tx, user, zone string, now time
 		if protected {
 			continue
 		}
+		restoredFromRule := false
 		matchesRule := localdate.Days(cutoff, *old.OriginalOccurrenceDate)%rule.IntervalDays == 0 &&
 			(rule.EndDate == nil || localdate.Add(*old.OriginalOccurrenceDate, offset) <= *rule.EndDate)
 		if changesRule && matchesRule && old.DeletedAt != nil && old.ScheduledDate != nil && *old.ScheduledDate >= today {
@@ -214,6 +215,7 @@ func UpdateFollowing(ctx context.Context, tx pgx.Tx, user, zone string, now time
 				return Task{}, e
 			}
 			if tag.RowsAffected() > 0 {
+				restoredFromRule = true
 				old, err = RestoreTask(ctx, tx, user, zone, old.ID, now, old.Revision)
 				if err != nil {
 					return Task{}, err
@@ -250,6 +252,11 @@ func UpdateFollowing(ctx context.Context, tx pgx.Tx, user, zone string, now time
 		}
 		next := applyFields(old.TaskInput, in, fields)
 		date := localdate.Add(*old.ScheduledDate, delta)
+		if restoredFromRule {
+			// Excluded tasks missed earlier shifts. Their effective date comes
+			// from the immutable slot and the accumulated tail offset.
+			date = localdate.Add(*old.OriginalOccurrenceDate, offset)
+		}
 		if date < today {
 			return Task{}, Invalid("This and following cannot move repetitions into the past")
 		}
@@ -263,6 +270,13 @@ func UpdateFollowing(ctx context.Context, tx pgx.Tx, user, zone string, now time
 		}
 		if _, err = UpdateTask(ctx, tx, user, zone, now, old, next); err != nil {
 			return Task{}, err
+		}
+		if restoredFromRule {
+			// Normalizing a restored slot is not an explicit user move. Do not
+			// turn it into a durable exception on the next cadence change.
+			if _, err = tx.Exec(ctx, `DELETE FROM recurrence_exceptions WHERE user_id=$1 AND series_id=$2 AND original_occurrence_date=$3 AND reason='moved'`, user, newID, old.OriginalOccurrenceDate); err != nil {
+				return Task{}, err
+			}
 		}
 	}
 	return GetTask(ctx, tx, user, selected.ID)

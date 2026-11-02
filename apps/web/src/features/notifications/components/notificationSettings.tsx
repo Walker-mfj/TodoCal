@@ -84,9 +84,17 @@ export function NotificationSettings({
     <ContentCard>
       <h2>Notifications</h2>
       <p>
-        Choose reminders for your account and enable each device separately.
-        Delivery can be delayed by your browser or network. Reminders never
-        start a timer.
+        These settings control Web Push reminders, including when the app is
+        closed. Enable each device separately. Delivery can be delayed by your
+        browser or network. Reminders never start a timer.
+      </p>
+      <p>
+        While a tab is open, the Focus timer can also show a browser
+        notification if permission is granted. Turning off Focus session
+        completed below only stops Web Push; it does not stop these open-tab
+        notifications. To stop both, block notifications for this site in your
+        browser settings. With both enabled, you may receive two completion
+        notifications. Timer sound is controlled separately in Settings.
       </p>
       {(error || command.error) && <p role="alert">{error || command.error}</p>}
       {notice && <p role="status">{notice}</p>}

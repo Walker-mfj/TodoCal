@@ -263,3 +263,49 @@ func TestFollowingPatchPreservesSiblingOverrides(t *testing.T) {
 		}
 	}
 }
+
+func TestFollowingRestoreUsesCurrentOffsetAndPreservesMovedExceptions(t *testing.T) {
+	s, _ := testServer(t)
+	s.now = func() time.Time { return atDate("2030-10-19") }
+	c, csrf := register(t, s, "offset-restore@example.com")
+	series(t, s, c, csrf, "daily", 1, nil)
+	items := calendar(t, s, c, "2030-10-19", "2030-10-27")["tasks"].([]any)
+	selected := items[2].(map[string]any)
+	excluded := items[3].(map[string]any)
+	moved := items[4].(map[string]any)
+	object(t, command(s, "PATCH", "/api/v1/tasks/"+moved["id"].(string), map[string]any{"expectedRevision": 1, "scheduledDate": "2030-10-30"}, c, csrf, uuid.NewString()), 200)
+	for i, cadence := range []string{"weekly", "daily", "weekly", "daily"} {
+		interval := 1
+		if cadence == "weekly" {
+			interval = 7
+		}
+		body := map[string]any{"expectedRevision": selected["revision"], "expectedSeriesRevision": 1, "scope": "following", "recurrence": map[string]any{"cadence": cadence, "intervalDays": interval}}
+		if i == 0 {
+			body["scheduledDate"] = "2030-10-23"
+		}
+		selected = object(t, command(s, "PATCH", "/api/v1/tasks/"+selected["id"].(string), body, c, csrf, uuid.NewString()), 200)
+		tasks := calendar(t, s, c, "2030-10-19", "2030-11-02")["tasks"].([]any)
+		found, foundMoved := false, false
+		for _, v := range tasks {
+			task := v.(map[string]any)
+			if task["id"] == excluded["id"] {
+				found = true
+				if task["scheduledDate"] != "2030-10-24" {
+					t.Fatalf("restored at stale date: %v", task)
+				}
+			}
+			if task["id"] == moved["id"] {
+				foundMoved = true
+				if task["scheduledDate"] != "2030-10-30" {
+					t.Fatalf("moved override changed: %v", task)
+				}
+			}
+		}
+		if !foundMoved {
+			t.Fatal("moved occurrence disappeared")
+		}
+		if found != (cadence == "daily") {
+			t.Fatalf("rule-excluded slot visibility incorrect for %s: %v", cadence, found)
+		}
+	}
+}

@@ -13,6 +13,7 @@ Centralize account-level preferences and their effects on planning, recurrence, 
 - Appearance changes should persist across reloads/devices without resetting drafts, navigation, running sessions, or task data.
 - A time-zone change calls `BeforeZoneChange` to seal dates crossed by a forward time-zone jump. Existing finalized plans retain their saved timezone; future local-date calculation uses the new zone. Future invalid-wall-time recurrence exceptions may be reevaluated.
 - A changed default Focus duration should affect **new** sessions, not mutate elapsed time, targets, or past sessions already persisted.
+- The Notifications panel controls **Web Push** only. Its explanation distinguishes open-tab completion notifications (controlled by browser permission), warns that both paths can notify for the same completion, and explains how to block site notifications in browser settings. **Timer sound** remains independent. The Focus panel repeats this distinction; this clarification does not change delivery behavior.
 - Notification permissions are **device/browser local**. A separate `notification_preferences` record stores account event toggles, lead time and quiet hours; Settings also lists and revokes session-bound device subscriptions.
 
 ## Product rules and edge cases

@@ -256,3 +256,8 @@ All implementation, migrations, tests, CI and docs are delivered together. Live 
 - No Trash or GAP-05 implementation is included. Existing `deleted` exceptions are not heuristically reclassified: their origin cannot be safely inferred. This PR has not been deployed.
 
 Review-fix verification: full Go race-enabled unit/integration suite passed; the expanded following-scope tests also passed after adding snapshot/recovery assertions. Web tests: **99 passed**. Targeted recurrence/editor E2E: **27 passed across Chrome, Firefox and WebKit**. Frontend production build, typecheck, formatting and Go vet passed. These are local results for the follow-up; hosted CI reruns after pushing it.
+
+
+Offset restoration follow-up: a regression combines a +2-day tail shift, Daily → Weekly → Daily, a second cadence round trip and a separately moved occurrence. Restored rule-excluded tasks use original slot + current accumulated offset; normalization must not leave a moved exception. Settings and the Focus panel explain Web Push versus open-tab browser notifications and independent Timer sound; delivery preferences/behavior are unchanged.
+
+Offset/UI follow-up verification: the new offset regression fails against the previous implementation at the stale restored date and passes with the fix. Full race-enabled Go tests, 99 web tests, production frontend build, typecheck, format and Go vet passed. Focus/accessibility E2E: 15 passed across Chrome, Firefox and WebKit.

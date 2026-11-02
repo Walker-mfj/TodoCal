@@ -288,3 +288,68 @@ it("plans focus with a custom session length without changing the scheduled inte
     endTime: "10:00",
   });
 });
+
+it.each([
+  ["daily", 1, 2],
+  ["interval", 5, 5],
+] as const)(
+  "keeps a valid interval when editing a %s series",
+  async (cadence, intervalDays, expected) => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              cadence,
+              intervalDays,
+              endDate: null,
+              revision: 1,
+            }),
+            { headers: { "X-Account-ID": base.owner } },
+          ),
+        ),
+    );
+    try {
+      render(
+        <TaskEditor
+          {...base}
+          execute={vi.fn()}
+          task={{
+            id: "recurring-task",
+            title: "Repeat",
+            description: "",
+            groupId: null,
+            priority: "medium",
+            scheduledDate: "2030-10-20",
+            startTime: null,
+            endTime: null,
+            deadline: null,
+            estimatedPomodoros: null,
+            status: "incomplete",
+            revision: 1,
+            createdAt: "",
+            updatedAt: "",
+            seriesId: "series-one",
+            originalOccurrenceDate: "2030-10-20",
+          }}
+        />,
+      );
+      await waitFor(() =>
+        expect(screen.getByLabelText("Repeat")).toHaveValue(cadence),
+      );
+      if (cadence === "daily")
+        fireEvent.change(screen.getByLabelText("Repeat"), {
+          target: { value: "interval" },
+        });
+      else
+        fireEvent.change(screen.getByLabelText("Repeat until (inclusive)"), {
+          target: { value: "2030-10-30" },
+        });
+      expect(screen.getByLabelText("Every (days)")).toHaveValue(expected);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  },
+);

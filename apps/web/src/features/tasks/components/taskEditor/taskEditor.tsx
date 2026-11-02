@@ -207,7 +207,10 @@ export function TaskEditor({
       ...(key === "cadence" &&
       value === "interval" &&
       d.intervalDays === undefined
-        ? { intervalDays: seriesRule?.intervalDays || 2 }
+        ? {
+            intervalDays:
+              seriesRule?.cadence === "interval" ? seriesRule.intervalDays : 2,
+          }
         : {}),
     }));
     setError("");

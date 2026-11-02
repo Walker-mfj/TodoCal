@@ -185,7 +185,15 @@ func UpdateFollowing(ctx context.Context, tx pgx.Tx, user, zone string, now time
 		return Task{}, err
 	}
 	for _, old := range affected {
-		if old.DeletedAt != nil || old.Status == "complete" || old.ScheduledDate == nil || *old.ScheduledDate < today {
+		before := old
+		old.SeriesID = &newID
+		old.Revision++
+		// Ownership changes are journaled even for protected/deleted tasks;
+		// they do not revise accepted historical snapshots.
+		if err = Event(ctx, tx, user, zone, "series_reparented", now, &before, old); err != nil {
+			return Task{}, err
+		}
+		if old.Status == "complete" || old.ScheduledDate == nil || *old.ScheduledDate < today {
 			continue
 		}
 		var protected bool
@@ -196,9 +204,26 @@ func UpdateFollowing(ctx context.Context, tx pgx.Tx, user, zone string, now time
 		if protected {
 			continue
 		}
-		old.SeriesID = &newID
-		old.Revision++
-		if changesRule && (localdate.Days(cutoff, *old.OriginalOccurrenceDate)%rule.IntervalDays != 0 || (rule.EndDate != nil && localdate.Add(*old.OriginalOccurrenceDate, offset) > *rule.EndDate)) {
+		matchesRule := localdate.Days(cutoff, *old.OriginalOccurrenceDate)%rule.IntervalDays == 0 &&
+			(rule.EndDate == nil || localdate.Add(*old.OriginalOccurrenceDate, offset) <= *rule.EndDate)
+		if changesRule && matchesRule && old.DeletedAt != nil && old.ScheduledDate != nil && *old.ScheduledDate >= today {
+			// Only rule-excluded slots may return automatically. Explicit user
+			// deletions remain durable across any number of splits.
+			tag, e := tx.Exec(ctx, `DELETE FROM recurrence_exceptions WHERE user_id=$1 AND series_id=$2 AND original_occurrence_date=$3 AND reason='rule_excluded'`, user, newID, old.OriginalOccurrenceDate)
+			if e != nil {
+				return Task{}, e
+			}
+			if tag.RowsAffected() > 0 {
+				old, err = RestoreTask(ctx, tx, user, zone, old.ID, now, old.Revision)
+				if err != nil {
+					return Task{}, err
+				}
+			}
+		}
+		if old.DeletedAt != nil {
+			continue
+		}
+		if changesRule && !matchesRule {
 			// Explicitly moved exceptions remain accepted overrides even off cadence.
 			var moved bool
 			err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM recurrence_exceptions WHERE user_id=$1 AND series_id=$2 AND original_occurrence_date=$3::date AND reason='moved')`, user, newID, old.OriginalOccurrenceDate).Scan(&moved)
@@ -208,7 +233,17 @@ func UpdateFollowing(ctx context.Context, tx pgx.Tx, user, zone string, now time
 			if moved {
 				continue
 			}
-			if err = DeleteTask(ctx, tx, user, zone, now, old); err != nil {
+			if _, err = repository.SoftDeleteTask(ctx, tx, user, old.ID, now); err != nil {
+				return Task{}, err
+			}
+			after := old
+			after.Revision++
+			after.UpdatedAt = now
+			after.DeletedAt = &now
+			if err = Exception(ctx, tx, user, after, "rule_excluded", now); err != nil {
+				return Task{}, err
+			}
+			if err = Event(ctx, tx, user, zone, "rule_excluded", now, &old, after); err != nil {
 				return Task{}, err
 			}
 			continue

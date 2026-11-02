@@ -10,7 +10,7 @@ Repeat tasks daily, every N days, or weekly without eagerly creating an infinite
 |---|---|
 | `recurrence_series` | Template, start date, cadence/interval, inclusive end date, `stopped_after`, exclusive `original_cutoff`, `schedule_offset_days`, deadline offsets, `revision` and `stop_undo` |
 | `tasks.series_id` + `tasks.original_occurrence_date` | Stable identity of a materialized slot even when its scheduled date moves; unique as a pair |
-| `recurrence_exceptions` | Original-slot suppression for `deleted`, `moved`, and `invalid_local_time` |
+| `recurrence_exceptions` | Original-slot suppression for `deleted`, `moved`, `rule_excluded`, and `invalid_local_time` |
 
 ## Lazy materialization
 
@@ -36,9 +36,9 @@ flowchart TD
 
 **This occurrence** edits one task while retaining its series and original slot. Moving it records a durable moved exception, so its old slot is never regenerated.
 
-**This and following** starts at the selected immutable original slot, inclusive. The old series receives an exclusive `original_cutoff`; a new tail series owns the existing task IDs and exceptions from that slot onward. Earlier slots stay unchanged. The UI can change the tail cadence, interval, end date and task fields. Schedule offsets preserve original slot identity even for moved occurrences.
+**This and following** starts at the selected immutable original slot, inclusive. The old series receives an exclusive `original_cutoff`; a new tail series owns the existing task IDs and exceptions from that slot onward. Earlier slots stay unchanged. The UI can change the tail cadence, interval, end date and task fields. Schedule offsets preserve original slot identity even for moved occurrences. The editor sends only changed task fields for this scope, so omitted fields retain each sibling’s own overrides. Explicitly edited fields replace those values in eligible siblings. Every membership change increments the task revision and journals `series_reparented` before/after states, including protected and deleted tasks; this metadata-only event leaves historical snapshots unchanged.
 
-Completed, Focus-history-bearing, historical and finalized tasks retain their content. A completed or focused selected occurrence can only be edited individually. Explicitly deleted slots remain deleted; moved exceptions survive cadence changes. Future invalid-wall-time predictions are cleared and recomputed under the new template. Off-cadence eligible tasks are soft-deleted when the cadence/end date changes. Tail edits cannot move repetitions into the past.
+Completed, Focus-history-bearing, historical and finalized tasks retain their content. A completed or focused selected occurrence can only be edited individually. Explicitly deleted slots remain deleted; moved exceptions survive cadence changes. Future invalid-wall-time predictions are cleared and recomputed under the new template. Off-cadence eligible tasks are soft-deleted with a distinct `rule_excluded` exception when cadence/end date changes. If a later rule includes that slot, an eligible task is restored with the same ID; an explicit user deletion remains deleted. Completed, focused, historical and finalized tasks are not automatically restored. Tail edits cannot move repetitions into the past.
 
 The legacy `all` API scope remains compatible with older clients and edits eligible materialized occurrences from today forward. New UI actions use `following`; these scopes are intentionally distinct.
 

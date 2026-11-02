@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"context"
 	"github.com/google/uuid"
 	"testing"
 	"time"
@@ -154,4 +155,111 @@ func TestFollowingRejectsMovingTailIntoPast(t *testing.T) {
 	items := calendar(t, s, c, "2030-10-19", "2030-10-22")["tasks"].([]any)
 	selected := items[1].(map[string]any)
 	object(t, command(s, "PATCH", "/api/v1/tasks/"+selected["id"].(string), map[string]any{"expectedRevision": 1, "expectedSeriesRevision": 1, "scope": "following", "scheduledDate": "2030-10-18"}, c, csrf, uuid.NewString()), 422)
+}
+
+func TestFollowingRuleRoundTripAndEndDateRestoreOriginalIdentities(t *testing.T) {
+	s, _ := testServer(t)
+	s.now = func() time.Time { return atDate("2030-10-19") }
+	c, csrf := register(t, s, "roundtrip@example.com")
+	series(t, s, c, csrf, "daily", 1, nil)
+	items := calendar(t, s, c, "2030-10-19", "2030-10-27")["tasks"].([]any)
+	selected := items[2].(map[string]any)
+	deleted := items[4].(map[string]any)
+	object(t, command(s, "DELETE", "/api/v1/tasks/"+deleted["id"].(string), map[string]any{"expectedRevision": 1}, c, csrf, uuid.NewString()), 200)
+	for _, rule := range []map[string]any{
+		{"cadence": "weekly", "intervalDays": 7, "endDate": nil},
+		{"cadence": "daily", "intervalDays": 1, "endDate": nil},
+		{"cadence": "daily", "intervalDays": 1, "endDate": "2030-10-22"},
+		{"cadence": "daily", "intervalDays": 1, "endDate": nil},
+	} {
+		selected = object(t, command(s, "PATCH", "/api/v1/tasks/"+selected["id"].(string), map[string]any{"expectedRevision": selected["revision"], "expectedSeriesRevision": 1, "scope": "following", "recurrence": rule}, c, csrf, uuid.NewString()), 200)
+		after := calendar(t, s, c, "2030-10-19", "2030-10-27")["tasks"].([]any)
+		if rule["endDate"] == nil && rule["cadence"] == "daily" {
+			if len(after) != 7 {
+				t.Fatalf("round trip lost slots: %v", after)
+			}
+			for _, item := range after {
+				task := item.(map[string]any)
+				for _, original := range items {
+					old := original.(map[string]any)
+					if task["originalOccurrenceDate"] == old["originalOccurrenceDate"] && task["id"] != old["id"] {
+						t.Fatal("identity changed", task)
+					}
+				}
+				if task["id"] == deleted["id"] {
+					t.Fatal("user deletion resurrected")
+				}
+			}
+		}
+	}
+}
+
+func TestFollowingReparentJournalsProtectedTasks(t *testing.T) {
+	s, p := testServer(t)
+	s.now = func() time.Time { return atDate("2030-10-19") }
+	c, csrf := register(t, s, "audit-tail@example.com")
+	sr := series(t, s, c, csrf, "daily", 1, nil)
+	items := calendar(t, s, c, "2030-10-19", "2030-10-23")["tasks"].([]any)
+	selected := items[0].(map[string]any)
+	completed := items[1].(map[string]any)
+	deleted := items[2].(map[string]any)
+	object(t, command(s, "POST", "/api/v1/tasks/"+completed["id"].(string)+"/completion", map[string]any{"expectedRevision": 1, "complete": true}, c, csrf, uuid.NewString()), 200)
+	object(t, command(s, "DELETE", "/api/v1/tasks/"+deleted["id"].(string), map[string]any{"expectedRevision": 1}, c, csrf, uuid.NewString()), 200)
+	// A finalized accepted snapshot must retain its original membership/revision.
+	_, err := p.Exec(context.Background(), `INSERT INTO daily_snapshots(user_id,date,timezone,planned,completed,finalized_at) SELECT user_id,scheduled_date,'Asia/Tokyo',1,1,$2 FROM tasks WHERE id=$1`, completed["id"], s.now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = p.Exec(context.Background(), `INSERT INTO daily_plan_entries(user_id,date,task_id,task_state) SELECT user_id,scheduled_date,id,jsonb_build_object('seriesId',series_id,'revision',revision,'title',title) FROM tasks WHERE id=$1`, completed["id"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := object(t, command(s, "PATCH", "/api/v1/tasks/"+selected["id"].(string), map[string]any{"expectedRevision": 1, "expectedSeriesRevision": 1, "scope": "following", "title": "New"}, c, csrf, uuid.NewString()), 200)
+	for _, task := range []map[string]any{completed, deleted} {
+		var count int
+		err := p.QueryRow(context.Background(), `SELECT count(*) FROM task_events WHERE task_id=$1 AND kind='series_reparented' AND before_state->>'seriesId'=$2 AND after_state->>'seriesId'=$3 AND (after_state->>'revision')::int=(before_state->>'revision')::int+1 AND before_state->>'title'=after_state->>'title'`, task["id"], sr["id"], result["seriesId"]).Scan(&count)
+		if err != nil || count != 1 {
+			t.Fatalf("missing reparent journal: %d %v", count, err)
+		}
+	}
+	var unchanged bool
+	err = p.QueryRow(context.Background(), `SELECT task_state->>'seriesId'=$2 AND (task_state->>'revision')::int=2 AND task_state->>'title'='Practice' FROM daily_plan_entries WHERE task_id=$1`, completed["id"], sr["id"]).Scan(&unchanged)
+	if err != nil || !unchanged {
+		t.Fatalf("historical snapshot changed: %v %v", unchanged, err)
+	}
+	restored := object(t, command(s, "POST", "/api/v1/tasks/"+deleted["id"].(string)+"/restore", map[string]any{"expectedRevision": 3}, c, csrf, uuid.NewString()), 200)
+	if restored["revision"] != float64(4) || restored["seriesId"] != result["seriesId"] || restored["title"] != "Practice" {
+		t.Fatal("deleted task recovery lost state", restored)
+	}
+
+}
+
+func TestFollowingPatchPreservesSiblingOverrides(t *testing.T) {
+	s, _ := testServer(t)
+	s.now = func() time.Time { return atDate("2030-10-19") }
+	c, csrf := register(t, s, "overrides-tail@example.com")
+	series(t, s, c, csrf, "daily", 1, nil)
+	items := calendar(t, s, c, "2030-10-19", "2030-10-23")["tasks"].([]any)
+	selected := items[0].(map[string]any)
+	sibling := items[1].(map[string]any)
+	group := object(t, command(s, "POST", "/api/v1/groups", map[string]any{"name": "Private", "color": "#123456"}, c, csrf, uuid.NewString()), 201)
+	override := map[string]any{"expectedRevision": 1, "title": "Custom title", "priority": "high", "groupId": group["id"], "deadline": "2030-10-20T15:00:00Z"}
+	sibling = object(t, command(s, "PATCH", "/api/v1/tasks/"+sibling["id"].(string), override, c, csrf, uuid.NewString()), 200)
+	selected = object(t, command(s, "PATCH", "/api/v1/tasks/"+selected["id"].(string), map[string]any{"expectedRevision": 1, "expectedSeriesRevision": 1, "scope": "following", "description": "Changed description"}, c, csrf, uuid.NewString()), 200)
+	after := object(t, req(s, "GET", "/api/v1/tasks/"+sibling["id"].(string), nil, c, ""), 200)
+	for _, field := range []string{"title", "priority", "groupId", "deadline"} {
+		if after[field] != sibling[field] {
+			t.Fatalf("overwrote %s: %v", field, after)
+		}
+	}
+	object(t, command(s, "PATCH", "/api/v1/tasks/"+selected["id"].(string), map[string]any{"expectedRevision": selected["revision"], "expectedSeriesRevision": 1, "scope": "following", "title": "Renamed"}, c, csrf, uuid.NewString()), 200)
+	after = object(t, req(s, "GET", "/api/v1/tasks/"+sibling["id"].(string), nil, c, ""), 200)
+	if after["title"] != "Renamed" {
+		t.Fatal(after)
+	}
+	for _, field := range []string{"priority", "groupId", "deadline"} {
+		if after[field] != sibling[field] {
+			t.Fatalf("overwrote %s: %v", field, after)
+		}
+	}
 }

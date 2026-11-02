@@ -153,6 +153,34 @@ Classify each failing test as **(A) outdated test contract/locator**, **(B) conf
 | \`toast.spec.ts\` past-date warning | **C:** distinguish creating a new task on a past date from editing an existing historical task. Current backend allows controlled historical adjustments; do not enforce a blanket “past days read-only” rule merely because an old test expects that toast. |
 | \`accessibility.spec.ts\` auth-brand axe violation; \`accountMenu.spec.ts\` WebKit focus return | **B candidates with observed evidence:** track the markup violation and browser focus behavior under **GAP-08**; rerun before marking fixed. |
 
+### Final disposition of the original failures (2026-11-02)
+
+The numbering below follows the original structure-refactor report: 16 Chrome failures plus the separately reproduced WebKit failure. **A** = outdated test contract/fixture/target; **B** = confirmed product defect; **C** = unresolved. These are conclusions from the saved baseline, code changes and subsequent browser runs, not an inference from green CI alone. Test filenames identify the regression journey; historical line numbers are deliberately omitted because edits moved them.
+
+| # | Original failure / regression test | Final classification | Cause, resolution and preserved assertion |
+|---|---|---|---|
+| 1 | Keyboard validation — `acceptance.spec.ts` | A | Obsolete validation CSS/text. Assert the accessible field error and focus on the invalid title; retain the keyboard journey. |
+| 2 | Auth axe — `accessibility.spec.ts` | B | Generic brand div exposed an unsupported aria-label. Added image semantics; both-theme axe checks remain enabled. |
+| 3 | Overlapping events — `criteria.spec.ts` | A | Center click hit the nested quick-Focus action and opened a legitimate modal, which blocked the next click. Focus each event and press Enter to open its details; all four remain independently selectable. This journey verifies keyboard selection, not every pointer coordinate. |
+| 4 | Appearance plus active Focus — `criteria.spec.ts` | A | Retired Active timer region locator. Check floating timer, open its dialog and assert countdown while preserving theme, report period/day and draft assertions. |
+| 5 | Draft after Discard — `dialog.spec.ts` | A | Test expected explicitly discarded input to survive. Assert blank after Discard; Escape/Keep editing still preserve the draft. |
+| 6 | Updated preview time — `draftPreview.spec.ts` | A + B | Compact event markup need not contain textual time (A), but accessible title/time stayed stale after edits (B). Refresh calendar accessible labels; assert the edited date/time in the preview's accessible name and saved data. |
+| 7 | Timer reload/persistence — `focus.spec.ts` | A | Old timer region and Focus 25 action no longer exist. Use dialog/Start session, reopen after reload and retain server-backed timer/cross-device checks. |
+| 8 | Permission denial — `focus.spec.ts` | B | TimerPanel lacked the visible denied-permission status. Added status text and regression showing a denied permission still allows a free Focus session. |
+| 9 | Uncertain timer retry — `focus.spec.ts` | A | Old start locator prevented reaching the retry scenario. Use current controls, close/reopen the modal to access Reconnect, and assert identical retry key/body plus one server session. |
+| 10 | Custom-duration task selection — `focusScene.spec.ts` | A | Fixture was unscheduled; after switching to free Focus it was absent from the documented today-only picker. Schedule it today, then verify selection, duration, pause, reload and resume. |
+| 11 | Task without timer — `home.spec.ts` | A | Obsolete Not needed text. Assert current No focus goal and retain the real API workflow. |
+| 12 | Expired-session draft — `home.spec.ts` | A | Sign out moved inside Account. Open Account before signing out; retain account isolation and original-account draft recovery checks. |
+| 13 | Recurrence stop — `home.spec.ts` | A | Obsolete Stop repeating after today label. Use Stop repeating, retain confirmation and stopped-state checks. |
+| 14 | Storage denied — `storage.spec.ts` | A | Old Focus 25 action blocked later steps. Use current timer/Account controls; keep throwing sessionStorage access, task retry and timer assertions. |
+| 15 | Storage quota — `storage.spec.ts` | A | Same obsolete controls under QuotaExceededError. Preserve quota simulation and complete task/theme/timer/sign-out journey. |
+| 16 | Past-date toast — `toast.spec.ts` | A | Blanket read-only warning contradicted supported historical creation. Verify past-date editor, successful saved task and unchanged calendar position/size. |
+| 17 | WebKit Account Escape — `accountMenu.spec.ts` | B | Native dismissal closed the popover without restoring trigger focus. Explicit Escape handling closes it and restores focus; checked on all three engines. |
+
+All 17 original findings have a disposition; none remains C. Additional defects discovered while completing the journeys (modal Tab traversal, timer names/mode semantics, WebKit quick-Focus pointer retargeting) were fixed separately. Finite theme transitions are awaited before axe contrast measurement. Later Firefox failures were test synchronization issues: the full keyboard journey needed a 90-second budget, and Month creation needed to await removal of the draft before asserting exactly one saved event. No blind retries or disabled axe rules were introduced.
+
+The completed pre-review browser run was 46/46 per engine (138 total), also green in PR CI at `9e64bcb`. That evidence is separate from verification of subsequent review fixes. Real-device Web Push remains a release check: verify the deployed cron → Render job → VAPID provider → closed-browser/device notification and click destination. Unit/integration tests and service-worker mocks do not establish delivery through the OS.
+
 ### Coverage mapping against 15 — Cross-feature Acceptance Scenarios
 
 Use [\`15-acceptance-scenarios.md\`](15-acceptance-scenarios.md) as the **acceptance contract**, not a literal mandate to create 25 Playwright tests. Create and maintain a tracking table with columns:
@@ -218,3 +246,13 @@ Final local E2E: **Chrome 46 passed, Firefox 46 passed, WebKit 46 passed**. Web 
 The old failures were classified and resolved: stale locators/expected controls were aligned with current behavior; actual bugs included stale calendar accessible names, auth/account/timer semantics, WebKit modal Tab traversal and quick-Focus pointer retargeting. Axe now waits for finite color transitions to settle before measuring contrast; no rules are disabled and no blind retries were added. Backend review also found and fixed early recurring deadline materialization and inconsistent DST-overlap reminder timing.
 
 All implementation, migrations, tests, CI and docs are delivered together. Live service configuration and deployment are not performed by this PR.
+
+
+### Review follow-up
+
+- Following edits send only task fields changed from the editor baseline. Integration coverage preserves a sibling's customized title, priority, group and deadline when omitted from a tail patch, and overwrites only the explicitly edited field.
+- Cadence/end-date exclusions use `rule_excluded`, distinct from explicit `deleted` exceptions. Eligible slots return with their existing task IDs when a later rule includes them; repeated daily/weekly/daily splits and end-date contraction/extension are covered together with a durable user deletion.
+- Every reparented task receives a `series_reparented` before/after journal event, including completed and soft-deleted tasks. Membership-only events do not rewrite historical snapshots or count as historical adjustments.
+- No Trash or GAP-05 implementation is included. Existing `deleted` exceptions are not heuristically reclassified: their origin cannot be safely inferred. This PR has not been deployed.
+
+Review-fix verification: full Go race-enabled unit/integration suite passed; the expanded following-scope tests also passed after adding snapshot/recovery assertions. Web tests: **99 passed**. Targeted recurrence/editor E2E: **27 passed across Chrome, Firefox and WebKit**. Frontend production build, typecheck, formatting and Go vet passed. These are local results for the follow-up; hosted CI reruns after pushing it.

@@ -239,6 +239,18 @@ export function TaskEditor({
       let command = pending;
       if (!command) {
         const input = taskPayload(draft, zone);
+        // Following edits are patches: unchanged form values must not overwrite
+        // individually customized sibling occurrences.
+        const original =
+          task && scope === "following" ? taskPayload(baseline, zone) : null;
+        const patch = original
+          ? Object.fromEntries(
+              Object.entries(input).filter(
+                ([key, value]) =>
+                  value !== original[key as keyof typeof original],
+              ),
+            )
+          : input;
         const repeating = !task && draft.cadence && draft.cadence !== "none";
         command = {
           path: task ? `/tasks/${task.id}` : repeating ? "/series" : "/tasks",
@@ -247,7 +259,7 @@ export function TaskEditor({
             key: crypto.randomUUID(),
             body: task
               ? {
-                  ...input,
+                  ...patch,
                   expectedRevision: baseRevision,
                   ...(task.seriesId
                     ? {

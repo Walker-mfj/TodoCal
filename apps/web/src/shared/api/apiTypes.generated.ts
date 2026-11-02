@@ -171,6 +171,25 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/tasks/{id}/following-deletion-preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["ResourceID"];
+      };
+      cookie?: never;
+    };
+    /** @description Counts completed occurrences eligible for following deletion from the original slot. Excludes deleted, past-scheduled and finalized occurrences. Advisory only; deletion rechecks eligibility and confirmation atomically. */
+    get: operations["followingDeletionPreview"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/tasks/{id}": {
     parameters: {
       query?: never;
@@ -501,6 +520,13 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    FollowingDeletionPreview: {
+      completedCount: number;
+      /** Format: int64 */
+      taskRevision: number;
+      /** Format: int64 */
+      seriesRevision: number;
+    };
     NotificationPreferences: {
       /** @default false */
       taskStart: boolean;
@@ -1269,6 +1295,29 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Task"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  followingDeletionPreview: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["ResourceID"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Current completed count and revisions. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FollowingDeletionPreview"];
         };
       };
       default: components["responses"]["Error"];

@@ -290,13 +290,68 @@ type tailUndo struct {
 	Tasks          map[string]int64 `json:"tasks"`
 }
 
+// Use the same eligibility rules for preview and mutation. Lazy, unmaterialized
+// slots cannot be completed and need not be generated just to preview deletion.
+func deletableFollowingTasks(ctx context.Context, tx pgx.Tx, user, zone string, now time.Time, seriesID, cutoff string) ([]Task, error) {
+	tasks, err := tailTasks(ctx, tx, user, seriesID, cutoff)
+	if err != nil {
+		return nil, err
+	}
+	loc, err := time.LoadLocation(zone)
+	if err != nil {
+		return nil, err
+	}
+	today := now.In(loc).Format("2006-01-02")
+	var eligible []Task
+	for _, t := range tasks {
+		if t.DeletedAt != nil || (t.ScheduledDate != nil && *t.ScheduledDate < today) {
+			continue
+		}
+		var finalized bool
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM daily_snapshots WHERE user_id=$1 AND date=$2::date)`, user, t.ScheduledDate).Scan(&finalized); err != nil {
+			return nil, err
+		}
+		if !finalized {
+			eligible = append(eligible, t)
+		}
+	}
+	return eligible, nil
+}
+
+func FollowingDeletionPreviewCommand(ctx context.Context, tx pgx.Tx, p Principal, zone string, now time.Time, input CommandInput, params Parameters) (any, error) {
+	selected, err := GetTask(ctx, tx, p.ID, params.ID)
+	if err != nil {
+		return nil, err
+	}
+	if selected.SeriesID == nil {
+		return nil, Invalid("This task does not repeat")
+	}
+	sr, err := GetSeries(ctx, tx, p.ID, *selected.SeriesID)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = followingSeries(ctx, tx, p.ID, zone, now, selected, sr.Revision); err != nil {
+		return nil, err
+	}
+	tasks, err := deletableFollowingTasks(ctx, tx, p.ID, zone, now, sr.ID, *selected.OriginalOccurrenceDate)
+	if err != nil {
+		return nil, err
+	}
+	count := 0
+	for _, t := range tasks {
+		if t.Status == "complete" {
+			count++
+		}
+	}
+	return map[string]any{"completedCount": count, "taskRevision": selected.Revision, "seriesRevision": sr.Revision}, nil
+}
 func DeleteFollowing(ctx context.Context, tx pgx.Tx, user, zone string, now time.Time, selected Task, revision int64, confirmCompleted bool) (any, error) {
 	sr, err := followingSeries(ctx, tx, user, zone, now, selected, revision)
 	if err != nil {
 		return nil, err
 	}
 	cutoff := *selected.OriginalOccurrenceDate
-	tasks, err := tailTasks(ctx, tx, user, sr.ID, cutoff)
+	tasks, err := deletableFollowingTasks(ctx, tx, user, zone, now, sr.ID, cutoff)
 	if err != nil {
 		return nil, err
 	}
@@ -305,20 +360,7 @@ func DeleteFollowing(ctx context.Context, tx pgx.Tx, user, zone string, now time
 	if err != nil {
 		return nil, err
 	}
-	loc, _ := time.LoadLocation(zone)
-	today := now.In(loc).Format("2006-01-02")
 	for _, t := range tasks {
-		if t.DeletedAt != nil || (t.ScheduledDate != nil && *t.ScheduledDate < today) {
-			continue
-		}
-		var finalized bool
-		err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM daily_snapshots WHERE user_id=$1 AND date=$2::date)`, user, t.ScheduledDate).Scan(&finalized)
-		if err != nil {
-			return nil, err
-		}
-		if finalized {
-			continue
-		}
 		if t.Status == "complete" && !confirmCompleted {
 			return nil, Invalid("Confirm deletion of completed future occurrences; their history will be retained")
 		}

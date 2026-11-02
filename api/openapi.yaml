@@ -296,6 +296,21 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/TaskInput'
+  /tasks/{id}/following-deletion-preview:
+    parameters:
+    - $ref: '#/components/parameters/ResourceID'
+    get:
+      operationId: followingDeletionPreview
+      description: Counts completed occurrences eligible for following deletion from the original slot. Excludes deleted, past-scheduled and finalized occurrences. Advisory only; deletion rechecks eligibility and confirmation atomically.
+      responses:
+        '200':
+          description: Current completed count and revisions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowingDeletionPreview'
+        default:
+          $ref: '#/components/responses/Error'
   /tasks/{id}:
     parameters:
     - $ref: '#/components/parameters/ResourceID'
@@ -862,6 +877,19 @@ components:
         type: string
         format: uuid
   schemas:
+    FollowingDeletionPreview:
+      type: object
+      required: [completedCount, taskRevision, seriesRevision]
+      properties:
+        completedCount:
+          type: integer
+          minimum: 0
+        taskRevision:
+          type: integer
+          format: int64
+        seriesRevision:
+          type: integer
+          format: int64
     NotificationPreferences:
       type: object
       required: [taskStart, deadline, focusComplete, breakComplete, leadMinutes, quietStart, quietEnd, revision]

@@ -3,6 +3,7 @@ package router
 import "net/http"
 
 type Endpoints interface {
+	FollowingDeletionPreview(http.ResponseWriter, *http.Request)
 	Notifications(http.ResponseWriter, *http.Request)
 	UpdateNotificationPreferences(http.ResponseWriter, *http.Request)
 	SubscribePush(http.ResponseWriter, *http.Request)
@@ -46,6 +47,7 @@ type Endpoints interface {
 
 func New(s Endpoints) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/v1/tasks/{id}/following-deletion-preview", s.FollowingDeletionPreview)
 	mux.HandleFunc("GET /api/v1/notifications", s.Notifications)
 	mux.HandleFunc("PUT /api/v1/notifications/preferences", s.UpdateNotificationPreferences)
 	mux.HandleFunc("POST /api/v1/notifications/subscriptions", s.SubscribePush)

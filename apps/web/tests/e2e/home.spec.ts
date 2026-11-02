@@ -297,11 +297,15 @@ test("calendar click/selection, filtered progress, conflicts, offline writes and
   const confirmation = page.getByRole("dialog", {
     name: "Delete repeating task",
   });
-  await confirmation
-    .getByLabel(
-      "Include completed future occurrences, preserving their history",
-    )
-    .check();
+  await expect(
+    confirmation.getByRole("button", {
+      name: "This and following",
+      exact: true,
+    }),
+  ).toBeEnabled();
+  await expect(
+    confirmation.getByRole("checkbox", { name: /Include completed/ }),
+  ).toHaveCount(0);
   await confirmation
     .getByRole("button", { name: "This and following", exact: true })
     .click();

@@ -309,3 +309,61 @@ func TestFollowingRestoreUsesCurrentOffsetAndPreservesMovedExceptions(t *testing
 		}
 	}
 }
+
+func TestFollowingDeletionPreviewAndConcurrentCompletion(t *testing.T) {
+	s, _ := testServer(t)
+	s.now = func() time.Time { return atDate("2030-10-19") }
+	c, csrf := register(t, s, "delete-preview@example.com")
+	series(t, s, c, csrf, "daily", 1, nil)
+	items := calendar(t, s, c, "2030-10-19", "2030-10-23")["tasks"].([]any)
+	selected := items[1].(map[string]any)
+	future := items[2].(map[string]any)
+	path := "/api/v1/tasks/" + selected["id"].(string) + "/following-deletion-preview"
+	preview := object(t, req(s, "GET", path, nil, c, ""), 200)
+	if preview["completedCount"] != float64(0) || preview["taskRevision"] != float64(1) || preview["seriesRevision"] != float64(1) {
+		t.Fatal(preview)
+	}
+	object(t, command(s, "POST", "/api/v1/tasks/"+future["id"].(string)+"/completion", map[string]any{"expectedRevision": 1, "complete": true}, c, csrf, uuid.NewString()), 200)
+	// A zero-count preview is not authorization to delete newly completed tasks.
+	body := map[string]any{"expectedRevision": preview["taskRevision"], "expectedSeriesRevision": preview["seriesRevision"], "scope": "following", "confirmCompleted": false}
+	object(t, command(s, "DELETE", "/api/v1/tasks/"+selected["id"].(string), body, c, csrf, uuid.NewString()), 422)
+	if len(calendar(t, s, c, "2030-10-19", "2030-10-23")["tasks"].([]any)) != 4 {
+		t.Fatal("partial deletion")
+	}
+	preview = object(t, req(s, "GET", path, nil, c, ""), 200)
+	if preview["completedCount"] != float64(1) {
+		t.Fatal(preview)
+	}
+	other, _ := register(t, s, "preview-other@example.com")
+	object(t, req(s, "GET", path, nil, other, ""), 404)
+	body["confirmCompleted"] = true
+	object(t, command(s, "DELETE", "/api/v1/tasks/"+selected["id"].(string), body, c, csrf, uuid.NewString()), 200)
+}
+
+func TestFollowingDeletionPreviewExcludesUnaffectedCompletedTasks(t *testing.T) {
+	s, p := testServer(t)
+	s.now = func() time.Time { return atDate("2030-10-19") }
+	c, csrf := register(t, s, "preview-eligibility@example.com")
+	series(t, s, c, csrf, "daily", 1, nil)
+	items := calendar(t, s, c, "2030-10-19", "2030-10-25")["tasks"].([]any)
+	id := func(i int) string { return items[i].(map[string]any)["id"].(string) }
+	// Earlier original slot, eligible future, deleted future, finalized future,
+	// and an occurrence moved into the past are all completed.
+	_, err := p.Exec(context.Background(), `UPDATE tasks SET status='complete',completed_at=$1 WHERE id=ANY($2::uuid[])`, s.now(), []string{id(0), id(2), id(3), id(4), id(5)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	object(t, command(s, "DELETE", "/api/v1/tasks/"+id(3), map[string]any{"expectedRevision": 1}, c, csrf, uuid.NewString()), 200)
+	_, err = p.Exec(context.Background(), `INSERT INTO daily_snapshots(user_id,date,timezone,planned,completed,finalized_at) SELECT user_id,scheduled_date,'Asia/Tokyo',1,1,$2 FROM tasks WHERE id=$1`, id(4), s.now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = p.Exec(context.Background(), `UPDATE tasks SET scheduled_date='2030-10-18' WHERE id=$1`, id(5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview := object(t, req(s, "GET", "/api/v1/tasks/"+id(1)+"/following-deletion-preview", nil, c, ""), 200)
+	if preview["completedCount"] != float64(1) {
+		t.Fatal(preview)
+	}
+}

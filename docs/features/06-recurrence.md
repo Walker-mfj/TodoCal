@@ -44,7 +44,7 @@ The legacy `all` API scope remains compatible with older clients and edits eligi
 
 ## Delete this and following
 
-The selected original slot is the inclusive cutoff. Eligible current/future tasks in that tail are soft-deleted, and unmaterialized slots are suppressed. Earlier, historical and finalized tasks remain unchanged. Completed future tasks require explicit confirmation; their completion and Focus history remain stored. This does not add a Trash screen.
+The selected original slot is the inclusive cutoff. Eligible current/future tasks in that tail are soft-deleted, and unmaterialized slots are suppressed. Earlier, historical and finalized tasks remain unchanged. Before deletion, the dialog requests `GET /tasks/{id}/following-deletion-preview`, which counts completed occurrences eligible for deletion under the same rules as the mutation. When that count is zero, following deletion needs no checkbox. Otherwise the dialog shows the count and requires explicit confirmation; completion and Focus history remain stored. Loading or a failed preview disables following deletion, with retry available; deleting just this occurrence remains available. Deletion rechecks the current state atomically, so a zero-count preview cannot authorize deleting a task completed afterward. This does not add a Trash screen.
 
 Undo stores the prior cutoff plus each deleted task revision. Restore checks the series and all affected task revisions atomically; conflicts restore nothing. Repeated commands use the existing idempotency receipts. The UI Undo toast lasts ten seconds; the backend restore is revision-based, not time-expiring.
 

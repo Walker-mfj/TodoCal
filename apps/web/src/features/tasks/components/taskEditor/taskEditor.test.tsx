@@ -297,19 +297,17 @@ it.each([
   async (cadence, intervalDays, expected) => {
     vi.stubGlobal(
       "fetch",
-      vi
-        .fn()
-        .mockResolvedValue(
-          new Response(
-            JSON.stringify({
-              cadence,
-              intervalDays,
-              endDate: null,
-              revision: 1,
-            }),
-            { headers: { "X-Account-ID": base.owner } },
-          ),
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            cadence,
+            intervalDays,
+            endDate: null,
+            revision: 1,
+          }),
+          { headers: { "X-Account-ID": base.owner } },
         ),
+      ),
     );
     try {
       render(

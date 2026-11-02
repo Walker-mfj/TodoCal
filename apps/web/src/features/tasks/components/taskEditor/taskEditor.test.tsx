@@ -1,6 +1,20 @@
-import { it, expect, vi } from "vitest";
+import { beforeEach, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { TaskEditor } from "./taskEditor";
+beforeEach(() => {
+  Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
+    configurable: true,
+    value: function (this: HTMLDialogElement) {
+      this.open = true;
+    },
+  });
+  Object.defineProperty(HTMLDialogElement.prototype, "close", {
+    configurable: true,
+    value: function (this: HTMLDialogElement) {
+      this.open = false;
+    },
+  });
+});
 const base = {
   zone: "Asia/Tokyo",
   owner: "user-one",
@@ -287,4 +301,128 @@ it("plans focus with a custom session length without changing the scheduled inte
     startTime: "09:00",
     endTime: "10:00",
   });
+});
+
+it.each([
+  ["daily", 1, 2],
+  ["interval", 5, 5],
+] as const)(
+  "keeps a valid interval when editing a %s series",
+  async (cadence, intervalDays, expected) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            cadence,
+            intervalDays,
+            endDate: null,
+            revision: 1,
+          }),
+          { headers: { "X-Account-ID": base.owner } },
+        ),
+      ),
+    );
+    try {
+      render(
+        <TaskEditor
+          {...base}
+          execute={vi.fn()}
+          task={{
+            id: "recurring-task",
+            title: "Repeat",
+            description: "",
+            groupId: null,
+            priority: "medium",
+            scheduledDate: "2030-10-20",
+            startTime: null,
+            endTime: null,
+            deadline: null,
+            estimatedPomodoros: null,
+            status: "incomplete",
+            revision: 1,
+            createdAt: "",
+            updatedAt: "",
+            seriesId: "series-one",
+            originalOccurrenceDate: "2030-10-20",
+          }}
+        />,
+      );
+      await waitFor(() =>
+        expect(screen.getByLabelText("Repeat")).toHaveValue(cadence),
+      );
+      if (cadence === "daily")
+        fireEvent.change(screen.getByLabelText("Repeat"), {
+          target: { value: "interval" },
+        });
+      else
+        fireEvent.change(screen.getByLabelText("Repeat until (inclusive)"), {
+          target: { value: "2030-10-30" },
+        });
+      expect(screen.getByLabelText("Every (days)")).toHaveValue(expected);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  },
+);
+
+it("sends only changed fields for a following edit", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          cadence: "daily",
+          intervalDays: 1,
+          endDate: null,
+          revision: 1,
+        }),
+        { headers: { "X-Account-ID": base.owner } },
+      ),
+    ),
+  );
+  try {
+    const save = vi.fn().mockResolvedValue({});
+    render(
+      <TaskEditor
+        {...base}
+        execute={save}
+        task={{
+          id: "dirty-tail",
+          title: "Repeat",
+          description: "",
+          groupId: null,
+          priority: "medium",
+          scheduledDate: "2030-10-20",
+          startTime: null,
+          endTime: null,
+          deadline: null,
+          estimatedPomodoros: null,
+          status: "incomplete",
+          revision: 1,
+          createdAt: "",
+          updatedAt: "",
+          seriesId: "dirty-series",
+          originalOccurrenceDate: "2030-10-20",
+        }}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText("Repeat")).toHaveValue("daily"),
+    );
+    fireEvent.change(screen.getByLabelText("Task title"), {
+      target: { value: "Renamed" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    fireEvent.click(screen.getByRole("button", { name: "This and following" }));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    expect(save.mock.calls[0][1].body).toEqual({
+      title: "Renamed",
+      expectedRevision: 1,
+      scope: "following",
+      expectedSeriesRevision: 1,
+    });
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });

@@ -55,6 +55,16 @@ export function TaskDetail({
   zone?: string;
   defaultFocusMinutes?: number;
 }) {
+  const [deleteChoice, setDeleteChoice] = useState(false);
+  const deletionPreview = useOwnedQuery<
+    components["schemas"]["FollowingDeletionPreview"]
+  >(
+    "following-deletion-preview",
+    `/tasks/${task.id}/following-deletion-preview`,
+    deleteChoice && !!task.seriesId,
+  );
+  const needsCompletedConfirmation =
+    (deletionPreview.data?.completedCount ?? 0) > 0;
   const series = useOwnedQuery<components["schemas"]["RecurrenceSeries"]>(
     "series",
     `/series/${task.seriesId}`,
@@ -80,8 +90,8 @@ export function TaskDetail({
         : historicalEntry?.groupName || "No group"
     : groups.find((group) => group.id === task.groupId)?.name || "No group";
   const command = useCommand(execute);
-  const [deleteChoice, setDeleteChoice] = useState(false);
   const [stopped, setStopped] = useState(false);
+  const [confirmCompleted, setConfirmCompleted] = useState(false);
   const [completionError, setCompletionError] = useState("");
   const [completedAt, setCompletedAt] = useState("");
   useEffect(() => {
@@ -107,14 +117,25 @@ export function TaskDetail({
     );
   };
   const stop = () => {
-    if (!task.seriesId || !series.data) return;
+    if (
+      !task.seriesId ||
+      !deletionPreview.data ||
+      deletionPreview.isFetching ||
+      deletionPreview.error
+    )
+      return;
     const seriesId = task.seriesId,
-      revision = series.data.revision;
+      revision = deletionPreview.data.seriesRevision;
     setDeleteChoice(false);
     void command.run(
-      `/series/${seriesId}/stop`,
-      "POST",
-      { expectedRevision: revision },
+      `/tasks/${task.id}`,
+      "DELETE",
+      {
+        expectedRevision: task.revision,
+        scope: "following",
+        expectedSeriesRevision: revision,
+        confirmCompleted: needsCompletedConfirmation && confirmCompleted,
+      },
       () => {
         setStopped(true);
         onStopped?.(seriesId, revision + 1);
@@ -323,7 +344,11 @@ export function TaskDetail({
       <button
         className={cx("danger wide", true)}
         disabled={locked}
-        onClick={() => (task.seriesId ? setDeleteChoice(true) : remove())}
+        onClick={() => {
+          setConfirmCompleted(false);
+          if (task.seriesId) setDeleteChoice(true);
+          else remove();
+        }}
       >
         Delete task
       </button>
@@ -357,11 +382,17 @@ export function TaskDetail({
                   locked ||
                   !series.data ||
                   !!series.data.stoppedAfter ||
-                  stopped
+                  stopped ||
+                  !deletionPreview.data ||
+                  deletionPreview.isFetching ||
+                  !!deletionPreview.error ||
+                  (needsCompletedConfirmation && !confirmCompleted) ||
+                  !task.originalOccurrenceDate ||
+                  task.originalOccurrenceDate < stopDate
                 }
                 onClick={stop}
               >
-                Stop repeating
+                This and following
               </button>
             </>
           }
@@ -371,9 +402,46 @@ export function TaskDetail({
             unchanged.
           </p>
           <p>
-            Stop repeating after {dateLabel(stopDate)} ({zone}). Today, past
-            tasks and completed future tasks are kept; future incomplete
-            occurrences are removed.
+            Delete this task and future repetitions starting{" "}
+            {dateLabel(
+              task.originalOccurrenceDate || task.scheduledDate || stopDate,
+            )}{" "}
+            ({zone}). Earlier repetitions stay unchanged.
+          </p>
+          {deletionPreview.isFetching && (
+            <p role="status">Checking affected occurrences…</p>
+          )}
+          {deletionPreview.error && (
+            <p role="alert">
+              Unable to check affected occurrences.{" "}
+              <button onClick={() => void deletionPreview.refetch()}>
+                Retry deletion preview
+              </button>
+            </p>
+          )}
+          {needsCompletedConfirmation && (
+            <>
+              <p>
+                {deletionPreview.data?.completedCount} completed occurrence(s)
+                will be hidden from the calendar. Their completion and Focus
+                history are retained.
+              </p>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={confirmCompleted}
+                  onChange={(event) =>
+                    setConfirmCompleted(event.target.checked)
+                  }
+                />{" "}
+                Include completed future occurrences, preserving their history
+              </label>
+            </>
+          )}
+          <p>
+            Undo restores the whole deletion while its task and series revisions
+            remain unchanged. Past original slots can only be deleted
+            individually.
           </p>
           {series.error && (
             <p role="alert">

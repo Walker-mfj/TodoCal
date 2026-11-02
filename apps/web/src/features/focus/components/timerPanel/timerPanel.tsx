@@ -113,10 +113,10 @@ export function TimerPanel({
         <button
           ref={close}
           onClick={onClose}
-          aria-label="Close focus timer"
+          aria-label="Close focus timer — Back to calendar"
           className={cx("", true)}
         >
-          ↗ Back to calendar
+          <span aria-hidden="true">↗</span> Back to calendar
         </button>
       </header>
       <div className={cx("focus-scene-body")}>
@@ -184,7 +184,11 @@ export function TimerPanel({
             )}
           </label>
         )}
-        <div className={cx("focus-modes")} aria-label="Session mode">
+        <div
+          className={cx("focus-modes")}
+          role="group"
+          aria-label="Session mode"
+        >
           {(["focus", "short_break", "long_break"] as FocusKind[]).map(
             (mode) => (
               <button
@@ -308,6 +312,11 @@ export function TimerPanel({
         <p className={cx("focus-hint")}>
           One task. No rush. Your progress is saved one step at a time.
         </p>
+        <p className={cx("focus-hint")}>
+          Completion notifications here work while this tab is open and browser
+          permission is granted. Web Push reminders are configured separately in
+          Settings → Notifications. Timer sound is a separate setting.
+        </p>
         {focus.permission === "default" && (
           <button
             className={cx("focus-free", true)}
@@ -315,6 +324,11 @@ export function TimerPanel({
           >
             Enable completion notifications
           </button>
+        )}
+        {focus.permission === "denied" && (
+          <p role="status">
+            Notifications are blocked. The timer still works normally.
+          </p>
         )}
       </div>
     </section>

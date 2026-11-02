@@ -34,7 +34,7 @@ test("real API: tasks, recurrence, groups, progress, theme and second-browser pe
     page.getByRole("button", { name: /^Read without a timer/ }),
   ).toBeVisible();
   await page.getByRole("button", { name: /^Read without a timer/ }).click();
-  await expect(page.getByText("Not needed", { exact: true })).toBeVisible();
+  await expect(page.getByText("No focus goal", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Edit task", exact: true }).click();
   const date = await page.evaluate(() =>
     new Intl.DateTimeFormat("en-CA", {
@@ -87,7 +87,7 @@ test("real API: tasks, recurrence, groups, progress, theme and second-browser pe
   await expect(other.locator(".fc-event")).toHaveCount(2);
   await expect(
     other.locator(".fc-event").filter({ hasText: "Read without a timer" }),
-  ).toContainText("09:00");
+  ).toHaveAccessibleName(/T09:00/);
   await other.getByRole("button", { name: "Tasks", exact: true }).click();
   await other
     .getByRole("button", { name: "Complete Read without a timer", exact: true })
@@ -165,7 +165,11 @@ test("expired session keeps the original account draft and never shows it to ano
     .click();
   await expect(page.getByLabel("Task title")).toHaveValue("");
   await page.getByRole("button", { name: "Close editor" }).click();
-  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await page.getByRole("button", { name: /^Account:/ }).click();
+  await page
+    .getByRole("dialog", { name: "Account options" })
+    .getByRole("button", { name: "Sign out", exact: true })
+    .click();
   await signIn(page, a);
   await expect(page.getByLabel("Task title")).toHaveValue(
     "Private unfinished draft",
@@ -289,15 +293,28 @@ test("calendar click/selection, filtered progress, conflicts, offline writes and
   await page.getByRole("button", { name: "Create task", exact: true }).click();
   await expect(page.getByLabel("Task title")).toBeHidden();
   await page.locator(".task-open").filter({ hasText: "Offline draft" }).click();
-  await page
-    .getByRole("button", { name: "Stop repeating after today", exact: true })
-    .click();
-  await page
-    .getByRole("alertdialog")
-    .getByRole("button", { name: "Stop repeating", exact: true })
+  await page.getByRole("button", { name: "Delete task", exact: true }).click();
+  const confirmation = page.getByRole("dialog", {
+    name: "Delete repeating task",
+  });
+  await expect(
+    confirmation.getByRole("button", {
+      name: "This and following",
+      exact: true,
+    }),
+  ).toBeEnabled();
+  await expect(
+    confirmation.getByRole("checkbox", { name: /Include completed/ }),
+  ).toHaveCount(0);
+  await confirmation
+    .getByRole("button", { name: "This and following", exact: true })
     .click();
   await expect(
-    page.getByText("Recurrence stopped.", { exact: true }),
+    page.getByText("Repeating tasks deleted", { exact: false }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(
+    page.locator(".task-open").filter({ hasText: "Offline draft" }),
   ).toBeVisible();
   await second.close();
 });

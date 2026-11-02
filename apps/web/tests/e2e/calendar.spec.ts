@@ -446,7 +446,7 @@ test("draft drag and resize update the editor without creating a task", async ({
   expect(tasks[0]).toMatchObject({ startTime: "10:00", endTime: "11:30" });
 });
 
-test("repeating drag asks for scope; cancel, one and all preserve occurrence details", async ({
+test("repeating drag asks for scope; cancel, one and following preserve occurrence details", async ({
   page,
 }) => {
   const { date, send } = await setup(page);
@@ -508,7 +508,7 @@ test("repeating drag asks for scope; cancel, one and all preserve occurrence det
   ).toContainText("10:00");
   await dragMinutes(page, "Drag repeating", 60);
   await dialog
-    .getByRole("button", { name: "All occurrences", exact: true })
+    .getByRole("button", { name: "This and following", exact: true })
     .click();
   await expect.poll(async () => (await read(first.id)).startTime).toBe("11:00");
   expect(await read(second.id)).toMatchObject({

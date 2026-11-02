@@ -16,6 +16,9 @@ beforeEach(() => {
   });
 });
 const fixtures = vi.hoisted(() => ({
+  previewLoading: false,
+  previewError: null as Error | null,
+  preview: { completedCount: 1, taskRevision: 4, seriesRevision: 7 },
   series: {
     revision: 7,
     cadence: "daily",
@@ -41,12 +44,18 @@ const fixtures = vi.hoisted(() => ({
 vi.mock("../../../auth/hooks/useOwnedQuery", () => ({
   useOwnedQuery: (name: string) => ({
     data:
-      name === "series"
-        ? fixtures.series
-        : name === "task-focus"
-          ? fixtures.focus
-          : undefined,
+      name === "following-deletion-preview"
+        ? fixtures.preview
+        : name === "series"
+          ? fixtures.series
+          : name === "task-focus"
+            ? fixtures.focus
+            : undefined,
     isPending: false,
+    isFetching:
+      name === "following-deletion-preview" && fixtures.previewLoading,
+    error: name === "following-deletion-preview" ? fixtures.previewError : null,
+    refetch: vi.fn(),
   }),
 }));
 const task = {
@@ -108,13 +117,18 @@ it("deletes a single task directly and passes the task for Undo", async () => {
     body: { expectedRevision: 4 },
   });
 });
-it("offers occurrence deletion and stopping separately without a destructive default", async () => {
+it("offers occurrence and following deletion separately without a destructive default", async () => {
   const execute = vi.fn().mockResolvedValue({}),
     onStopped = vi.fn();
   render(
     <TaskDetail
       {...base}
-      task={{ ...task, seriesId: "series" }}
+      task={{
+        ...task,
+        seriesId: "series",
+        originalOccurrenceDate: "2099-10-20",
+        scheduledDate: "2099-10-20",
+      }}
       execute={execute}
       onStopped={onStopped}
     />,
@@ -125,9 +139,22 @@ it("offers occurrence deletion and stopping separately without a destructive def
     screen.getByRole("button", { name: "Delete this occurrence" }),
   ).toBeEnabled();
   expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
-  fireEvent.click(screen.getByRole("button", { name: "Stop repeating" }));
+  expect(
+    screen.getByRole("button", { name: "This and following" }),
+  ).toBeDisabled();
+  fireEvent.click(
+    screen.getByRole("checkbox", {
+      name: /Include completed future occurrences/,
+    }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "This and following" }));
   await waitFor(() => expect(onStopped).toHaveBeenCalledWith("series", 8));
-  expect(execute.mock.calls[0][0]).toBe("/series/series/stop");
+  expect(execute.mock.calls[0][0]).toBe("/tasks/one");
+  expect(execute.mock.calls[0][1].body).toMatchObject({
+    scope: "following",
+    expectedSeriesRevision: 7,
+    confirmCompleted: true,
+  });
 });
 it("distinguishes actual time and ended-early sessions from planned time", () => {
   render(<TaskDetail {...base} execute={vi.fn()} />);
@@ -136,3 +163,72 @@ it("distinguishes actual time and ended-early sessions from planned time", () =>
   expect(screen.getByText("Ended early")).toBeVisible();
   expect(screen.getByText(/37 active min \/ 40 min target/)).toBeVisible();
 });
+
+it("allows following deletion without a checkbox when no completed occurrences are affected", async () => {
+  fixtures.preview.completedCount = 0;
+  try {
+    const execute = vi.fn().mockResolvedValue({});
+    render(
+      <TaskDetail
+        {...base}
+        historical={false}
+        task={{
+          ...task,
+          status: "incomplete",
+          seriesId: "series",
+          originalOccurrenceDate: "2099-10-20",
+          scheduledDate: "2099-10-20",
+        }}
+        execute={execute}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Delete task" }));
+    expect(
+      screen.queryByRole("checkbox", { name: /Include completed/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "This and following" }),
+    ).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "This and following" }));
+    await waitFor(() => expect(execute).toHaveBeenCalled());
+    expect(execute.mock.calls[0][1].body.confirmCompleted).toBe(false);
+  } finally {
+    fixtures.preview.completedCount = 1;
+  }
+});
+
+it.each(["loading", "error"])(
+  "blocks following deletion while preview is %s",
+  (state) => {
+    fixtures.previewLoading = state === "loading";
+    fixtures.previewError = state === "error" ? new Error("Unavailable") : null;
+    try {
+      render(
+        <TaskDetail
+          {...base}
+          task={{
+            ...task,
+            seriesId: "series",
+            originalOccurrenceDate: "2099-10-20",
+            scheduledDate: "2099-10-20",
+          }}
+          execute={vi.fn()}
+        />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Delete task" }));
+      expect(
+        screen.getByRole("button", { name: "This and following" }),
+      ).toBeDisabled();
+      expect(
+        screen.getByRole("button", { name: "Delete this occurrence" }),
+      ).toBeEnabled();
+      if (state === "error")
+        expect(
+          screen.getByRole("button", { name: "Retry deletion preview" }),
+        ).toBeVisible();
+    } finally {
+      fixtures.previewLoading = false;
+      fixtures.previewError = null;
+    }
+  },
+);

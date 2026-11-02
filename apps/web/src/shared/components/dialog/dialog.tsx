@@ -102,19 +102,19 @@ export function Dialog({
             getComputedStyle(element).display !== "none" &&
             getComputedStyle(element).visibility !== "hidden",
         );
-        const first = controls[0],
-          last = controls.at(-1);
-        if (!first) {
-          event.preventDefault();
-          return;
-        }
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault();
-          last?.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
-          first.focus();
-        }
+        // Explicit traversal also includes buttons when WebKit's platform
+        // keyboard preference otherwise skips them inside the modal.
+        event.preventDefault();
+        if (!controls.length) return;
+        const current = controls.indexOf(document.activeElement as HTMLElement);
+        const next =
+          current < 0
+            ? event.shiftKey
+              ? controls.length - 1
+              : 0
+            : (current + (event.shiftKey ? -1 : 1) + controls.length) %
+              controls.length;
+        controls[next].focus();
       }}
     >
       <DialogHeading

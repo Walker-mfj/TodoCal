@@ -31,3 +31,7 @@ func (s *Server) RestoreTask(w http.ResponseWriter, r *http.Request) {
 func (s *Server) RestoreSeries(w http.ResponseWriter, r *http.Request) {
 	s.mutate(w, r, services.RestoreSeriesCommand)
 }
+
+func (s *Server) FollowingDeletionPreview(w http.ResponseWriter, r *http.Request) {
+	s.view(w, r, services.FollowingDeletionPreviewCommand)
+}

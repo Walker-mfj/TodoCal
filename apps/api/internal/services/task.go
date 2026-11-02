@@ -134,11 +134,11 @@ func Event(ctx context.Context, tx pgx.Tx, user, zone, kind string, now time.Tim
 	if before != nil && before.ScheduledDate != nil && *before.ScheduledDate < now.In(loc).Format("2006-01-02") {
 		historical = true
 	}
-	_, err = repository.InsertTaskEvent(ctx, tx, user, uuid.NewString(), after.ID, kind, now, now.In(loc).Format("2006-01-02"), zone, old, next, historical && kind != "group_cleared")
+	_, err = repository.InsertTaskEvent(ctx, tx, user, uuid.NewString(), after.ID, kind, now, now.In(loc).Format("2006-01-02"), zone, old, next, historical && kind != "group_cleared" && kind != "series_reparented")
 	if err != nil {
 		return err
 	}
-	if kind == "group_cleared" {
+	if kind == "group_cleared" || kind == "series_reparented" {
 		return nil
 	}
 	return refreshHistorical(ctx, tx, user, zone, now, before, after)

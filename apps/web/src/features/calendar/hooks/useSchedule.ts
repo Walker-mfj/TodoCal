@@ -121,7 +121,7 @@ export function useSchedule() {
       label: task.title,
     });
   }
-  async function chooseScope(scope: "one" | "all") {
+  async function chooseScope(scope: "one" | "following") {
     if (!choice || inFlight.current || pending || !connected) return;
     const { task, value } = choice;
     if (scope === "one") {
@@ -146,7 +146,7 @@ export function useSchedule() {
           key: crypto.randomUUID(),
           body: {
             ...value,
-            scope: "all",
+            scope: "following",
             expectedRevision: task.revision,
             expectedSeriesRevision: series.revision,
           },

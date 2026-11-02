@@ -139,6 +139,10 @@ export function SettingsForm({
             />
             Timer sound
           </label>
+          <p>
+            Play a completion sound while the app is open, independently of
+            notification settings.
+          </p>
         </fieldset>
         {command.error && (
           <p role="alert" className={cx("error")}>

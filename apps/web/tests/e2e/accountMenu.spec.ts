@@ -28,12 +28,10 @@ test("account popover contains focus toggle and sign out, dismisses and works co
   await expect(panel).toContainText(email);
   await expect(panel).toContainText("Connected");
   await panel.getByRole("switch").click();
-  await expect(
-    page.getByRole("button", { name: "Focus timer", exact: true }),
-  ).toBeHidden();
+  await expect(page.getByRole("button", { name: /^Focus timer/ })).toBeHidden();
   await panel.getByRole("switch").click();
   await expect(
-    page.getByRole("button", { name: "Focus timer", exact: true }),
+    page.getByRole("button", { name: /^Focus timer/ }),
   ).toBeVisible();
   await page.screenshot({ path: "test-results/account-popover.png" });
   await page.keyboard.press("Escape");

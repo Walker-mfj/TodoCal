@@ -1,5 +1,25 @@
 // Static Next.js frontend and a same-origin, authenticated API proxy.
 export default {
+  async scheduled(_event, env, _ctx) {
+    if (!env.API_ORIGIN || !env.APP_ORIGIN || !env.JOBS_SECRET || env.JOBS_SECRET.length < 32) {
+      throw new Error('Scheduled jobs are not configured');
+    }
+    const upstream = new URL(env.API_ORIGIN);
+    const origin = new URL(env.APP_ORIGIN);
+    if (upstream.protocol !== 'https:' || upstream.username || upstream.password || origin.protocol !== 'https:') {
+      throw new Error('Invalid scheduled job configuration');
+    }
+    upstream.pathname = '/internal/jobs';
+    upstream.search = ''; upstream.hash = '';
+    const response = await fetch(new Request(upstream, {
+      method: 'POST', redirect: 'manual',
+      headers: {'Authorization': `Bearer ${env.JOBS_SECRET}`, 'Origin': origin.origin, 'Content-Type': 'application/json'},
+      body: '{}', signal: AbortSignal.timeout(90_000),
+    }));
+    // Do not log response bodies, credentials, subscription endpoints or task data.
+    if (!response.ok) { await response.body?.cancel(); throw new Error(`Scheduled job failed: ${response.status}`); }
+    await response.body?.cancel();
+  },
   async fetch(request, env) {
     const incoming = new URL(request.url);
     if (!incoming.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);

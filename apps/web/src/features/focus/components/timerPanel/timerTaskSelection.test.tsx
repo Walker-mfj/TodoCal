@@ -87,3 +87,35 @@ it("includes today's completed tasks and excludes other days", async () => {
   expect(mocks.read.mock.calls.at(-1)?.[0]).toContain("view=today");
   expect(mocks.read.mock.calls.at(-1)?.[0]).not.toContain("status=");
 });
+
+it("names session modes and explains denied notifications without blocking focus", () => {
+  render(
+    <TimerPanel
+      task={null}
+      settings={
+        {
+          timezone: "UTC",
+          focusMinutes: 25,
+          shortBreakMinutes: 5,
+          longBreakMinutes: 15,
+        } as any
+      }
+      focus={
+        {
+          state: {},
+          blocked: false,
+          permission: "denied",
+          command: {},
+          query: {},
+        } as any
+      }
+      onClose={() => {}}
+      onFree={() => {}}
+    />,
+  );
+  expect(screen.getByRole("group", { name: "Session mode" })).toBeVisible();
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "Notifications are blocked",
+  );
+  expect(screen.getByRole("button", { name: "Start session" })).toBeEnabled();
+});

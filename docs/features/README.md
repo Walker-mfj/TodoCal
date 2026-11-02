@@ -48,3 +48,5 @@ flowchart LR
 - These files are maintained with code changes. If product terminology or UI behavior changes, update the affected feature docs and acceptance examples in the same PR.
 - **Known design boundaries:** `This and following` edit/**delete** is the **approved proposal**, not the current code. Today's `All occurrences` edit affects eligible occurrences from today forward, whereas Stop Repeating cuts off after today. The implementation plan is in [16-implementation-backlog.md](16-implementation-backlog.md). A 10-second schedule undo is server-enforced, whereas delete/series recovery has a 10-second UI toast without equivalent backend expiration.
 - Installable PWA metadata currently exists, but background Web Push, offline editing, and automated scheduled Focus reminders are not yet promised. See [12-pwa-notifications.md](12-pwa-notifications.md).
+
+Scope decision (2026-11-01): Trash / Recently Deleted and a separate immutable historical baseline are excluded. Existing Undo/restore and adjusted snapshots remain; see [backlog](16-implementation-backlog.md).

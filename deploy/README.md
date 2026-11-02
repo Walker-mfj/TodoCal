@@ -1,6 +1,6 @@
 # TodoCal free deployment
 
-Next.js static assets run on Cloudflare Workers. A small Worker forwards `/api/*` to Render Free, with PostgreSQL on Neon Free. No separate background worker; API catch-up remains active. Cold starts are expected.
+Next.js static assets run on Cloudflare Workers. A small Worker forwards `/api/*` to Render Free, with PostgreSQL on Neon Free. A Cloudflare scheduled handler invokes bounded API jobs; API catch-up remains active. Cold starts are expected.
 
 ## Configuration
 
@@ -47,3 +47,18 @@ Local Next.js development is unchanged. Only `STATIC_EXPORT=true` enables static
 Run `make typecheck test-web test-go`, `node --test deploy/cloudflare/worker.test.mjs`, the Docker build, and Cloudflare dry run. On this machine the PostgreSQL Compose project is `to-do-list`; use `COMPOSE_PROJECT_NAME=to-do-list make test-e2e` to avoid a port collision. Browser tests use a dedicated test database.
 
 On the live URL verify registration/login, session reload, create/edit task, calendar, timer, logout, cache headers, direct API rejection and cold-start recovery. Use a dedicated test account. Do not import local user data without a specific request. Keep backups outside Git and test restoration into a separate database.
+
+## Scheduled jobs and Web Push
+
+This implementation adds a Cloudflare cron trigger every minute. Its `scheduled` handler calls Render `POST /internal/jobs`; the API settles expired timers, materializes upcoming recurrence, and delivers bounded notification batches. API catch-up remains a fallback. Deployment of this configuration and real Web Push delivery have not been verified by local tests.
+
+Configure the following before deploying the cron-enabled Worker:
+
+- Set a separate random `JOBS_SECRET` of at least 32 characters in **both** Render and Cloudflare Worker secrets. Do not reuse `PROXY_SECRET`. The job endpoint requires this bearer credential plus the configured Origin and JSON content type; it does not accept user sessions as authorization.
+- Set `APP_ORIGIN` in Cloudflare to the same exact HTTPS application origin configured in Render. Keep `API_ORIGIN` pointing to the Render API. Missing job configuration makes scheduled runs fail visibly; normal app requests remain independent.
+- To enable push, set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` in Render. Generate a matching P-256 VAPID pair using a trusted Web Push tool; use an operator contact `mailto:` or HTTPS subject. Store the private key only as a provider secret. Omit all three to leave Web Push disabled while timer settlement continues. A partial or invalid configuration fails API startup.
+- Deploy additive database migrations/backend first, verify `/readyz`, then publish the frontend/cron Worker. Do not rotate VAPID keys casually: existing browser subscriptions are bound to the old public key and need re-enrollment.
+
+The endpoint uses a 20-second execution budget, excludes concurrent in-process runs, and reports counts without private payloads. Database transactions and unique outbox identities guard repeated runs; external delivery is at least once across a crash. Monitor scheduled-handler failures and API job errors, queue age and expired timers. Free-host cold starts may exceed one minute; this is not an exact-time delivery service. A standalone `cmd/worker` remains available for a persistent process.
+
+For release verification, use a dedicated account and explicitly opt in on two devices. Check closed-tab Focus completion, deadline/start reminders, quiet hours, logout/revocation and one offline device. Confirm clicks navigate without starting a timer. Keep credentials and endpoints out of logs and test reports. No production secrets or live service settings are changed by the implementation PR.

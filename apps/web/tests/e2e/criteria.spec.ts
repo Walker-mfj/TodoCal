@@ -113,7 +113,8 @@ test("criteria 4 and 7: overlapping calendar events selectable and Month creatio
       .locator(".fc-timegrid-event")
       .filter({ hasText: `Overlap ${i}` });
     await expect(event).toBeVisible();
-    await event.click();
+    await event.focus();
+    await page.keyboard.press("Enter");
     await expect(
       page.getByRole("heading", { name: `Overlap ${i}`, exact: true }),
     ).toBeVisible();
@@ -127,6 +128,11 @@ test("criteria 4 and 7: overlapping calendar events selectable and Month creatio
   await expect(page.getByLabel("End time", { exact: true })).toHaveValue("");
   await page.getByLabel("Task title").fill("Month untimed");
   await page.getByRole("button", { name: "Create task", exact: true }).click();
+  await expect(page.getByLabel("Task title")).toBeHidden();
+  await expect(page.locator(".fc-event-draft")).toHaveCount(0);
+  await expect(
+    page.locator(".fc-event").filter({ hasText: "Month untimed" }),
+  ).toHaveCount(1);
   await expect(
     page.locator(".fc-event").filter({ hasText: "Month untimed" }),
   ).toBeVisible();
@@ -169,8 +175,12 @@ test("criterion 34: cross-device appearance preserves report period/day, unsaved
     page.locator('.report-days [aria-pressed="true"]'),
   ).toHaveAttribute("title", selected!);
   await expect(
-    page.getByRole("region", { name: "Active timer" }),
+    page.getByRole("button", { name: /^Focus timer/ }),
   ).toBeVisible();
+  await page.getByRole("button", { name: /^Focus timer/ }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Focus timer" }).getByRole("timer"),
+  ).toHaveText(/2[45]:\d\d/);
   await page.getByRole("button", { name: "End session", exact: true }).click();
 });
 

@@ -57,7 +57,9 @@ export function FloatingFocus({
     >
       <button
         className={cx("floating-focus", true)}
-        aria-label="Focus timer"
+        aria-label={
+          focus.active ? `Focus timer ${timerLabel(remaining)}` : "Focus timer"
+        }
         title="Focus timer · drag to move"
         onPointerDown={(e) => {
           const box = e.currentTarget.getBoundingClientRect();

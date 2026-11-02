@@ -26,7 +26,7 @@ export function AuthScreen() {
   return (
     <main className={cx("auth-page")}>
       <section className={cx("auth-intro")}>
-        <div className={cx("brand auth-brand")} aria-label="TodoCal">
+        <div className={cx("brand auth-brand")} role="img" aria-label="TodoCal">
           <Image
             className={cx("brand-wordmark")}
             src={todoCalLogo}

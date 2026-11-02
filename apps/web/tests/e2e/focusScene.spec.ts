@@ -18,6 +18,12 @@ test("focus scene custom duration persists, pauses, exits and resumes", async ({
     .click();
   await page.getByRole("button", { name: "New task", exact: true }).click();
   await page.getByLabel("Task title").fill("A focused session");
+  const today = await page.evaluate(() =>
+    new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo" }).format(
+      new Date(),
+    ),
+  );
+  await page.getByLabel("Scheduled date").fill(today);
   await page.getByLabel("Plan focus", { exact: true }).check();
   await page.getByLabel("Planned Pomodoros").fill("2");
   await page.getByRole("button", { name: "Create task", exact: true }).click();
@@ -56,6 +62,7 @@ test("focus scene custom duration persists, pauses, exits and resumes", async ({
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await page.reload();
+  await page.getByRole("button", { name: /^Focus timer/ }).click();
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel("Duration")).toHaveValue("42");
   await expect(

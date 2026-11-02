@@ -8,3 +8,9 @@ export type Settings = components["schemas"]["Settings"];
 export type Day = components["schemas"]["DayReport"];
 
 export type CalendarRange = components["schemas"]["CalendarRange"];
+
+export type RecurrenceRule = {
+  cadence: "daily" | "weekly" | "interval";
+  intervalDays: number;
+  endDate: string | null;
+};

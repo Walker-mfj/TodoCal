@@ -92,7 +92,9 @@ test("calendar previews create/edit drafts without saving; slot selection retarg
   await expect(page.getByLabel("Start time", { exact: true })).toHaveValue(
     "12:00",
   );
-  await expect(preview).toContainText("12:00");
+  await expect(preview).toHaveAccessibleName(
+    /Unsaved draft: Changed appointment, .*T12:00/,
+  );
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(preview).toHaveCount(0);
   const tasks = (await (await page.request.get("/api/v1/tasks")).json()).items;

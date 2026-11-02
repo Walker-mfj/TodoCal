@@ -35,45 +35,61 @@ test("optional timer persists across reloads and devices; task completion is ind
   await page
     .getByRole("button", { name: "Focus on this task", exact: true })
     .click();
-  const panel = page.getByRole("region", { name: "Focus timer", exact: true });
-  await panel.getByRole("button", { name: /^Focus 25/ }).click();
-  const bar = page.getByRole("region", { name: "Active timer" });
-  await expect(bar).toContainText("Focus independently");
-  await expect(bar.getByRole("timer")).toHaveText(/2[45]:\d\d/);
+  const panel = page.getByRole("dialog", { name: "Focus timer", exact: true });
+  await panel
+    .getByRole("button", { name: "Start session", exact: true })
+    .click();
+  await expect(
+    panel.getByRole("button", { name: "Pause", exact: true }),
+  ).toBeEnabled();
+  await expect(panel).toContainText("Focus independently");
+  await expect(panel.getByRole("timer")).toHaveText(/2[45]:\d\d/);
+  await panel.getByRole("button", { name: "Close focus timer" }).click();
   await page
     .getByRole("button", { name: "Mark complete", exact: true })
     .click();
-  await expect(bar).toBeVisible();
-  await bar.getByRole("button", { name: "Pause", exact: true }).click();
-  await expect(bar).toContainText("Paused");
-  const frozen = await bar.getByRole("timer").textContent();
+  await page.getByRole("button", { name: /^Focus timer/ }).click();
+  await expect(
+    panel.getByRole("button", { name: "Pause", exact: true }),
+  ).toBeEnabled();
+  await panel.getByRole("button", { name: "Pause", exact: true }).click();
+  await expect(panel).toContainText("Paused");
+  const frozen = await panel.getByRole("timer").textContent();
   await page.reload();
-  await expect(bar).toContainText("Paused");
-  await expect(bar.getByRole("timer")).toHaveText(frozen!);
+  await expect(panel).toContainText("Paused");
+  await expect(panel.getByRole("timer")).toHaveText(frozen!);
   const context = await browser.newContext();
   const other = await context.newPage();
   await signIn(other, email);
-  await expect(
-    other.getByRole("region", { name: "Active timer" }),
-  ).toContainText("Paused");
-  await other.getByRole("button", { name: "Resume", exact: true }).click();
+  await other.getByRole("button", { name: /^Focus timer/ }).click();
+  const otherPanel = other.getByRole("dialog", {
+    name: "Focus timer",
+    exact: true,
+  });
+  await expect(otherPanel).toContainText("Paused");
+  await otherPanel.getByRole("button", { name: "Resume", exact: true }).click();
   await page.reload();
   await expect(
-    bar.getByRole("button", { name: "Pause", exact: true }),
-  ).toBeVisible();
-  await bar.getByRole("button", { name: "End session", exact: true }).click();
-  await expect(bar).toBeHidden();
-  await page.getByRole("button", { name: "Focus timer", exact: true }).click();
+    panel.getByRole("button", { name: "Pause", exact: true }),
+  ).toBeEnabled();
+  await panel.getByRole("button", { name: "End session", exact: true }).click();
+  await expect(
+    panel.getByRole("button", { name: "Start session", exact: true }),
+  ).toBeEnabled();
   await expect(panel).toContainText("0 Pomodoro");
-  await panel.getByRole("button", { name: /^Short break 5/ }).click();
-  await expect(bar).toContainText("Short break");
-  await expect(bar.getByRole("timer")).toHaveText(/0[45]:\d\d/);
+  await panel.getByRole("button", { name: "Short break", exact: true }).click();
+  await panel
+    .getByRole("button", { name: "Start session", exact: true })
+    .click();
+  await expect(panel.getByRole("heading")).toHaveText("Short break");
+  await expect(panel.getByRole("timer")).toHaveText(/0[45]:\d\d/);
   await page.screenshot({
     animations: "disabled",
     path: "test-results/focus-light.png",
   });
-  await bar.getByRole("button", { name: "End session", exact: true }).click();
+  await panel.getByRole("button", { name: "End session", exact: true }).click();
   await expect(panel).toContainText("Break time does not count as focus.");
+  await panel.getByRole("button", { name: "Close focus timer" }).click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByLabel("Appearance").selectOption("dark");
   await page
@@ -96,7 +112,7 @@ test("notification denial does not block a free focus session", async ({
     Object.defineProperty(Notification, "permission", { get: () => "default" });
   });
   await signIn(page, `notification-${randomUUID()}@example.com`, true);
-  await page.getByRole("button", { name: "Focus timer", exact: true }).click();
+  await page.getByRole("button", { name: /^Focus timer/ }).click();
   await page
     .getByRole("button", { name: "Enable completion notifications" })
     .click();
@@ -105,19 +121,27 @@ test("notification denial does not block a free focus session", async ({
       "Notifications are blocked. The timer still works normally.",
     ),
   ).toBeVisible();
-  await page.getByRole("button", { name: /^Focus 25/ }).click();
+  await page
+    .getByRole("button", { name: "Start session", exact: true })
+    .click();
   await expect(
-    page.getByRole("region", { name: "Active timer" }),
+    page
+      .getByRole("dialog", { name: "Focus timer", exact: true })
+      .getByRole("button", { name: "Pause", exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "End session", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Active timer" })).toBeHidden();
+  await expect(
+    page
+      .getByRole("dialog", { name: "Focus timer", exact: true })
+      .getByRole("button", { name: "Pause", exact: true }),
+  ).toBeHidden();
 });
 
 test("an uncertain timer start retries the identical command without a second session", async ({
   page,
 }) => {
   await signIn(page, `retry-focus-${randomUUID()}@example.com`, true);
-  await page.getByRole("button", { name: "Focus timer", exact: true }).click();
+  await page.getByRole("button", { name: /^Focus timer/ }).click();
   const requests: { key: string | undefined; body: string | null }[] = [];
   await page.route("**/api/v1/focus", async (route) => {
     if (route.request().method() !== "POST") return route.continue();
@@ -130,20 +154,35 @@ test("an uncertain timer start retries the identical command without a second se
       await route.abort("failed");
     } else await route.continue();
   });
-  await page.getByRole("button", { name: /^Focus 25/ }).click();
+  await page
+    .getByRole("button", { name: "Start session", exact: true })
+    .click();
   await expect(
-    page.getByRole("button", { name: "Retry timer action" }),
+    page
+      .getByRole("dialog", { name: "Focus timer", exact: true })
+      .getByRole("button", { name: "Retry timer action" }),
   ).toBeVisible();
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Reconnect", exact: true }).click();
+  await page.getByRole("button", { name: /^Focus timer/ }).click();
   await expect(
-    page.getByRole("button", { name: "Retry timer action" }),
+    page
+      .getByRole("dialog", { name: "Focus timer", exact: true })
+      .getByRole("button", { name: "Retry timer action" }),
   ).toBeEnabled();
-  await page.getByRole("button", { name: "Retry timer action" }).click();
+  await page
+    .getByRole("dialog", { name: "Focus timer", exact: true })
+    .getByRole("button", { name: "Retry timer action" })
+    .click();
   await expect(
-    page.getByRole("region", { name: "Active timer" }),
+    page
+      .getByRole("dialog", { name: "Focus timer", exact: true })
+      .getByRole("button", { name: "Pause", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Retry timer action" }),
+    page
+      .getByRole("dialog", { name: "Focus timer", exact: true })
+      .getByRole("button", { name: "Retry timer action" }),
   ).toBeHidden();
   expect(requests).toHaveLength(2);
   expect(requests[1]).toEqual(requests[0]);

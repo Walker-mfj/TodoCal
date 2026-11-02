@@ -11,6 +11,7 @@ mkdir -p .local
 export DATABASE_URL='postgres://focus:focus_local_only@localhost:55432/focus_web_test?sslmode=disable'
 export API_ADDR=127.0.0.1:18080 APP_ORIGIN=http://127.0.0.1:3002 COOKIE_SECURE=false
 export API_URL=http://127.0.0.1:18080 E2E_BASE_URL=http://127.0.0.1:3002
+. ./scripts/e2ePushEnv.sh
 .local/focus-api-e2e -migrate
 (cd apps/web && npm run build)
 api_pid=''

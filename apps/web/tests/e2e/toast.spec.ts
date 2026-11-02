@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { randomUUID } from "node:crypto";
-test("past-date warning is visible as a toast without moving calendar", async ({
+test("past-day creation opens the editor without shifting the calendar", async ({
   page,
 }) => {
   await page.goto("/");
@@ -21,16 +21,14 @@ test("past-date warning is visible as a toast without moving calendar", async ({
     .locator(".fc-day-past .fc-daygrid-day-frame")
     .first()
     .click({ position: { x: 15, y: 50 } });
-  const toast = page
-    .locator(".app-toast")
-    .filter({ hasText: "Past days are read-only" });
-  await expect(toast).toBeVisible();
-  const box = await toast.boundingBox();
-  expect(box!.y).toBeLessThan(50);
+  await expect(page.getByLabel("Task title")).toBeVisible();
   const after = await page.locator(".calendar-card").boundingBox();
   expect(after!.y).toBe(before!.y);
   expect(after!.height).toBe(before!.height);
-  await page.screenshot({ path: "test-results/toast-warning.png" });
-  await toast.getByRole("button", { name: "Dismiss notification" }).click();
-  await expect(toast).toHaveCount(0);
+  await page.getByLabel("Task title").fill("Historical plan");
+  await page.getByRole("button", { name: "Create task", exact: true }).click();
+  await expect(page.getByLabel("Task title")).toBeHidden();
+  await expect(
+    page.locator(".fc-event").filter({ hasText: "Historical plan" }),
+  ).toBeVisible();
 });

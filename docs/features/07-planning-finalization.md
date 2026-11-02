@@ -69,3 +69,5 @@ flowchart TD
 - **Catch-up:** `Settle` processes up to 31 days per transaction. `WithTx` may commit one or more catch-up batches before the final transaction running a command; do **not** describe all catch-up work for an inactive account as part of one giant atomic transaction.
 
 Acceptance: after an explicit old-day edit, daily totals, week/month rollups, and journal agree; deleting a group alone leaves past totals and captured presentation intact. See [analytics](09-analytics.md).
+
+Scope decision (2026-11-01): Trash / Recently Deleted and a separate immutable historical baseline are excluded. Existing Undo/restore and adjusted snapshots remain; see [backlog](16-implementation-backlog.md).

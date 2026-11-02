@@ -249,6 +249,10 @@ func GetSeries(ctx context.Context, tx pgx.Tx, user, id string) (Series, error) 
 	if err != nil {
 		return out, err
 	}
+	err = tx.QueryRow(ctx, `SELECT original_cutoff::text FROM recurrence_series WHERE user_id=$1 AND id=$2`, user, out.ID).Scan(&out.OriginalCutoff)
+	if err != nil {
+		return out, err
+	}
 	err = json.Unmarshal(raw, &out.Task)
 	out.Task.GroupID = group
 	if out.EndDate != nil {
@@ -397,7 +401,7 @@ func RestoreStop(ctx context.Context, tx pgx.Tx, user, zone, id string, now time
 	if err != nil {
 		return sr, err
 	}
-	if sr.Revision != revision || sr.StoppedAfter == nil {
+	if sr.Revision != revision {
 		return sr, Conflict()
 	}
 	var raw []byte
@@ -408,8 +412,12 @@ func RestoreStop(ctx context.Context, tx pgx.Tx, user, zone, id string, now time
 	if raw == nil {
 		return sr, Conflict()
 	}
+	var envelope tailUndo
+	_ = json.Unmarshal(raw, &envelope)
 	var affected map[string]int64
-	if err = json.Unmarshal(raw, &affected); err != nil {
+	if envelope.Kind == "following" {
+		affected = envelope.Tasks
+	} else if err = json.Unmarshal(raw, &affected); err != nil {
 		return sr, err
 	}
 	for taskID, rev := range affected {
@@ -423,7 +431,11 @@ func RestoreStop(ctx context.Context, tx pgx.Tx, user, zone, id string, now time
 			return sr, err
 		}
 	}
-	_, err = repository.ClearSeriesStop(ctx, tx, user, sr.ID)
+	if envelope.Kind == "following" {
+		_, err = tx.Exec(ctx, `UPDATE recurrence_series SET original_cutoff=$3,stop_undo=NULL,revision=revision+1 WHERE user_id=$1 AND id=$2`, user, sr.ID, envelope.PreviousCutoff)
+	} else {
+		_, err = repository.ClearSeriesStop(ctx, tx, user, sr.ID)
+	}
 	if err != nil {
 		return sr, err
 	}

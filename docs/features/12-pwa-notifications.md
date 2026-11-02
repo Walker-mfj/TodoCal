@@ -1,41 +1,51 @@
 # 12 — PWA & Notifications
 
-## Purpose and release status
+## Implementation and deployment status
 
-Explain how TodoCal can be installed as a web app and how reminders/notifications should behave. **Do not confuse browser Notification API, installable PWA metadata, and Web Push.**
+The manifest supports installation where offered by the browser. Installation alone does not enable notifications. Settings now provides explicit device opt-in, four event toggles, a reminder lead of 0–1440 minutes, quiet hours in the account timezone, and device revocation. Browser permission is requested only after **Enable on this device**. Denial or unsupported browsers leave task and Focus features usable.
 
-## Current implementation
+The Go API stores preferences, session-bound subscriptions and a durable delivery outbox. The service worker handles push and safe same-origin navigation; it does not cache private API responses or queue offline writes. VAPID configuration and a recurring scheduler must be enabled before background delivery is available. Repository tests use a fake push provider; real provider delivery and closed-app behavior on supported devices still require deployment verification. No live deployment is claimed by this PR.
 
-- `apps/web/src/app/manifest.ts` provides a web manifest: name, start URL, standalone display, theme/background colors and two PNG icon sizes. A browser may offer **Install app** / **Add to Home Screen** depending on platform and browser behavior.
-- The current Focus UI requests browser notification permission after a user action and may call `new Notification(...)` when a client **observes** an active session complete. Sound also requires browser audio permission/activation.
-- There is **no documented production Push API subscription endpoint, VAPID key handling, service-worker push handler, or background notification scheduler** in the reviewed implementation. Installing TodoCal **does not** itself enable Web Push or offline task editing.
-- The Focus timer is server-authoritative. Notification delivery is a UI signal, not the source of truth for elapsed time, Pomodoro counts, or task status.
+## Events
 
-## Proposed — scheduled reminders and reliable background notifications
+| Event | Behavior |
+|---|---|
+| Scheduled task | Optional lead reminder and start reminder; never starts a Focus session |
+| Deadline | Reminder at deadline minus configured lead |
+| Focus completion | Worker first persists completion, then queues notification |
+| Break completion | Optional reminder; the user starts the next session explicitly |
 
-| Event | Proposed behavior | Notes |
-|---|---|---|
-| Scheduled task / focus time approaches | Optional reminder (for example, 5 minutes before), then at start | A scheduled task is **not** an automatically started Focus session |
-| Focus session reaches target | Completion notification and link to the active task/session | Worker must first make completion idempotent and persistent |
-| Break ends | Optional start-next-session reminder | Do not auto-start another timer without user consent |
-| Task deadline approaches | Configurable deadline reminder | Deadline is independent of scheduled calendar time |
+All toggles default off. Lead zero avoids a separate duplicate task lead reminder. Quiet hours support midnight crossings and suppress events rather than saving a quiet-hour backlog. Payloads contain generic text, a stable replacement tag and a calendar/Focus destination, never task titles or account credentials. Opening a notification navigates after authentication; it performs no task or timer mutation.
 
-Proposed architecture:
+## Delivery contract
 
-1. Register a **service worker** and request notification permission only following a meaningful user gesture; no repeated permission prompts after denial.
-2. Subscribe each browser/device to Push API, store the endpoint and keys under the authenticated user, and allow users to list/revoke device subscriptions. Rotate/expire stale subscriptions and avoid logging secrets.
-3. The Go API stores reminder preferences and subscription metadata in PostgreSQL; a bounded worker schedules due notifications using durable identifiers, idempotent delivery attempts, and account-local timezone semantics.
-4. Use VAPID Web Push to send generic, privacy-safe payloads (avoid placing confidential task titles in notification text by default). A push click navigates to the appropriate TodoCal screen after authentication.
-5. Respect quiet hours, per-event toggles, duplicate suppression, logout and disabled/expired subscriptions. Do not claim exact-second delivery: browser/OS/network may delay or suppress pushes.
+- Each active subscribed device gets its own durable outbox record. The account session must remain valid; logout, session expiry and device revocation stop delivery.
+- The scheduler settles expired Focus sessions and materializes recurring tasks through two future local dates, with additional ranges for deadlines before scheduled dates, so reminders do not depend on visiting the calendar, including short DST days.
+- Before every attempt the worker checks the current task/session, schedule, preferences, timezone, subscription and quiet hours. Deleted or rescheduled events are canceled.
+- Due candidates are bounded to the last 24 hours. Transient failures retry up to six attempts with exponential minute delays. HTTP 404/410 revokes the stale endpoint. Other permanent provider failures stop retries.
+- Delivery is at least once across a process crash after provider acceptance but before database commit. Stable notification tags replace duplicates on a device; exact-once OS display is not promised.
+- Browser, OS, network and hosting cold starts can delay or suppress notification delivery. Local foreground completion notifications remain available independently and may coincide with Web Push if both are enabled.
+- DST gaps are rejected by schedule validation and excluded from notification candidates. Ambiguous wall times choose the earlier valid instant, matching recurring deadline resolution.
 
-**iOS note:** Web Push support for compatible Home Screen web apps depends on platform version, installation and permission. Behavior differs by browser/OS; confirm on supported devices rather than assuming native-equivalent execution.
+## API and operations
 
-## Constraints and acceptance
+`GET /notifications` returns preferences, active devices and the public VAPID key (empty when not configured). `PUT /notifications/preferences` uses `expectedRevision`; conflicts retain the UI draft. `POST /notifications/subscriptions` associates the browser endpoint with the current account/session. `DELETE /notifications/subscriptions/{id}` revokes an owned device. Mutations use the existing Origin, CSRF and idempotency command pipeline. Endpoints and private keys are never returned in device lists.
 
-- A closed tab must **not** be described as receiving dependable notifications until Web Push infrastructure is implemented and verified.
-- Denying notification permission must never prevent task creation, Focus usage, or calendar navigation.
-- A notification is never an authoritative task/Focus mutation; tapping **Start focus** must still invoke a server command.
-- Test permission granted/denied, two subscribed devices, offline device, deleted/changed task, time-zone change, DST transition, quiet hours, and duplicate worker retries before shipping background reminders.
-- Offline **read caching** and offline **write queues** are separate future decisions; do not introduce a service worker that caches private API responses without user isolation and invalidation rules.
+Subscriptions accept supported Chrome, Firefox and Safari push hosts only. Sending uses HTTPS, validated public destination addresses, bounded timeouts and no redirects. See [deployment configuration](../../deploy/README.md) for scheduler and VAPID setup.
 
-See [Focus](08-pomodoro-focus.md) and [settings](13-settings.md).
+Before enabling production reminders, verify permission grant/denial, two devices, closed-tab delivery, offline recovery, logout, schedule/timezone changes and provider-expired subscriptions. iOS Home Screen behavior requires verification on the actual supported device. Automated coverage is recorded in the [acceptance matrix](15-acceptance-scenarios.md).
+
+
+## Automated browser coverage and live verification boundary
+
+Run `sh scripts/testE2e.sh tests/e2e/webPush.spec.ts --project=chrome`. The runner creates an ephemeral test-only VAPID identity; no production credentials or real provider delivery are used. This file is included in the normal Chrome CI job. Firefox/WebKit explicitly skip it because incoming Push injection uses Chromium DevTools; their delivery behavior is not certified by this test.
+
+Three browser journeys exercise the actual UI, authenticated API, isolated database and shipped service worker:
+
+1. Explicit device opt-in, persisted preferences/quiet hours after reload, and revocation. No subscription or service worker is created just by visiting Settings.
+2. Denied browser permission leaves subscriptions empty and task creation usable.
+3. Close the TodoCal tab (keep the browser running), inject a Push through DevTools and inspect the browser's actual notification store. Repeat the tag to verify replacement. Execute the shipped notification-click handler, open its requested destination, and verify Focus appears without starting a session.
+
+Test boundaries are deliberate: `PushManager.subscribe/getSubscription` return a valid synthetic provider subscription; DevTools supplies incoming Push instead of FCM/APNs/Mozilla; a synthetic click captures `clients.openWindow` because it has no OS user activation, then Playwright opens that URL. No notification HTTP API responses or production service-worker handlers are mocked. The test does not run the scheduler/outbox-to-provider leg, inspect an OS banner, close the whole browser process, or verify an installed iOS app. Those paths retain backend integration coverage and require live release verification.
+
+For a live check, use a dedicated test account/device on the deployed HTTPS app: enable the device and Focus reminders, complete a short session after closing the app tab, correlate the scheduled-job/outbox result with the received device notification, then tap it and confirm Focus opens without starting another timer. Repeat with the preference off and after device revocation, and record browser/OS, deployment revision, timestamps and results without recording subscription endpoints or credentials. A successful local E2E run must not mark this live check complete.

@@ -213,7 +213,8 @@ func TestWorkerAndAPIConcurrentlyFinalizeOnce(t *testing.T) {
 	if e := p.QueryRow(context.Background(), `SELECT (SELECT count(*) FROM tasks),(SELECT count(*) FROM daily_snapshots)`).Scan(&occurrences, &snapshots); e != nil {
 		t.Fatal(e)
 	}
-	if occurrences != 4 || snapshots != 3 {
+	// Four catch-up days plus two future local days for reminder scheduling.
+	if occurrences != 6 || snapshots != 3 {
 		t.Fatal("duplicate or missing catch-up", occurrences, snapshots, out)
 	}
 }

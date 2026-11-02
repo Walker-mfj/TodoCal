@@ -30,6 +30,7 @@ jobs:
       - run: npm run format:check
       - run: npm run typecheck
       - run: npm test
+      - run: node --test ../../deploy/cloudflare/*.test.mjs
       - run: npm run build
 
   api:
@@ -77,3 +78,39 @@ jobs:
       - uses: golangci/golangci-lint-action@v8
         with:
           working-directory: apps/api
+
+  browser:
+    name: Browser (${{ matrix.browser }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chrome, firefox, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/api/go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+        working-directory: apps/web
+      - name: Install browser and system dependencies
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+        working-directory: apps/web
+      - name: Run against isolated database and local servers
+        run: sh scripts/testE2e.sh --project=${{ matrix.browser }}
+      - name: Retain browser traces and server logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-${{ matrix.browser }}
+          path: |
+            apps/web/test-results/
+            .local/e2e-api.log
+            .local/e2e-web.log
+          retention-days: 7

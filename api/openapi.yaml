@@ -10,6 +10,93 @@ servers:
 security:
 - sessionCookie: []
 paths:
+  /notifications:
+    get:
+      operationId: getNotifications
+      description: Account preferences and active devices. publicKey is empty when Web Push is not configured. No endpoints or private keys are returned.
+      responses:
+        '200':
+          description: Notification settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationState'
+        default:
+          $ref: '#/components/responses/Error'
+  /notifications/preferences:
+    put:
+      operationId: updateNotificationPreferences
+      parameters:
+      - $ref: '#/components/parameters/CSRF'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationPreferencesInput'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreferences'
+        default:
+          $ref: '#/components/responses/Error'
+  /notifications/subscriptions:
+    post:
+      operationId: subscribePush
+      parameters:
+      - $ref: '#/components/parameters/CSRF'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PushSubscriptionInput'
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PushSubscriptionResult'
+        default:
+          $ref: '#/components/responses/Error'
+  /notifications/subscriptions/{id}:
+    delete:
+      operationId: revokePush
+      parameters:
+      - $ref: '#/components/parameters/CSRF'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+        default:
+          $ref: '#/components/responses/Error'
   /auth/register:
     post:
       operationId: register
@@ -209,6 +296,21 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/TaskInput'
+  /tasks/{id}/following-deletion-preview:
+    parameters:
+    - $ref: '#/components/parameters/ResourceID'
+    get:
+      operationId: followingDeletionPreview
+      description: Counts completed occurrences eligible for following deletion from the original slot. Excludes deleted, past-scheduled and finalized occurrences. Advisory only; deletion rechecks eligibility and confirmation atomically.
+      responses:
+        '200':
+          description: Current completed count and revisions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowingDeletionPreview'
+        default:
+          $ref: '#/components/responses/Error'
   /tasks/{id}:
     parameters:
     - $ref: '#/components/parameters/ResourceID'
@@ -249,7 +351,11 @@ paths:
       operationId: deleteTask
       responses:
         '200':
-          $ref: '#/components/responses/OK'
+          description: Task or series tail deleted; use seriesId/seriesRevision for atomic tail restore.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteTaskResult'
         default:
           $ref: '#/components/responses/Error'
       description: Soft-deletes the current task and appends an event. Previous events
@@ -262,7 +368,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ExpectedRevision'
+              $ref: '#/components/schemas/DeleteTaskInput'
   /tasks/{id}/restore:
     parameters:
     - $ref: '#/components/parameters/ResourceID'
@@ -771,6 +877,110 @@ components:
         type: string
         format: uuid
   schemas:
+    FollowingDeletionPreview:
+      type: object
+      required: [completedCount, taskRevision, seriesRevision]
+      properties:
+        completedCount:
+          type: integer
+          minimum: 0
+        taskRevision:
+          type: integer
+          format: int64
+        seriesRevision:
+          type: integer
+          format: int64
+    NotificationPreferences:
+      type: object
+      required: [taskStart, deadline, focusComplete, breakComplete, leadMinutes, quietStart, quietEnd, revision]
+      properties:
+        taskStart:
+          type: boolean
+          default: false
+        deadline:
+          type: boolean
+          default: false
+        focusComplete:
+          type: boolean
+          default: false
+        breakComplete:
+          type: boolean
+          default: false
+        leadMinutes:
+          type: integer
+          minimum: 0
+          maximum: 1440
+          default: 5
+        quietStart:
+          type: string
+          description: Empty to disable quiet hours, otherwise HH:MM in the account timezone. Both endpoints must be set and different.
+        quietEnd:
+          type: string
+        revision:
+          readOnly: true
+          type: integer
+          format: int64
+          minimum: 1
+    NotificationPreferencesInput:
+      allOf:
+      - $ref: '#/components/schemas/NotificationPreferences'
+      - type: object
+        required: [expectedRevision]
+        properties:
+          expectedRevision:
+            type: integer
+            format: int64
+            minimum: 1
+    NotificationState:
+      type: object
+      required: [publicKey, preferences, subscriptions]
+      properties:
+        publicKey:
+          type: string
+        preferences:
+          $ref: '#/components/schemas/NotificationPreferences'
+        subscriptions:
+          type: array
+          items:
+            type: object
+            required: [id, createdAt, currentDevice]
+            properties:
+              id:
+                type: string
+                format: uuid
+              createdAt:
+                type: string
+                format: date-time
+              currentDevice:
+                type: boolean
+    PushSubscriptionInput:
+      type: object
+      additionalProperties: false
+      required: [endpoint, keys]
+      properties:
+        endpoint:
+          type: string
+          format: uri
+          maxLength: 4096
+          description: HTTPS browser push endpoint on fcm.googleapis.com, updates.push.services.mozilla.com or web.push.apple.com. Credentials, custom ports and fragments are rejected.
+        keys:
+          type: object
+          additionalProperties: false
+          required: [p256dh, auth]
+          properties:
+            p256dh:
+              type: string
+              description: Base64url P-256 public key
+            auth:
+              type: string
+              description: Base64url 16-byte authentication secret
+    PushSubscriptionResult:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+          format: uuid
     DayFocusEntry:
       type: object
       required: [id, taskTitle, status, focusSeconds, pomodoros]
@@ -1018,13 +1228,15 @@ components:
       properties:
         scope:
           type: string
-          enum: [one, all]
+          enum: [one, following, all]
           default: one
-          description: All updates current and future occurrences plus the lazy series template; finalized history is preserved. Date changes shift all live occurrences by the same number of days.
+          description: Following splits at the selected original slot, preserving the earlier head and protected history. All retains legacy edits from today. Date shifts preserve original-slot identity.
         expectedSeriesRevision:
           type: integer
           minimum: 1
-          description: Required for scope all; obtain from GET /series/{id}.
+          description: Required for scope following or all; obtain from GET /series/{id}.
+        recurrence:
+          $ref: '#/components/schemas/RecurrenceRule'
         title:
           type: string
           minLength: 1
@@ -1357,17 +1569,17 @@ components:
           type: integer
           default: 25
           minimum: 1
-          maximum: 2147483647
+          maximum: 180
         shortBreakMinutes:
           type: integer
           default: 5
           minimum: 1
-          maximum: 2147483647
+          maximum: 60
         longBreakMinutes:
           type: integer
           default: 15
           minimum: 1
-          maximum: 2147483647
+          maximum: 60
         sound:
           type: boolean
           default: true
@@ -1413,6 +1625,11 @@ components:
       type: object
       additionalProperties: false
       properties:
+        originalCutoff:
+          type: [string, 'null']
+          format: date
+          description: Exclusive original-slot boundary after a following edit/delete.
+
         task:
           allOf:
           - $ref: '#/components/schemas/TaskInput'
@@ -1582,6 +1799,53 @@ components:
       - tasks
       - days
       - warnings
+    RecurrenceRule:
+      type: object
+      additionalProperties: false
+      required: [cadence, intervalDays, endDate]
+      properties:
+        cadence:
+          type: string
+          enum: [daily, weekly, interval]
+        intervalDays:
+          type: integer
+          minimum: 1
+          maximum: 365
+        endDate:
+          type: [string, 'null']
+          format: date
+    DeleteTaskInput:
+      type: object
+      additionalProperties: false
+      required: [expectedRevision]
+      properties:
+        expectedRevision:
+          type: integer
+          minimum: 1
+        scope:
+          type: string
+          enum: [one, following]
+          default: one
+        expectedSeriesRevision:
+          type: integer
+          minimum: 1
+        confirmCompleted:
+          type: boolean
+          default: false
+    DeleteTaskResult:
+      type: object
+      required: [ok, revision]
+      properties:
+        ok:
+          type: boolean
+        revision:
+          type: integer
+        seriesId:
+          type: string
+          format: uuid
+        seriesRevision:
+          type: integer
+
   responses:
     Session:
       description: Authenticated; sets focus_session (HttpOnly, SameSite=Lax, Secure

@@ -60,6 +60,13 @@ func settle(ctx context.Context, tx pgx.Tx, user string, now time.Time) error {
 	_, e = repository.CompleteFocus(ctx, tx, user, s.ID, end, pom)
 	return e
 }
+
+// SettleFocus reconciles an expired timer without requiring a client read.
+// The caller must hold the same account lock as regular Focus commands.
+func SettleFocus(ctx context.Context, tx pgx.Tx, user string, now time.Time) error {
+	return settle(ctx, tx, user, now)
+}
+
 func Active(ctx context.Context, tx pgx.Tx, user string, now time.Time) (FocusState, error) {
 	out := FocusState{ServerNow: now.UTC(), NextKind: "focus"}
 	if e := settle(ctx, tx, user, now); e != nil {
@@ -129,6 +136,8 @@ func Start(ctx context.Context, tx pgx.Tx, user string, taskID *string, kind str
 			return FocusState{}, Invalid("Duration must be between 1 and 180 minutes")
 		}
 		minutes = duration[0]
+	} else if err := validateDuration(kind, minutes); err != nil {
+		return FocusState{}, err
 	}
 	_, e = repository.InsertFocus(ctx, tx, user, id, taskID, title, kind, minutes*60, now)
 	if e != nil {

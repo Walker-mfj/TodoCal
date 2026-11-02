@@ -3,7 +3,7 @@ import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./eventContent.module.css";
 const cx = bindStyles(styles);
 
-import { useState, type CSSProperties } from "react";
+import { useState, useLayoutEffect, useRef, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { Pause, Play, Repeat2 } from "lucide-react";
 import { PriorityBadge } from "../../../tasks/components/priorityBadge/priorityBadge";
@@ -19,6 +19,7 @@ type CardTask = Task & {
 };
 export function CalendarEventContent({
   title,
+  accessibleLabel,
   timeText,
   priority,
   compact,
@@ -31,6 +32,7 @@ export function CalendarEventContent({
   onOpenFocus,
 }: {
   title: string;
+  accessibleLabel?: string;
   timeText: string;
   priority?: Task["priority"];
   compact: boolean;
@@ -42,6 +44,13 @@ export function CalendarEventContent({
   defaultFocusMinutes?: number;
   onOpenFocus?: () => void;
 }) {
+  const content = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (accessibleLabel)
+      content.current
+        ?.closest(".fc-event")
+        ?.setAttribute("aria-label", accessibleLabel);
+  }, [accessibleLabel]);
   const [conflict, setConflict] = useState(false);
   const minutes = task?.focusMinutes || defaultFocusMinutes;
   const actual = task?.actualFocusSeconds || 0;
@@ -80,6 +89,7 @@ export function CalendarEventContent({
   return (
     <>
       <div
+        ref={content}
         className={cx(
           `event-content calendar-task-content focus-card${compact ? " compact" : ""}${own ? " focus-active" : ""}${focus && canStart ? " focus-available" : ""}`,
         )}
@@ -162,7 +172,13 @@ export function CalendarEventContent({
         {focus && (own || canStart) && (
           <div
             className={cx("quick-focus fc-event-no-drag")}
-            onPointerDownCapture={stop}
+            onPointerDownCapture={(event) => {
+              // Preserve the action target instead of letting the enclosing
+              // calendar anchor take pointer focus or initiate a native drag.
+              event.preventDefault();
+              event.stopPropagation();
+              (event.target as Element).closest("button")?.focus();
+            }}
             onMouseDownCapture={stop}
             onTouchStartCapture={stop}
             onClick={stop}

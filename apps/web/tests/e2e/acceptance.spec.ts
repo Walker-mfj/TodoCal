@@ -42,6 +42,10 @@ async function activate(page: Page, target: Locator) {
 test("acceptance: keyboard-only task workflow, custom errors, long names and empty states in both themes", async ({
   page,
 }) => {
+  // This journey types a 300-character title, traverses controls with real keys,
+  // and captures both themes at two widths. Linux Firefox CI takes about 50s;
+  // keep a bounded journey budget without retrying or weakening assertions.
+  test.setTimeout(90_000);
   await page.setViewportSize({ width: 1024, height: 900 });
   await page.goto("/");
   await expect(

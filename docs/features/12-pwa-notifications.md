@@ -34,3 +34,18 @@ All toggles default off. Lead zero avoids a separate duplicate task lead reminde
 Subscriptions accept supported Chrome, Firefox and Safari push hosts only. Sending uses HTTPS, validated public destination addresses, bounded timeouts and no redirects. See [deployment configuration](../../deploy/README.md) for scheduler and VAPID setup.
 
 Before enabling production reminders, verify permission grant/denial, two devices, closed-tab delivery, offline recovery, logout, schedule/timezone changes and provider-expired subscriptions. iOS Home Screen behavior requires verification on the actual supported device. Automated coverage is recorded in the [acceptance matrix](15-acceptance-scenarios.md).
+
+
+## Automated browser coverage and live verification boundary
+
+Run `sh scripts/testE2e.sh tests/e2e/webPush.spec.ts --project=chrome`. The runner creates an ephemeral test-only VAPID identity; no production credentials or real provider delivery are used. This file is included in the normal Chrome CI job. Firefox/WebKit explicitly skip it because incoming Push injection uses Chromium DevTools; their delivery behavior is not certified by this test.
+
+Three browser journeys exercise the actual UI, authenticated API, isolated database and shipped service worker:
+
+1. Explicit device opt-in, persisted preferences/quiet hours after reload, and revocation. No subscription or service worker is created just by visiting Settings.
+2. Denied browser permission leaves subscriptions empty and task creation usable.
+3. Close the TodoCal tab (keep the browser running), inject a Push through DevTools and inspect the browser's actual notification store. Repeat the tag to verify replacement. Execute the shipped notification-click handler, open its requested destination, and verify Focus appears without starting a session.
+
+Test boundaries are deliberate: `PushManager.subscribe/getSubscription` return a valid synthetic provider subscription; DevTools supplies incoming Push instead of FCM/APNs/Mozilla; a synthetic click captures `clients.openWindow` because it has no OS user activation, then Playwright opens that URL. No notification HTTP API responses or production service-worker handlers are mocked. The test does not run the scheduler/outbox-to-provider leg, inspect an OS banner, close the whole browser process, or verify an installed iOS app. Those paths retain backend integration coverage and require live release verification.
+
+For a live check, use a dedicated test account/device on the deployed HTTPS app: enable the device and Focus reminders, complete a short session after closing the app tab, correlate the scheduled-job/outbox result with the received device notification, then tap it and confirm Focus opens without starting another timer. Repeat with the preference off and after device revocation, and record browser/OS, deployment revision, timestamps and results without recording subscription endpoints or credentials. A successful local E2E run must not mark this live check complete.

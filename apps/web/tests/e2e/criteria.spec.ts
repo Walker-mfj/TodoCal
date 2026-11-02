@@ -128,6 +128,11 @@ test("criteria 4 and 7: overlapping calendar events selectable and Month creatio
   await expect(page.getByLabel("End time", { exact: true })).toHaveValue("");
   await page.getByLabel("Task title").fill("Month untimed");
   await page.getByRole("button", { name: "Create task", exact: true }).click();
+  await expect(page.getByLabel("Task title")).toBeHidden();
+  await expect(page.locator(".fc-event-draft")).toHaveCount(0);
+  await expect(
+    page.locator(".fc-event").filter({ hasText: "Month untimed" }),
+  ).toHaveCount(1);
   await expect(
     page.locator(".fc-event").filter({ hasText: "Month untimed" }),
   ).toBeVisible();

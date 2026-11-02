@@ -4,7 +4,7 @@ import styles from "./accountMenu.module.css";
 const cx = bindStyles(styles);
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { ChevronUp, Wifi, WifiOff } from "lucide-react";
+import { ChevronUp, UserRound, Wifi, WifiOff } from "lucide-react";
 export function AccountMenu({
   email,
   connected,
@@ -29,9 +29,17 @@ export function AccountMenu({
   useEffect(() => {
     if (!open) return;
     place();
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      event.preventDefault();
+      panel.current?.hidePopover();
+      trigger.current?.focus();
+    };
+    document.addEventListener("keydown", dismiss);
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
     return () => {
+      document.removeEventListener("keydown", dismiss);
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
@@ -48,7 +56,7 @@ export function AccountMenu({
         title={email}
       >
         <span className={cx("account-avatar")} aria-hidden="true">
-          {email.slice(0, 1).toUpperCase()}
+          <UserRound size={16} />
         </span>
         <span className={cx("account-trigger-email")}>{email}</span>
         <ChevronUp className={cx("account-chevron")} size={16} />

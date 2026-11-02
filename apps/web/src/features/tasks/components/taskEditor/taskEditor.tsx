@@ -25,7 +25,11 @@ import {
 } from "../../utils/taskPayload";
 import { recurrenceSummary } from "../../utils/recurrenceSummary";
 import { type Draft } from "../../types/taskTypes";
-import { type Task, type Group } from "../../../../shared/api/domainTypes";
+import {
+  type Task,
+  type Group,
+  type RecurrenceRule,
+} from "../../../../shared/api/domainTypes";
 import type { Execute } from "../../../../shared/api/apiClient";
 type Pending = { path: string; options: RequestOptions };
 export function TaskEditor({
@@ -59,6 +63,7 @@ export function TaskEditor({
   const [scopePrompt, setScopePrompt] = useState(false);
   const [seriesRevision, setSeriesRevision] = useState<number | null>(null);
   const [seriesError, setSeriesError] = useState("");
+  const [seriesRule, setSeriesRule] = useState<RecurrenceRule | null>(null);
   const [fieldError, setFieldError] = useState<FieldError | null>(null);
   const initial = useRef<Draft>(
     task
@@ -124,11 +129,17 @@ export function TaskEditor({
     setReady(true);
   }, [storageKey]);
   useEffect(() => {
-    if (!task?.seriesId || !ready || seriesRevision !== null) return;
+    if (!task?.seriesId || !ready || seriesRule !== null) return;
     let active = true;
-    apiFetch<{ revision: number }>(`/series/${task.seriesId}`, { owner })
+    apiFetch<RecurrenceRule & { revision: number }>(
+      `/series/${task.seriesId}`,
+      { owner },
+    )
       .then((data) => {
-        if (active) setSeriesRevision(data.revision);
+        if (active) {
+          setSeriesRevision((previous) => previous ?? data.revision);
+          setSeriesRule(data);
+        }
       })
       .catch((e) => {
         if (active) setSeriesError(errorMessage(e));
@@ -136,7 +147,7 @@ export function TaskEditor({
     return () => {
       active = false;
     };
-  }, [task?.seriesId, ready, owner, seriesRevision]);
+  }, [task?.seriesId, ready, owner, seriesRule]);
   const dirty = fingerprint(draft) !== fingerprint(baseline) || !!pending;
   useEffect(() => {
     if (!ready) return;
@@ -196,7 +207,7 @@ export function TaskEditor({
       ...(key === "cadence" &&
       value === "interval" &&
       d.intervalDays === undefined
-        ? { intervalDays: 2 }
+        ? { intervalDays: seriesRule?.intervalDays || 2 }
         : {}),
     }));
     setError("");
@@ -216,7 +227,7 @@ export function TaskEditor({
     sessionStore.removeItem(storageKey);
     onClose();
   };
-  const save = async (scope: "one" | "all" = "one") => {
+  const save = async (scope: "one" | "following" = "one") => {
     setScopePrompt(false);
     setError("");
     setFieldError(null);
@@ -238,8 +249,29 @@ export function TaskEditor({
                   ...(task.seriesId
                     ? {
                         scope,
-                        ...(scope === "all"
-                          ? { expectedSeriesRevision: seriesRevision }
+                        ...(scope === "following"
+                          ? {
+                              expectedSeriesRevision: seriesRevision,
+                              ...(draft.cadence
+                                ? {
+                                    recurrence: {
+                                      cadence: draft.cadence,
+                                      intervalDays:
+                                        draft.cadence === "weekly"
+                                          ? 7
+                                          : draft.cadence === "daily"
+                                            ? 1
+                                            : draft.intervalDays ||
+                                              seriesRule?.intervalDays ||
+                                              2,
+                                      endDate:
+                                        draft.endDate === undefined
+                                          ? (seriesRule?.endDate ?? null)
+                                          : draft.endDate || null,
+                                    },
+                                  }
+                                : {}),
+                            }
                           : {}),
                       }
                     : {}),
@@ -453,60 +485,69 @@ export function TaskEditor({
               className={cx("", true)}
             />
           </label>
-          {!task && (
+          {(!task || task.seriesId) && (
             <>
               <label className={cx("", true)}>
                 Repeat
                 <select
                   name="cadence"
-                  value={draft.cadence || "none"}
+                  value={draft.cadence || seriesRule?.cadence || "none"}
                   onChange={(e) => change("cadence", e.target.value)}
                   className={cx("", true)}
                 >
-                  <option value="none">Does not repeat</option>
+                  {!task && <option value="none">Does not repeat</option>}
                   <option value="daily">Daily</option>
                   <option value="interval">Every N days</option>
                   <option value="weekly">Weekly</option>
                 </select>
               </label>
-              {draft.cadence && draft.cadence !== "none" && (
-                <>
-                  {draft.cadence === "interval" && (
+              {(draft.cadence || seriesRule?.cadence) &&
+                draft.cadence !== "none" && (
+                  <>
+                    {(draft.cadence || seriesRule?.cadence) === "interval" && (
+                      <label className={cx("", true)}>
+                        Every (days)
+                        <input
+                          type="number"
+                          min={2}
+                          max={365}
+                          name="intervalDays"
+                          value={
+                            draft.intervalDays || seriesRule?.intervalDays || 2
+                          }
+                          onChange={(e) => {
+                            change("intervalDays", Number(e.target.value));
+                            if (task && !draft.cadence && seriesRule)
+                              change("cadence", seriesRule.cadence);
+                          }}
+                          className={cx("", true)}
+                        />
+                      </label>
+                    )}
                     <label className={cx("", true)}>
-                      Every (days)
+                      Repeat until (inclusive)
                       <input
-                        type="number"
-                        min={2}
-                        max={365}
-                        name="intervalDays"
-                        value={draft.intervalDays || 2}
-                        onChange={(e) =>
-                          change("intervalDays", Number(e.target.value))
-                        }
+                        type="date"
+                        min={draft.scheduledDate}
+                        name="endDate"
+                        value={draft.endDate ?? seriesRule?.endDate ?? ""}
+                        onChange={(e) => {
+                          change("endDate", e.target.value);
+                          if (task && !draft.cadence && seriesRule)
+                            change("cadence", seriesRule.cadence);
+                        }}
                         className={cx("", true)}
                       />
                     </label>
-                  )}
-                  <label className={cx("", true)}>
-                    Repeat until (inclusive)
-                    <input
-                      type="date"
-                      min={draft.scheduledDate}
-                      name="endDate"
-                      value={draft.endDate || ""}
-                      onChange={(e) => change("endDate", e.target.value)}
-                      className={cx("", true)}
-                    />
-                  </label>
-                  <p className={cx("recurrence-summary")}>
-                    {recurrenceSummary(
-                      draft.cadence,
-                      draft.intervalDays || 2,
-                      draft.endDate,
-                    )}
-                  </p>
-                </>
-              )}
+                    <p className={cx("recurrence-summary")}>
+                      {recurrenceSummary(
+                        draft.cadence || seriesRule?.cadence || "none",
+                        draft.intervalDays || seriesRule?.intervalDays || 2,
+                        draft.endDate ?? seriesRule?.endDate ?? undefined,
+                      )}
+                    </p>
+                  </>
+                )}
             </>
           )}
           <label className={cx("checkbox-label", true)}>
@@ -622,11 +663,12 @@ export function TaskEditor({
           title="Edit repeating task"
           icon={Repeat2}
           onDismiss={() => setScopePrompt(false)}
-          description="Apply changes to this occurrence, or all occurrences from today onward? Other historical occurrences stay unchanged. Date changes shift the other occurrences by the same number of days."
+          description={`Change this task and future repetitions starting ${task?.originalOccurrenceDate || task?.scheduledDate}. Earlier repetitions stay unchanged. Completed or focused tasks retain their accepted values. Recurrence rule changes require This and following.`}
           actions={
             <>
               <button
                 type="button"
+                disabled={!!draft.cadence}
                 onClick={() => void save("one")}
                 className={cx("", true)}
               >
@@ -635,10 +677,14 @@ export function TaskEditor({
               <button
                 type="button"
                 className={cx("primary", true)}
-                disabled={seriesRevision === null}
-                onClick={() => void save("all")}
+                disabled={
+                  seriesRevision === null ||
+                  task?.status === "complete" ||
+                  !!task?.actualFocusSeconds
+                }
+                onClick={() => void save("following")}
               >
-                All occurrences
+                This and following
               </button>
             </>
           }

@@ -26,6 +26,9 @@ it("traps focus between close and the last available recurrence action", () => {
       onChoose={vi.fn()}
     />,
   );
+  const cancel = screen.getByRole("button", { name: "Cancel" });
+  fireEvent.keyDown(cancel, { key: "Tab", shiftKey: true });
+  expect(screen.getByRole("button", { name: "Close dialog" })).toHaveFocus();
   const close = screen.getByRole("button", { name: "Close dialog" });
   close.focus();
   fireEvent.keyDown(close, { key: "Tab", shiftKey: true });

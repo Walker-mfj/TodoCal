@@ -82,6 +82,7 @@ export function TaskDetail({
   const command = useCommand(execute);
   const [deleteChoice, setDeleteChoice] = useState(false);
   const [stopped, setStopped] = useState(false);
+  const [confirmCompleted, setConfirmCompleted] = useState(false);
   const [completionError, setCompletionError] = useState("");
   const [completedAt, setCompletedAt] = useState("");
   useEffect(() => {
@@ -112,9 +113,14 @@ export function TaskDetail({
       revision = series.data.revision;
     setDeleteChoice(false);
     void command.run(
-      `/series/${seriesId}/stop`,
-      "POST",
-      { expectedRevision: revision },
+      `/tasks/${task.id}`,
+      "DELETE",
+      {
+        expectedRevision: task.revision,
+        scope: "following",
+        expectedSeriesRevision: revision,
+        confirmCompleted,
+      },
       () => {
         setStopped(true);
         onStopped?.(seriesId, revision + 1);
@@ -357,11 +363,14 @@ export function TaskDetail({
                   locked ||
                   !series.data ||
                   !!series.data.stoppedAfter ||
-                  stopped
+                  stopped ||
+                  !confirmCompleted ||
+                  !task.originalOccurrenceDate ||
+                  task.originalOccurrenceDate < stopDate
                 }
                 onClick={stop}
               >
-                Stop repeating
+                This and following
               </button>
             </>
           }
@@ -371,9 +380,26 @@ export function TaskDetail({
             unchanged.
           </p>
           <p>
-            Stop repeating after {dateLabel(stopDate)} ({zone}). Today, past
-            tasks and completed future tasks are kept; future incomplete
-            occurrences are removed.
+            Delete this task and future repetitions starting{" "}
+            {dateLabel(
+              task.originalOccurrenceDate || task.scheduledDate || stopDate,
+            )}{" "}
+            ({zone}). Earlier repetitions stay unchanged. Completed future tasks
+            are hidden from the calendar; their completion and Focus history are
+            retained.
+          </p>
+          <label>
+            <input
+              type="checkbox"
+              checked={confirmCompleted}
+              onChange={(event) => setConfirmCompleted(event.target.checked)}
+            />{" "}
+            Include completed future occurrences, preserving their history
+          </label>
+          <p>
+            Undo restores the whole deletion while its task and series revisions
+            remain unchanged. Past original slots can only be deleted
+            individually.
           </p>
           {series.error && (
             <p role="alert">

@@ -14,3 +14,5 @@ services:
         sync: false
       - key: PROXY_SECRET
         sync: false
+      - key: JOBS_SECRET
+        sync: false

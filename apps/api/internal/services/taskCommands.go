@@ -40,6 +40,10 @@ func EditTaskCommand(ctx context.Context, tx pgx.Tx, p Principal, zone string, n
 		return nil, 0, e
 	}
 	in, scope, seriesRevision, fields := patch.Task, patch.Scope, patch.SeriesRevision, patch.Fields
+	if scope == "following" {
+		t, err := UpdateFollowing(ctx, tx, p.ID, zone, now, old, in, seriesRevision, fields)
+		return t, models.Updated, err
+	}
 	if scope == "all" {
 		if seriesRevision < 1 {
 			return nil, 0, Invalid("Provide expectedSeriesRevision")
@@ -82,6 +86,13 @@ func DeleteTaskCommand(ctx context.Context, tx pgx.Tx, p Principal, zone string,
 	}
 	if old.Revision != in.ExpectedRevision {
 		return nil, 0, Conflict()
+	}
+	if in.Scope == "following" {
+		result, err := DeleteFollowing(ctx, tx, p.ID, zone, now, old, in.ExpectedSeriesRevision, in.ConfirmCompleted)
+		return result, models.Updated, err
+	}
+	if in.Scope != "" && in.Scope != "one" {
+		return nil, 0, Invalid("Choose one or following occurrences")
 	}
 	return map[string]any{"ok": true, "revision": old.Revision + 1}, models.Updated, DeleteTask(ctx, tx, p.ID, zone, now, old)
 }

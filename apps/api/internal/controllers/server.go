@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
@@ -10,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"focuscalendar/internal/middleware"
@@ -20,6 +22,9 @@ import (
 )
 
 type Server struct {
+	jobsSecret  string
+	runJobs     func(context.Context) (any, error)
+	jobsMu      sync.Mutex
 	monitor     *monitoring.Reporter
 	ingestLimit ingestLimiter
 	pool        *pgxpool.Pool

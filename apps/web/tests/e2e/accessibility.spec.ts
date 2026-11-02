@@ -3,6 +3,19 @@ import AxeBuilder from "@axe-core/playwright";
 import { randomUUID } from "node:crypto";
 
 async function audit(page: Page, name: string) {
+  // Audit the settled theme, not a mixed foreground/background halfway through
+  // the controls' color transition. No accessibility rules are disabled.
+  await page.evaluate(async () => {
+    await Promise.all(
+      document
+        .getAnimations()
+        .filter(
+          (animation) =>
+            animation.effect?.getComputedTiming().iterations !== Infinity,
+        )
+        .map((animation) => animation.finished.catch(() => {})),
+    );
+  });
   const result = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
     .analyze();
@@ -82,21 +95,22 @@ test("WCAG A/AA audit of authentication, every workspace, editor errors and time
       .getByRole("button", { name: "Create task", exact: true })
       .click();
     await expect(page.getByLabel("Task title")).toBeHidden();
-    await page
-      .getByRole("button", { name: "Focus timer", exact: true })
-      .click();
+    await page.getByRole("button", { name: /^Focus timer/ }).click();
     await audit(page, `${theme} timer panel`);
-    await page.getByRole("button", { name: /^Focus 25/ }).click();
+    await page
+      .getByRole("button", { name: "Start session", exact: true })
+      .click();
     await expect(
-      page.getByRole("region", { name: "Active timer" }),
+      page.getByRole("button", { name: "Pause", exact: true }),
     ).toBeVisible();
     await audit(page, `${theme} active timer`);
     await page
       .getByRole("button", { name: "End session", exact: true })
       .click();
     await expect(
-      page.getByRole("region", { name: "Active timer" }),
+      page.getByRole("button", { name: "Pause", exact: true }),
     ).toBeHidden();
+    await page.getByRole("button", { name: "Close focus timer" }).click();
   }
 });
 

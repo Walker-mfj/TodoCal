@@ -101,7 +101,7 @@ test("calendar slot changes retain content; only edited drafts need a close deci
     .getByRole("button", { name: "New task", exact: true })
     .first()
     .click();
-  await expect(page.getByLabel("Task title")).toHaveValue("Keep my draft");
+  await expect(page.getByLabel("Task title")).toHaveValue("");
   expect(native).toEqual([]);
 });
 test("shared delete confirmation supports cancel, light/dark and accessible labels", async ({

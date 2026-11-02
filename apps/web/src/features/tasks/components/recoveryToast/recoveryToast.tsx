@@ -39,7 +39,8 @@ export function RecoveryToast({
       onDismiss={onDismiss}
     >
       <span>
-        {item.kind === "task" ? "Task deleted" : "Repeating stopped"} ·{" "}
+        {item.kind === "task" ? "Task deleted" : "Repeating tasks deleted"}{" "}
+        ·{" "}
       </span>
       <button
         disabled={!connected || command.busy}

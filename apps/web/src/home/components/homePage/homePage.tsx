@@ -52,6 +52,7 @@ import {
 import { TaskDetail } from "../../../features/tasks/components/taskDetail/taskDetail";
 import { TaskRow } from "../../../features/tasks/components/taskRow/taskRow";
 import { Groups } from "../../../features/tasks/components/groups/groups";
+import { NotificationSettings } from "../../../features/notifications/components/notificationSettings";
 import { SettingsForm } from "../../../features/settings/components/settingsForm/settingsForm";
 import {
   DailyProgress,
@@ -280,6 +281,22 @@ function AccountWorkspace() {
     setSaveNotice("");
     setMessage("");
   };
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const destination = params.get("notification");
+    if (destination !== "focus" && destination !== "calendar") return;
+    updatePage("calendar");
+    if (destination === "focus") setShowFocus(true);
+    params.delete("notification");
+    const query = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname +
+        (query ? `?${query}` : "") +
+        window.location.hash,
+    );
+  }, []);
   const setPage = (next: string) => {
     if (next === page) return;
     // Drafts remain recoverable, but editors belong to the page where they opened.
@@ -1003,13 +1020,22 @@ function AccountWorkspace() {
           />
         )}
         {page === "settings" && (
-          <SettingsForm
-            owner={account.user.id}
-            settings={account.settings}
-            execute={execute}
-            refresh={refresh}
-            disabled={!connected}
-          />
+          <>
+            <SettingsForm
+              owner={account.user.id}
+              settings={account.settings}
+              execute={execute}
+              refresh={refresh}
+              disabled={!connected}
+            />
+            <NotificationSettings
+              key={account.user.id}
+              owner={account.user.id}
+              read={read}
+              execute={execute}
+              disabled={!connected}
+            />
+          </>
         )}
       </main>
       {panel?.type === "new" || panel?.type === "edit" ? (

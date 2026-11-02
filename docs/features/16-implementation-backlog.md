@@ -1,31 +1,37 @@
-# 16 — Proposed Code Changes & Implementation Backlog
+# 16 — Implementation Backlog & Verification
 
-> **Status: Proposed, not implemented.** This file records findings from reviewing TodoCal `docs/features` against the application code and the free-deployment configuration. It is a **backlog**, not a claim that the code has already changed. No items in this file should be marked Done until the corresponding code, tests, and deployments have been verified.
+> **Status: Implemented in one PR; local verification is recorded below.** The original review findings are retained as baseline context. Production scheduler configuration and real-device Web Push delivery remain release checks; they are not claimed by local tests.
+
+## Scope decision — 2026-11-01
+
+The owner excluded **Trash / Recently Deleted** and **GAP-05 immutable historical baselines** from this implementation. Keep the existing immediate Undo and revision-checked restore API; do not add retention, purge, or a persistent deleted-task browser. Historical reports continue to use adjusted snapshots and the event journal. GAP-01, GAP-02/03, GAP-06/07 and GAP-08/09 remain in scope.
+
+**Delivery decision (2026-11-01):** Ship all in-scope implementation in **one PR** on `codex/feature-backlog-implementation`. The sections below are work items, not separate PRs. Verify each subsystem independently inside the same PR.
 
 ## Scope and order
 
-| ID | Priority | Gap / proposal | Type | Recommended delivery |
+| ID | Priority | Gap / proposal | Type | Work item in the single PR |
 |---|---|---|---|---|
-| GAP-01 | P1 | Align Focus/Break Settings validation across web and API | Existing correctness issue | PR A: validation + unit tests |
-| GAP-02 | P1 | **Edit recurrence: This occurrence / This and following** | Approved UX/business behavior change | PR B: recurring scope edit |
-| GAP-03 | P1 | **Delete recurrence: This occurrence / This and following** | Approved UX/business behavior change | PR B or follow-up PR C |
-| GAP-04 | P2 | Make Task delete recovery understandable (Undo vs persistent Restore/Trash) | UX/product decision | Recovery PR |
-| GAP-05 | P2 | Preserve original finalized snapshot separately from adjusted values, if required | Optional data model change | History PR, after product decision |
-| GAP-06 | P2 | Durable background settlement of expired Focus sessions | Infrastructure/correctness for background use | Worker/scheduler PR |
-| GAP-07 | P2 | PWA Web Push and scheduled Focus/task reminders | New feature; depends on GAP-06 + scheduling infrastructure | Notifications PR |
+| GAP-01 | P1 | Align Focus/Break Settings validation across web and API | Existing correctness issue | Settings: validation + unit tests |
+| GAP-02 | P1 | **Edit recurrence: This occurrence / This and following** | Approved UX/business behavior change | Recurrence: recurring scope edit |
+| GAP-03 | P1 | **Delete recurrence: This occurrence / This and following** | Approved UX/business behavior change | Recurrence delete + recovery |
+| GAP-04 | — | Existing Undo and restore semantics only; no Trash | Excluded feature | Document existing behavior |
+| GAP-05 | — | Original immutable historical baseline | Excluded by owner | No implementation |
+| GAP-06 | P2 | Durable background settlement of expired Focus sessions | Infrastructure/correctness for background use | Worker/scheduler |
+| GAP-07 | P2 | PWA Web Push and scheduled Focus/task reminders | New feature; depends on GAP-06 + scheduling infrastructure | Notifications |
 | GAP-08 | P1 | Fix documented accessibility findings; keyboard, dialog-focus and responsive audits | Existing accessibility finding + QA | Accessibility fixes and regression tests |
 | GAP-09 | P1 | Repair existing E2E baseline and map tests to current acceptance scenarios | Test-contract alignment + unresolved interaction reports | E2E stabilization and coverage audit |
 
-**Do not fix by changing documentation alone.** The [feature docs](README.md) describe current behavior separately; this backlog records intended future changes. Address P1 issues first, including existing E2E baseline reliability. The E2E audit (GAP-09) is **separate from implementing new feature behavior**; future scenarios remain deferred until shipped. Do not advertise background reminders before the required deployment infrastructure exists.
+**Do not fix by changing documentation alone.** The [feature docs](README.md) describe current behavior separately; this backlog records the agreed changes and their verification. Address P1 issues first, including existing E2E baseline reliability. The E2E audit (GAP-09) is **separate from implementing new feature behavior**; future scenarios remain deferred until shipped. Do not advertise background reminders before the required deployment infrastructure exists.
 
 ## GAP-01 — Align Focus/Break Settings validation
 
-**Observed code**
+**Baseline before implementation**
 - `apps/api/internal/services/settingsCommands.go`: `EditSettingsCommand` currently validates all three duration values only as positive integers up to 2,147,483,647.
 - `apps/web/src/features/settings/components/settingsForm/settingsForm.tsx`: UI input limits are Focus 1–180, Short Break 1–60, Long Break 1–60 minutes.
 - `apps/api/internal/services/focusService.go` accepts optional per-session override 1–180; task-specific `focusMinutes` validation is already 1–180.
 
-**Proposed change**
+**Implemented change**
 - Define one product contract for *settings*: Focus 1–180, Short/Long Break 1–60 minutes. Enforce it in the **Go service**, not only in HTML inputs; keep API schema/client validation and error messages in sync.
 - Validate values **again when a timer starts** (particularly defaults read from persisted settings), or explicitly normalize any legacy out-of-range values through a safe migration.
 - Do not retroactively change duration/elapsed time of a running or completed session.
@@ -45,7 +51,7 @@
 
 Example: today is 10 Nov; a daily occurrence on **15 Nov** is selected. **This and following** changes/cancels 15 Nov onward; **10–14 Nov remain unchanged**. The cutoff is anchored on `original_occurrence_date`, not a moved occurrence's effective `scheduled_date`; show the user what slot they are affecting if the task was moved.
 
-### Edit — proposed implementation
+### Edit — implementation
 
 - **This occurrence:** keep the existing per-task edit with stable task ID; do not rewrite the series template or sibling occurrences.
 - **This and following:** split the recurrence into a **preserved head** and a **new tail series** at the selected original slot:
@@ -59,7 +65,7 @@ Example: today is 10 Nov; a daily occurrence on **15 Nov** is selected. **This a
 - A selected **past** or finalized slot should not implicitly rewrite finalized siblings. Limit the new `This and following` operation to current/future selected original slots and explain the limitation; a single historical task can still be edited via the existing historical-adjustment path.
 - The recurrence **rule itself** (daily / weekly / interval) may change for the tail; changing cadence or timezone must not create duplicate or invalid local-time occurrences.
 
-### Delete — proposed implementation
+### Delete — implementation
 
 - **This occurrence:** soft-delete the selected task (or create a cancellation exception for an unmaterialized slot); preserve other occurrences and the original-slot tombstone.
 - **This and following:** cut off the series **before the selected original slot**, cancel all subsequent unmaterialized slots, and soft-delete all materialized selected/future scheduled occurrences **from the active calendar**. This includes already-completed future tasks only after a warning/explicit confirmation; **never physically delete** their completed/Focus history or journal.
@@ -68,7 +74,7 @@ Example: today is 10 Nov; a daily occurrence on **15 Nov** is selected. **This a
 
 ### UI and API work
 
-**Candidate code touchpoints (not yet edited):**
+**Implementation touchpoints:**
 - Web: `apps/web/src/features/tasks/components/taskEditor/taskEditor.tsx`, recurring delete confirmation/dialog, `apps/web/src/features/calendar/components/scheduleScopeDialog/scheduleScopeDialog.tsx`, schedule hook and relevant task detail actions.
 - Go: `apps/api/internal/services/recurrenceService.go` (`UpdateFromTask` / `Stop`), `apps/api/internal/services/taskCommands.go`, `apps/api/internal/repository/recurrenceRepository.go`, command parsing, controller routes/OpenAPI, database migrations if needed.
 - Add concise preview text for the cutoff: "Change/delete this task and future repetitions starting [date]. Earlier repetitions stay unchanged." Show counts for affected, completed, moved and previously deleted occurrences when available.
@@ -87,27 +93,19 @@ Example: today is 10 Nov; a daily occurrence on **15 Nov** is selected. **This a
 
 See [recurrence current implementation](06-recurrence.md) and [acceptance scenarios](15-acceptance-scenarios.md).
 
-## GAP-04 — Task deletion recovery: Undo versus Trash
+## GAP-04 — Existing deletion recovery; no Trash
 
-**Observed:** `apps/web/src/features/tasks/components/recoveryToast/recoveryToast.tsx` hides Undo after approximately ten seconds, while `apps/api/internal/services/history.go` can restore a soft-deleted task without an elapsed-time check when `expectedRevision` matches.
+**Decision (2026-11-01):** Do not add Trash / Recently Deleted. Preserve the immediate **Task deleted · Undo** toast and the existing revision-checked restore API. The approximately ten-second toast is a UI visibility period, not a backend retention deadline. Do not add automatic purge or imply that expiry makes a deletion permanent. Series-tail deletion still needs its own atomic Undo under GAP-03.
 
-**Proposed UX:** retain the immediate `Task deleted · Undo` feedback and provide a **Recently Deleted / Trash** recovery path for soft-deleted tasks. Decide a retention period separately; do **not** infer backend expiry from the toast. List deletion time, task title, original schedule and recover action; restore should use revision validation. Handle recurring single-occurrence deletions vs tail deletions distinctly.
+## GAP-05 — Immutable historical baseline excluded
 
-**Acceptance:** after the toast disappears, the user can locate and restore a recoverable task through the designed UI; no hidden permanent data loss and no cross-account recovery.
-
-## GAP-05 — Original historical snapshot baseline (optional)
-
-**Observed:** `apps/api/internal/services/history.go` `refreshHistorical` updates `daily_plan_entries` and recounts `daily_snapshots`. `task_events` retains before/after states, but there is no separately persisted immutable "original finalized" metric.
-
-**Decision needed:** Does the app need **Original plan vs Adjusted plan** comparison, or is an auditable adjusted view enough? If **yes**, add immutable finalized baseline/version tables or fields and explicitly recorded adjustments, with migration and clear as-of semantics; preserve current analytics behavior for existing consumers until updated.
-
-**Acceptance if implemented:** a backdated edit changes adjusted numbers, never the original baseline; group removal alone does not touch historical totals; report/UI can show both labeled values. **Not mandatory for the P1 PRs.**
+**Decision (2026-11-01):** Do not implement separate original snapshots, baseline/version tables, or an Original vs Adjusted report. Keep adjusted snapshots plus the event journal. Explicit historical edits may change historical totals; group deletion alone does not.
 
 ## GAP-06 — Durable Focus completion and deployment
 
-**Observed:** `apps/api/internal/services/focusService.go` settles expired running sessions on relevant Focus reads/commands. The current planning sweeper (`apps/api/internal/workers/sweeper.go`) runs planning `WithTx`, not proactive Focus completion. The live free deployment (`render.yaml` and `deploy/README.md`) has a web API but **no separate always-on worker**.
+**Baseline before implementation:** `apps/api/internal/services/focusService.go` settles expired running sessions on relevant Focus reads/commands. The current planning sweeper (`apps/api/internal/workers/sweeper.go`) runs planning `WithTx`, not proactive Focus completion. The live free deployment (`render.yaml` and `deploy/README.md`) has a web API but **no separate always-on worker**.
 
-**Proposed change:** make expired Focus session reconciliation idempotent and runnable by a scheduled job outside user browser tabs. Preserve the logical completion timestamp (target reach), one Pomodoro, closed focus intervals and dependent analytics/cache consistency. Pick a real scheduler compatible with the chosen hosting plan; **Render Free process sleeping cannot guarantee minute-accurate cron inside the API**. Design for late or repeated job delivery and monitor backlog.
+**Implemented change:** make expired Focus session reconciliation idempotent and runnable by a scheduled job outside user browser tabs. Preserve the logical completion timestamp (target reach), one Pomodoro, closed focus intervals and dependent analytics/cache consistency. Pick a real scheduler compatible with the chosen hosting plan; **Render Free process sleeping cannot guarantee minute-accurate cron inside the API**. Design for late or repeated job delivery and monitor backlog.
 
 **Acceptance:** a fully closed browser does not block eventual server settlement; duplicate sweeps cannot double-count; offline/paused sessions and mid-night boundaries remain correct; report totals agree after catch-up.
 
@@ -115,7 +113,7 @@ See [recurrence current implementation](06-recurrence.md) and [acceptance scenar
 
 **Dependency:** GAP-06 plus reliable scheduled delivery, Push API/service worker and subscriptions. Existing `apps/web/src/app/manifest.ts` supports installability metadata, **not background notifications by itself**.
 
-**Proposed:** opt-in per-device browser push subscriptions with VAPID, private token storage, preferences (Focus schedule start, optional lead minutes, task deadline, Pomodoro end, breaks), dedupe IDs, quiet hours, account-local timezone, DST handling and retry/backoff. Notification click routes to the task/Focus screen after auth. A scheduled Focus **reminder does not start a timer automatically**.
+**Implemented:** opt-in per-device browser push subscriptions with VAPID, private token storage, preferences (Focus schedule start, optional lead minutes, task deadline, Pomodoro end, breaks), dedupe IDs, quiet hours, account-local timezone, DST handling and retry/backoff. Notification click routes to the task/Focus screen after auth. A scheduled Focus **reminder does not start a timer automatically**.
 
 **Acceptance:** supported installed/background clients receive notifications when allowed, while denied permission does not block TodoCal. Delivery is best effort, never promised to the exact second. Test multiple devices, logout/revocation, duplicate retries, changed/deleted schedules and browser/OS constraints.
 
@@ -123,7 +121,7 @@ See [PWA and notifications](12-pwa-notifications.md).
 
 ## GAP-08 — Accessibility and responsive behavior
 
-**Priority: P1 for observed accessibility defects; broader responsive/PWA polish can remain P2/P3.** An existing structure-refactor verification report found a serious axe \`aria-prohibited-attr\` violation on the authentication \`div.brand\` (an \`aria-label\` on an element without a supporting role). The corresponding frontend markup still needs an accessible semantics fix. The same report records a **WebKit account-popover focus-return failure** after Escape (popover closed but focus did not return to its trigger), reproduced against the pre-refactor baseline. These are **observed test findings**, not newly introduced structure-refactor regressions.
+**Priority: P1 for observed accessibility defects; broader responsive/PWA polish can remain P2/P3.** An existing structure-refactor verification report found a serious axe \`aria-prohibited-attr\` violation on the authentication \`div.brand\` (an \`aria-label\` on an element without a supporting role). This PR gives the auth mark image semantics and fixes the reported account-menu focus return. The same report records a **WebKit account-popover focus-return failure** after Escape (popover closed but focus did not return to its trigger), reproduced against the pre-refactor baseline. These are **observed test findings**, not newly introduced structure-refactor regressions.
 
 **Required work:**
 - Fix the auth-brand accessible-name/role pattern and add a focused axe/browser regression for Sign in and Register. Prefer appropriate semantic markup or a labeled element that actually exposes the expected accessibility role; do not suppress the axe rule.
@@ -169,7 +167,8 @@ Use [\`15-acceptance-scenarios.md\`](15-acceptance-scenarios.md) as the **accept
 | **7–11** (Recurrence) | Go integration for materialization/slot identity/DST/revision; E2E for current single/all/stop/restore dialogs | Cover **current** scopes, do not assert future **This and following** behavior yet |
 | **12–17** (Focus, retries, conflicts, Undo) | Go integration for timing/idempotency/revisions/token expiry; FE hook/component tests; E2E for session persistence, task independence, uncertain retry and visible Undo | Cover existing behavior now; keep server assertions authoritative |
 | **18** (Monitoring) | Go/concurrency/service tests for rate budget and scrubbing; targeted web tests as needed | Not a mandatory browser E2E |
-| **19–25** (Proposed/future) | Draft intended tests now if helpful; implement corresponding Go/web/E2E checks **when each feature ships** | **Not** part of current CI pass criteria; label proposed/unimplemented clearly |
+| **19–23** (Implemented) | Worker, notification and following-scope regressions | Local tests apply; real-device notification delivery remains a deployment gate |
+| **24–25** | 24 excluded; 25 deferred | No immutable-baseline or offline-write feature |
 
 Do **not** change \`15-acceptance-scenarios.md\` merely to reconcile stale Playwright selectors. Update an acceptance scenario only after confirming that the actual approved product contract changed, then update feature docs and tests together.
 
@@ -181,22 +180,41 @@ Do **not** change \`15-acceptance-scenarios.md\` merely to reconcile stale Playw
 4. Run targeted Chromium, Firefox and WebKit checks for keyboard, dialogs, Account popover, Calendar events, Focus and accessibility; then the full intended browser suite. Record tests skipped because of environment limitations.
 5. Once baseline reliability and isolated fixtures are established, **enable E2E as a blocking CI gate**, preferably a dedicated job with an isolated test database, installed browsers and stable test ports. Do not add an always-failing E2E job or silence persistent failures with blind retries.
 
-**Acceptance:** all existing **current-contract** acceptance scenarios have appropriate verified coverage or an explicitly tracked gap, every known failing E2E has a documented classification and resolution, and CI can fail on a real behavior regression. Do not claim “green E2E” until a full, relevant run actually passes. Proposed product scenarios (19–25) remain deferred. No application code or E2E tests are modified by this documentation PR.
+**Acceptance:** all existing **current-contract** acceptance scenarios have appropriate verified coverage or an explicitly tracked gap, every known failing E2E has a documented classification and resolution, and CI can fail on a real behavior regression. Do not claim “green E2E” until a full, relevant run actually passes. Proposed scenarios remain unverified until their features ship; scenario 24 is excluded and scenario 25 remains deferred. This implementation PR includes application code, migrations, E2E fixes and CI gates.
 
-## Implementation and release checklist
+## Implementation and release checklist — one PR
 
-- **PR A:** settings validation + tests; minimal API-safe, independent of recurrence.
-- **PR B:** recurrence **This and following** **edit** with split, migration-aware data preservation, tests and UX.
-- **PR C:** recurrence **This and following** **delete** + atomic recovery; can be combined with PR B only if both are fully tested.
-- **PR D:** Trash/recovery policy and UI; historical baseline only if explicitly chosen.
-- **PR E:** settle Focus in an actually scheduled process; then Web Push/reminder infrastructure and permission controls.
-- **PR F:** resolve observed auth-brand/Account-popover accessibility failures (GAP-08), then complete remaining UX checks.
-- **PR G (GAP-09):** classify and repair the existing E2E failures, maintain the scenario-to-test matrix from `15-acceptance-scenarios.md`, add missing current-contract tests at the right layer, and only then enforce a reliable E2E CI gate. This can accompany the QA work when verified; it is not an implementation of scenarios 19–25.
+All items below belong to **one implementation PR**. They are verification milestones, not PR A–G.
+
+- Settings duration validation, schema and regression tests (GAP-01).
+- Recurrence **This and following** edit with split and history preservation (GAP-02).
+- Recurrence **This and following** delete with atomic Undo (GAP-03).
+- No Trash UI or immutable historical baseline (GAP-04/05 excluded).
+- Scheduled Focus settlement, then Web Push/reminders and permission controls (GAP-06/07).
+- Auth-brand and Account-popover accessibility fixes, then remaining UX checks (GAP-08).
+- Classify E2E failures, maintain scenario-to-test coverage and enable CI only after a reliable baseline (GAP-09).
 - Deploy backward-compatible API/migrations **before** any frontend that depends on new recurrence or push routes. Frontend and Render API deploy separately in the current hosting setup.
 - Every delivered gap updates its related `docs/features` specification and acceptance scenarios **only when the agreed behavior changes**, and gets appropriate Go/web regression tests. Test-only locator alignment is tracked under GAP-09, not treated as a product spec change.
 - The scenario-to-test matrix should distinguish **verified** from **missing/unverified** coverage; do not require one E2E per scenario or mark future scenarios as existing features.
-- No source changes, database migrations, E2E test edits or CI changes are included in this documentation PR.
+- Source, migrations, tests, CI and documentation ship together in this one PR.
 
 ## Out of scope / already working
 
 Do **not** modify these solely to match an outdated doc: `No plan` (null) versus `0%`, server-enforced **single-task schedule Undo**, per-account idempotency receipts, overall calendar progress independent of filter, group deletion retaining historical totals, or password change revoking other (not current) login sessions.
+
+## Implementation verification record — 2026-11-02
+
+| Work item | Implemented and checked locally | Deployment boundary |
+|---|---|---|
+| GAP-01 | Shared service duration bounds; settings and legacy-default API tests; web validation | Existing sessions keep their targets |
+| GAP-02/03 | Original-slot tail split/delete, cadence changes, preserved IDs/history/exceptions, atomic revision-checked Undo; API and browser regressions | Keep legacy all/stop routes for older clients |
+| GAP-06 | Idempotent Focus settlement, authenticated bounded job endpoint, Cloudflare cron, recurring reminder horizons including early deadlines and delayed runs | Configure JOBS_SECRET and deploy scheduler |
+| GAP-07 | Device opt-in/revocation, preferences, durable outbox, private payloads, retries, quiet hours, logout, earlier DST-overlap resolution; service/API/component tests | Configure VAPID; actual provider/closed-app delivery requires real-device release verification |
+| GAP-08/09 | Auth semantics, Escape focus return, timer labels, live calendar labels, modal Tab traversal and WebKit quick-Focus pointer behavior; isolated CI browser jobs | No claim of manual screen-reader or mobile certification |
+| GAP-04/05 | Excluded as requested | No Trash or immutable-baseline implementation |
+
+Final local E2E: **Chrome 46 passed, Firefox 46 passed, WebKit 46 passed**. Web tests: **96 passed**. API tests run with race detection and separate controller/notification databases. Edge/service-worker tests: **7 passed**. API build/vet, frontend typecheck and formatting checks passed. The production static build and Cloudflare Worker dry-run also passed; no deployment was performed. See [acceptance coverage](15-acceptance-scenarios.md) for remaining explicitly tracked edge cases.
+
+The old failures were classified and resolved: stale locators/expected controls were aligned with current behavior; actual bugs included stale calendar accessible names, auth/account/timer semantics, WebKit modal Tab traversal and quick-Focus pointer retargeting. Axe now waits for finite color transitions to settle before measuring contrast; no rules are disabled and no blind retries were added. Backend review also found and fixed early recurring deadline materialization and inconsistent DST-overlap reminder timing.
+
+All implementation, migrations, tests, CI and docs are delivered together. Live service configuration and deployment are not performed by this PR.

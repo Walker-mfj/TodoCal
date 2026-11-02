@@ -16,6 +16,8 @@ import (
 
 	"focuscalendar/internal/config"
 	"focuscalendar/internal/controllers"
+	"focuscalendar/internal/services"
+	"focuscalendar/internal/workers"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -52,6 +54,22 @@ func run() error {
 		return nil
 	}
 	app := controllers.New(pool, cfg.Origin, cfg.Secure)
+	sender, err := services.NewWebPushSender(os.Getenv("VAPID_PUBLIC_KEY"), os.Getenv("VAPID_PRIVATE_KEY"), os.Getenv("VAPID_SUBJECT"))
+	if err != nil {
+		return errors.New("invalid Web Push configuration")
+	}
+	sweeper := &workers.Sweeper{}
+	notifications := services.NotificationWorker{Pool: pool, Now: time.Now, Sender: sender}
+	app.ConfigureJobs(os.Getenv("JOBS_SECRET"), func(jobCtx context.Context) (any, error) {
+		sweepCtx, cancelSweep := context.WithTimeout(jobCtx, 10*time.Second)
+		accounts, sweepErr := sweeper.Sweep(sweepCtx, pool, time.Now)
+		cancelSweep()
+		sent, pushErr := notifications.Run(jobCtx, 100)
+		var due int
+		backlogErr := pool.QueryRow(jobCtx, `SELECT count(*) FROM focus_sessions WHERE status='running' AND running_since + (target_seconds::double precision - accumulated_us::double precision / 1000000) * interval '1 second' <= CURRENT_TIMESTAMP`).Scan(&due)
+		slog.Info("scheduled jobs", "accountsProcessed", accounts, "notificationsSent", sent, "expiredFocusRemaining", due)
+		return map[string]int{"accountsProcessed": accounts, "notificationsSent": sent, "expiredFocusRemaining": due}, errors.Join(sweepErr, pushErr, backlogErr)
+	})
 	closeMonitoring := app.EnableMonitoring(os.Getenv("BETTER_STACK_DSN"), os.Getenv("RENDER_GIT_COMMIT"))
 	defer closeMonitoring()
 	api := &http.Server{Addr: cfg.Address, Handler: middleware.ProxyHandler(app.Handler(), os.Getenv("PROXY_SECRET")), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}

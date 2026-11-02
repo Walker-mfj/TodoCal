@@ -10,7 +10,7 @@ Document **expected interaction quality**, not assert that every checkpoint is a
 |---|---|
 | Task editing | Preserve unsaved fields on recoverable API failure; field-level validation and explicit Save/Cancel; no silent data loss |
 | Task delete | Soft-delete with immediate Undo toast; distinguish toast timeout from server-side restore rights |
-| Recurring delete/edit | **Current:** label the implemented options accurately (`All occurrences from today` / `Stop repeating`). **Proposed:** both Edit and Delete ask **This occurrence** vs **This and following**, anchored on the selected original slot; preview affected future tasks and warn about completed/Focus history |
+| Recurring delete/edit | Both Edit and Delete ask **This occurrence** vs **This and following**, anchored on the selected original slot; preview affected future tasks and warn about completed/Focus history |
 | Drag/resize | Provide keyboard/form-based equivalent; show server-backed undo countdown only for the single-task schedule-undo path |
 | Focus | Make start/pause/resume/end visible by keyboard and pointer; do not treat Pomodoro target as task completion |
 | Connectivity | Distinguish offline, retryable uncertain mutation and actual 409 revision conflict; never show success before confirmation |
@@ -33,3 +33,7 @@ Document **expected interaction quality**, not assert that every checkpoint is a
 Test: keyboard-only create/edit/delete/restore; modal focus trap/return; recurring scope confirmation; unsaved draft after 409; offline retry with same idempotency key; Undo expiry at the server; multiple Focus display instances; light/dark; long names; month-cell overflow; small viewport; and screen reader interaction for progress.
 
 These are **QA targets**. Passing them must be verified by browser/E2E testing, not inferred from this document.
+
+## Implementation verification
+
+The auth mark has image semantics, the Account menu returns focus on Escape, Focus controls expose names containing their visible labels, and calendar event names update with unsaved draft previews. Axe checks cover authentication, workspaces, validation and active timers in both themes. Keyboard workflows, focus return, zoom/reflow and text spacing are browser regressions. These checks do not constitute manual screen-reader or mobile certification. See the [acceptance matrix](15-acceptance-scenarios.md) for current results.

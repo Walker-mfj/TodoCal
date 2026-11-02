@@ -110,3 +110,37 @@ it("restores settings draft and exact uncertain command for the original account
   await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
   expect(save.mock.calls[1][1]).toEqual(save.mock.calls[0][1]);
 });
+
+it.each([
+  ["Focus minutes", 181, "Focus minutes must be no more than 180."],
+  ["Short break minutes", 61, "Short break minutes must be no more than 60."],
+  ["Long break minutes", 61, "Long break minutes must be no more than 60."],
+  ["Focus minutes", 0, "Focus minutes must be at least 1."],
+  [
+    "Short break minutes",
+    1.5,
+    "Check short break minutes and enter a valid value.",
+  ],
+])(
+  "keeps invalid %s input and explains the limit",
+  async (label, value, message) => {
+    const save = vi.fn();
+    render(
+      <SettingsForm
+        owner="bounds"
+        settings={settings}
+        execute={save}
+        refresh={vi.fn()}
+        disabled={false}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText(label), {
+      target: { value: String(value) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+    expect(screen.getByLabelText(label)).toHaveFocus();
+    expect(screen.getByLabelText(label)).toHaveValue(value);
+    expect(save).not.toHaveBeenCalled();
+  },
+);

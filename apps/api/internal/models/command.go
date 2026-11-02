@@ -6,7 +6,10 @@ import (
 )
 
 type RevisionInput struct {
-	ExpectedRevision int64 `json:"expectedRevision"`
+	ExpectedRevision       int64  `json:"expectedRevision"`
+	Scope                  string `json:"scope,omitempty"`
+	ExpectedSeriesRevision int64  `json:"expectedSeriesRevision,omitempty"`
+	ConfirmCompleted       bool   `json:"confirmCompleted,omitempty"`
 }
 type CompletionInput struct {
 	Complete         *bool      `json:"complete"`

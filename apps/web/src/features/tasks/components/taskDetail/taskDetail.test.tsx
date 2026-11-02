@@ -108,13 +108,18 @@ it("deletes a single task directly and passes the task for Undo", async () => {
     body: { expectedRevision: 4 },
   });
 });
-it("offers occurrence deletion and stopping separately without a destructive default", async () => {
+it("offers occurrence and following deletion separately without a destructive default", async () => {
   const execute = vi.fn().mockResolvedValue({}),
     onStopped = vi.fn();
   render(
     <TaskDetail
       {...base}
-      task={{ ...task, seriesId: "series" }}
+      task={{
+        ...task,
+        seriesId: "series",
+        originalOccurrenceDate: "2099-10-20",
+        scheduledDate: "2099-10-20",
+      }}
       execute={execute}
       onStopped={onStopped}
     />,
@@ -125,9 +130,19 @@ it("offers occurrence deletion and stopping separately without a destructive def
     screen.getByRole("button", { name: "Delete this occurrence" }),
   ).toBeEnabled();
   expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
-  fireEvent.click(screen.getByRole("button", { name: "Stop repeating" }));
+  fireEvent.click(
+    screen.getByRole("checkbox", {
+      name: /Include completed future occurrences/,
+    }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "This and following" }));
   await waitFor(() => expect(onStopped).toHaveBeenCalledWith("series", 8));
-  expect(execute.mock.calls[0][0]).toBe("/series/series/stop");
+  expect(execute.mock.calls[0][0]).toBe("/tasks/one");
+  expect(execute.mock.calls[0][1].body).toMatchObject({
+    scope: "following",
+    expectedSeriesRevision: 7,
+    confirmCompleted: true,
+  });
 });
 it("distinguishes actual time and ended-early sessions from planned time", () => {
   render(<TaskDetail {...base} execute={vi.fn()} />);

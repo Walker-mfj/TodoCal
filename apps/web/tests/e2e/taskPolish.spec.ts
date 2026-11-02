@@ -17,7 +17,7 @@ test("focus position, field errors, compact drafts, colors and navigation", asyn
   await page
     .getByRole("button", { name: "Create account", exact: true })
     .click();
-  const focus = page.getByRole("button", { name: "Focus timer", exact: true });
+  const focus = page.getByRole("button", { name: /^Focus timer/ });
   await expect(focus).toBeVisible();
   const box = (await focus.boundingBox())!;
   await page.mouse.move(box.x + 32, box.y + 32);
@@ -115,7 +115,7 @@ test("repeating edits ask for scope and update generated occurrences", async ({
   const dialog = page.getByRole("dialog", { name: "Edit repeating task" });
   await expect(dialog).toBeVisible();
   await dialog
-    .getByRole("button", { name: "All occurrences", exact: true })
+    .getByRole("button", { name: "This and following", exact: true })
     .click();
   await expect(dialog).toHaveCount(0);
   await expect(

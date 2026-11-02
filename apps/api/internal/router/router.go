@@ -3,6 +3,11 @@ package router
 import "net/http"
 
 type Endpoints interface {
+	Notifications(http.ResponseWriter, *http.Request)
+	UpdateNotificationPreferences(http.ResponseWriter, *http.Request)
+	SubscribePush(http.ResponseWriter, *http.Request)
+	RevokePush(http.ResponseWriter, *http.Request)
+	RunJobs(http.ResponseWriter, *http.Request)
 	IngestError(http.ResponseWriter, *http.Request)
 	Register(http.ResponseWriter, *http.Request)
 	Login(http.ResponseWriter, *http.Request)
@@ -41,6 +46,11 @@ type Endpoints interface {
 
 func New(s Endpoints) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/v1/notifications", s.Notifications)
+	mux.HandleFunc("PUT /api/v1/notifications/preferences", s.UpdateNotificationPreferences)
+	mux.HandleFunc("POST /api/v1/notifications/subscriptions", s.SubscribePush)
+	mux.HandleFunc("DELETE /api/v1/notifications/subscriptions/{id}", s.RevokePush)
+	mux.HandleFunc("POST /internal/jobs", s.RunJobs)
 	mux.HandleFunc("POST /api/v1/monitoring/errors", s.IngestError)
 	mux.HandleFunc("POST /api/v1/auth/register", s.Register)
 	mux.HandleFunc("POST /api/v1/auth/login", s.Login)

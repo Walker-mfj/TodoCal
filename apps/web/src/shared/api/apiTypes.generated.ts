@@ -4,6 +4,71 @@
  */
 
 export interface paths {
+  "/notifications": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Account preferences and active devices. publicKey is empty when Web Push is not configured. No endpoints or private keys are returned. */
+    get: operations["getNotifications"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/notifications/preferences": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put: operations["updateNotificationPreferences"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/notifications/subscriptions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["subscribePush"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/notifications/subscriptions/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete: operations["revokePush"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/auth/register": {
     parameters: {
       query?: never;
@@ -436,6 +501,55 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    NotificationPreferences: {
+      /** @default false */
+      taskStart: boolean;
+      /** @default false */
+      deadline: boolean;
+      /** @default false */
+      focusComplete: boolean;
+      /** @default false */
+      breakComplete: boolean;
+      /** @default 5 */
+      leadMinutes: number;
+      /** @description Empty to disable quiet hours, otherwise HH:MM in the account timezone. Both endpoints must be set and different. */
+      quietStart: string;
+      quietEnd: string;
+      /** Format: int64 */
+      readonly revision: number;
+    };
+    NotificationPreferencesInput: components["schemas"]["NotificationPreferences"] & {
+      /** Format: int64 */
+      expectedRevision: number;
+    };
+    NotificationState: {
+      publicKey: string;
+      preferences: components["schemas"]["NotificationPreferences"];
+      subscriptions: {
+        /** Format: uuid */
+        id: string;
+        /** Format: date-time */
+        createdAt: string;
+        currentDevice: boolean;
+      }[];
+    };
+    PushSubscriptionInput: {
+      /**
+       * Format: uri
+       * @description HTTPS browser push endpoint on fcm.googleapis.com, updates.push.services.mozilla.com or web.push.apple.com. Credentials, custom ports and fragments are rejected.
+       */
+      endpoint: string;
+      keys: {
+        /** @description Base64url P-256 public key */
+        p256dh: string;
+        /** @description Base64url 16-byte authentication secret */
+        auth: string;
+      };
+    };
+    PushSubscriptionResult: {
+      /** Format: uuid */
+      id: string;
+    };
     DayFocusEntry: {
       /** Format: uuid */
       id: string;
@@ -578,13 +692,14 @@ export interface components {
     /** @description Omitted editable fields are retained. Explicit null clears nullable fields. Status is changed only through the completion endpoint. */
     TaskPatch: {
       /**
-       * @description All updates current and future occurrences plus the lazy series template; finalized history is preserved. Date changes shift all live occurrences by the same number of days.
+       * @description Following splits at the selected original slot, preserving the earlier head and protected history. All retains legacy edits from today. Date shifts preserve original-slot identity.
        * @default one
        * @enum {string}
        */
-      scope: "one" | "all";
-      /** @description Required for scope all; obtain from GET /series/{id}. */
+      scope: "one" | "following" | "all";
+      /** @description Required for scope following or all; obtain from GET /series/{id}. */
       expectedSeriesRevision?: number;
+      recurrence?: components["schemas"]["RecurrenceRule"];
       title?: string;
       /** @default  */
       description: string;
@@ -735,6 +850,11 @@ export interface components {
       endDate?: string | null;
     };
     RecurrenceSeries: {
+      /**
+       * Format: date
+       * @description Exclusive original-slot boundary after a following edit/delete.
+       */
+      originalCutoff?: string | null;
       task: components["schemas"]["TaskInput"] & {
         /** Format: date */
         scheduledDate: string;
@@ -795,6 +915,31 @@ export interface components {
       days: components["schemas"]["DayReport"][];
       warnings: components["schemas"]["CalendarWarning"][];
     };
+    RecurrenceRule: {
+      /** @enum {string} */
+      cadence: "daily" | "weekly" | "interval";
+      intervalDays: number;
+      /** Format: date */
+      endDate: string | null;
+    };
+    DeleteTaskInput: {
+      expectedRevision: number;
+      /**
+       * @default one
+       * @enum {string}
+       */
+      scope: "one" | "following";
+      expectedSeriesRevision?: number;
+      /** @default false */
+      confirmCompleted: boolean;
+    };
+    DeleteTaskResult: {
+      ok: boolean;
+      revision: number;
+      /** Format: uuid */
+      seriesId?: string;
+      seriesRevision?: number;
+    };
   };
   responses: {
     /** @description Authenticated; sets focus_session (HttpOnly, SameSite=Lax, Secure with HTTPS, seven-day Max-Age) */
@@ -851,6 +996,118 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  getNotifications: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Notification settings */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["NotificationState"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  updateNotificationPreferences: {
+    parameters: {
+      query?: never;
+      header: {
+        "X-CSRF-Token": components["parameters"]["CSRF"];
+        /** @description Generate once per intended command. Retry the identical method, request URI, and JSON bytes with the same key. A different request using the key returns 409. Keys are scoped to the account. */
+        "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["NotificationPreferencesInput"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["NotificationPreferences"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  subscribePush: {
+    parameters: {
+      query?: never;
+      header: {
+        "X-CSRF-Token": components["parameters"]["CSRF"];
+        /** @description Generate once per intended command. Retry the identical method, request URI, and JSON bytes with the same key. A different request using the key returns 409. Keys are scoped to the account. */
+        "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PushSubscriptionInput"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PushSubscriptionResult"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  revokePush: {
+    parameters: {
+      query?: never;
+      header: {
+        "X-CSRF-Token": components["parameters"]["CSRF"];
+        /** @description Generate once per intended command. Retry the identical method, request URI, and JSON bytes with the same key. A different request using the key returns 409. Keys are scoped to the account. */
+        "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": Record<string, never>;
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            ok: boolean;
+          };
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
   register: {
     parameters: {
       query?: never;
@@ -1055,11 +1312,19 @@ export interface operations {
     };
     requestBody: {
       content: {
-        "application/json": components["schemas"]["ExpectedRevision"];
+        "application/json": components["schemas"]["DeleteTaskInput"];
       };
     };
     responses: {
-      200: components["responses"]["OK"];
+      /** @description Task or series tail deleted; use seriesId/seriesRevision for atomic tail restore. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DeleteTaskResult"];
+        };
+      };
       default: components["responses"]["Error"];
     };
   };

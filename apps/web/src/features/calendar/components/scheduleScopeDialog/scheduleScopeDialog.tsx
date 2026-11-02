@@ -15,7 +15,7 @@ export function ScheduleScopeDialog({
   error: string;
   allAvailable: boolean;
   onCancel: () => void;
-  onChoose: (scope: "one" | "all") => Promise<void>;
+  onChoose: (scope: "one" | "following") => Promise<void>;
 }) {
   return (
     <Dialog
@@ -23,7 +23,7 @@ export function ScheduleScopeDialog({
       icon={Repeat2}
       busy={busy}
       onDismiss={onCancel}
-      description="Apply this schedule to this occurrence, or all occurrences from today onward? Finalized history stays unchanged. Other task details stay the same."
+      description="Apply this schedule to this occurrence, or this and following occurrences? Finalized history stays unchanged. Other task details stay the same."
       actions={
         <>
           <button
@@ -38,9 +38,9 @@ export function ScheduleScopeDialog({
             type="button"
             className={cx("primary", true)}
             disabled={busy || !allAvailable}
-            onClick={() => void onChoose("all")}
+            onClick={() => void onChoose("following")}
           >
-            {busy ? "Saving…" : "All occurrences"}
+            {busy ? "Saving…" : "This and following"}
           </button>
         </>
       }

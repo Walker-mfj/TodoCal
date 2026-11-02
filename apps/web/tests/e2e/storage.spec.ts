@@ -76,20 +76,25 @@ for (const failure of ["denied", "quota"]) {
       page.getByRole("button", { name: "Save settings", exact: true }),
     ).toBeEnabled();
     await expect(page.locator("html")).toHaveAttribute("data-mode", "dark");
+    await page.getByRole("button", { name: /^Focus timer/ }).click();
     await page
-      .getByRole("button", { name: "Focus timer", exact: true })
+      .getByRole("button", { name: "Start session", exact: true })
       .click();
-    await page.getByRole("button", { name: /^Focus 25/ }).click();
     await expect(
-      page.getByRole("region", { name: "Active timer" }),
+      page.getByRole("button", { name: "Pause", exact: true }),
     ).toBeVisible();
     await page
       .getByRole("button", { name: "End session", exact: true })
       .click();
     await expect(
-      page.getByRole("region", { name: "Active timer" }),
+      page.getByRole("button", { name: "Pause", exact: true }),
     ).toBeHidden();
-    await page.getByRole("button", { name: "Sign out", exact: true }).click();
+    await page.getByRole("button", { name: "Close focus timer" }).click();
+    await page.getByRole("button", { name: /^Account:/ }).click();
+    await page
+      .getByRole("dialog", { name: "Account options" })
+      .getByRole("button", { name: "Sign out", exact: true })
+      .click();
     await expect(page.getByLabel("Email", { exact: true })).toBeVisible();
     expect(errors).toEqual([]);
   });

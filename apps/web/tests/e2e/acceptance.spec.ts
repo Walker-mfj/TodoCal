@@ -73,9 +73,9 @@ test("acceptance: keyboard-only task workflow, custom errors, long names and emp
     page,
     page.getByRole("button", { name: "Create task", exact: true }),
   );
-  await expect(page.locator(".form-validation[role=alert]")).toContainText(
-    "Task title is required",
-  );
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Task title is required" }),
+  ).toContainText("Task title is required");
   await expect(page.getByLabel("Task title")).toBeFocused();
   await expect(page.getByLabel("Task title")).toHaveAttribute(
     "aria-invalid",
@@ -146,7 +146,9 @@ test("acceptance: keyboard-only task workflow, custom errors, long names and emp
       page,
       page.getByRole("button", { name: "Create task", exact: true }),
     );
-    await expect(page.locator(".form-validation[role=alert]")).toBeVisible();
+    await expect(
+      page.getByRole("alert").filter({ hasText: "Task title is required" }),
+    ).toBeVisible();
     await page.screenshot({
       path: `test-results/acceptance-form-${theme}-1440.png`,
     });

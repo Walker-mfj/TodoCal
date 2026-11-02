@@ -101,7 +101,7 @@ it("keeps the existing single-occurrence schedule and Undo path", async () => {
   expect(mocks.execute.mock.calls[0][1].body.expectedRevision).toBe(2);
 });
 
-it("sends only schedule fields for all occurrences and retains scope on retry", async () => {
+it("sends only schedule fields for following occurrences and retains scope on retry", async () => {
   mocks.read.mockResolvedValue({ revision: 4 });
   mocks.execute
     .mockReset()
@@ -125,11 +125,11 @@ it("sends only schedule fields for all occurrences and retains scope on retry", 
       schedule,
     ),
   );
-  await act(async () => result.current.chooseScope("all"));
+  await act(async () => result.current.chooseScope("following"));
   expect(mocks.execute.mock.calls[0][0]).toBe("/tasks/repeat");
   expect(mocks.execute.mock.calls[0][1].body).toEqual({
     ...schedule,
-    scope: "all",
+    scope: "following",
     expectedRevision: 2,
     expectedSeriesRevision: 4,
   });

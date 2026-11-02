@@ -48,7 +48,12 @@ func (w *Sweeper) Sweep(ctx context.Context, pool *pgxpool.Pool, now func() time
 			// Advance even if this account times out; it gets another turn after wrap.
 			w.Cursor = id
 			accountCtx, cancel := context.WithTimeout(ctx, timeout)
-			e = services.WithTx(accountCtx, pool, id, now, func(pgx.Tx, string, time.Time) error { return nil })
+			e = services.WithTx(accountCtx, pool, id, now, func(tx pgx.Tx, zone string, stamp time.Time) error {
+				if err := services.SettleFocus(accountCtx, tx, id, stamp); err != nil {
+					return err
+				}
+				return services.MaterializeReminderHorizon(accountCtx, tx, id, zone, stamp)
+			})
 			cancel()
 			if e != nil {
 				failures = append(failures, e)

@@ -44,7 +44,7 @@ flowchart TD
 - The server is authoritative for focus timestamps, including after reload, sleep, or cross-device access. A client countdown estimates remaining time from the most recently fetched session state; it must not mutate the database or infer task completion on its own.
 - After the server confirms that a session completed, clients must invalidate/refetch task, calendar and analytics views that derive focus totals. A stale old task view must not subtract the completed session when the active timer disappears.
 - **Current notification behavior:** the web client can show a browser notification/sound when an observed active session transitions to completed, subject to permission and an active client. This is **not Web Push** and does not reliably notify when every app tab is closed.
-- **Future work:** backend scheduled reminders, persistently settling elapsed focus sessions in a worker, and Web Push for installed/background clients are specified as proposals in [PWA & notifications](12-pwa-notifications.md), not shipped features.
+- The worker and authenticated scheduled-job endpoint persist expired Focus completion without a browser read. Cloudflare cron configuration invokes this endpoint; API catch-up remains a fallback. [Web Push](12-pwa-notifications.md) requires deployed scheduler/VAPID configuration and explicit device opt-in. Local tests do not verify live closed-browser delivery.
 
 ## Acceptance checks
 

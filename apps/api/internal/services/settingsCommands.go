@@ -47,9 +47,14 @@ func EditSettingsCommand(ctx context.Context, tx pgx.Tx, p Principal, zone strin
 	if in.Appearance != "light" && in.Appearance != "dark" {
 		return nil, 0, Invalid("Choose light or dark appearance")
 	}
-	for _, n := range []int{in.FocusMinutes, in.ShortBreakMinutes, in.LongBreakMinutes} {
-		if n < 1 || n > 2147483647 {
-			return nil, 0, Invalid("Durations must be positive whole minutes")
+	for _, duration := range []struct {
+		kind    string
+		minutes int
+	}{
+		{"focus", in.FocusMinutes}, {"short_break", in.ShortBreakMinutes}, {"long_break", in.LongBreakMinutes},
+	} {
+		if err := validateDuration(duration.kind, int64(duration.minutes)); err != nil {
+			return nil, 0, err
 		}
 	}
 	if in.Timezone != current.Timezone {

@@ -317,6 +317,13 @@ export default function Calendar({
         }}
         eventContent={(arg) => (
           <CalendarEventContent
+            accessibleLabel={
+              arg.event.extendedProps.draft
+                ? `Unsaved draft: ${arg.event.title}, ${arg.event.startStr}`
+                : arg.event.extendedProps.task && !arg.isMirror
+                  ? `${arg.event.title}, ${priorityLabels[arg.event.extendedProps.task.priority as Task["priority"]]} priority, ${arg.event.extendedProps.task.status === "complete" ? "Completed" : "To do"}, ${arg.event.startStr}`
+                  : undefined
+            }
             task={arg.event.extendedProps.task}
             focus={focus}
             defaultFocusMinutes={defaultFocusMinutes}

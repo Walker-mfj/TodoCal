@@ -54,11 +54,11 @@ func (c Command) TaskPatch(current models.TaskInput) (out models.TaskPatch, err 
 	}
 	if v, ok := fields["scope"]; ok {
 		if err = json.Unmarshal(v, &out.Scope); err != nil {
-			return out, Invalid("Choose one or all occurrences")
+			return out, Invalid("Choose one, following, or all occurrences")
 		}
 	}
-	if out.Scope != "" && out.Scope != "one" && out.Scope != "all" {
-		return out, Invalid("Choose one or all occurrences")
+	if out.Scope != "" && out.Scope != "one" && out.Scope != "all" && out.Scope != "following" {
+		return out, Invalid("Choose one, following, or all occurrences")
 	}
 	if v, ok := fields["expectedSeriesRevision"]; ok {
 		if err = json.Unmarshal(v, &out.SeriesRevision); err != nil {
@@ -67,11 +67,25 @@ func (c Command) TaskPatch(current models.TaskInput) (out models.TaskPatch, err 
 	}
 	delete(fields, "scope")
 	delete(fields, "expectedSeriesRevision")
+	recurrence, hasRecurrence := fields["recurrence"]
+	if hasRecurrence {
+		if out.Scope != "following" {
+			return out, Invalid("Recurrence changes require following scope")
+		}
+		var rule models.RecurrenceRule
+		if err = parseInput(recurrence, &rule); err != nil {
+			return out, err
+		}
+		delete(fields, "recurrence")
+	}
 	patch, err := json.Marshal(fields)
 	if err != nil {
 		return out, err
 	}
 	err = mergePatch(patch, current, &out.Task)
+	if hasRecurrence {
+		fields["recurrence"] = recurrence
+	}
 	out.Fields = fields
 	return
 }

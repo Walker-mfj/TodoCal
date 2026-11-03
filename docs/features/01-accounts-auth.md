@@ -56,7 +56,8 @@ flowchart TD
     B --> C{Session still valid?}
     C -->|Revalidated on every mutation| D{Not expired and not revoked}
     D -->|Yes| E[Operation allowed]
-    D -->|Past expires_at| F[401 - sign in again]
+    D -->|Past expires_at| F[Refresh access on demand]
+    F -->|Refresh expired or revoked| G[Sign in again]
     B --> G{Account action}
     G -->|Logout| H[Revoke current session]
     G -->|Password change| I[Keep current; revoke other sessions]
@@ -66,10 +67,13 @@ flowchart TD
 
 ## Session and device behavior
 
-- Login creates a seven-day session cookie. Signing in on another device creates a separate session; it does not log out the first device.
+- Login creates a one-hour access cookie and a rotating refresh cookie with a 30-day inactivity expiry. Each successful refresh starts a new 30-day window; there is no absolute maximum lifetime. Signing in on another device creates a separate session family. Credentials are HttpOnly cookies; only hashes are stored server-side.
 - Logout terminates only the current session. Changing a password invalidates the other sessions and leaves the current session valid.
 - `Execute` rechecks ownership and session validity under the write transaction. Read endpoints are authenticated before `View`; do not treat this as a fresh session check *inside* every read transaction.
 - The browser must clear account-owned cached query data on logout/account switch. A cached browser view or installed PWA must not treat an expired cookie as proof of authentication.
-- If a login session expires or is revoked on another device, show a sign-in state on the next authenticated request rather than displaying an unconfirmed save as successful.
+- When access expires, the browser renews it on demand and retries only a rejected authentication/CSRF request, retaining its idempotency key and account guard. Refresh expiry/revocation requires sign-in. Credential-changing requests share a Web Lock across tabs, with a local queue fallback. Refresh reuse outside a fixed 30-second concurrency/lost-response grace revokes the family.
 
 See [settings](13-settings.md) for account preferences and [PWA/notifications](12-pwa-notifications.md) for device-local permissions.
+
+### Upgrade behavior
+Existing pre-refresh sessions retain their original expiry. Signing in again issues the new credential pair. `focus_device` is a persistent, non-authenticating browser identifier: a successful login reattaches that account's still-authorized push subscriptions to the new family. It never restores consent after logout or notification revocation.

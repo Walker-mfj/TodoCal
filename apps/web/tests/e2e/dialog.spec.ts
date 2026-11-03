@@ -112,10 +112,10 @@ test("shared delete confirmation supports cancel, light/dark and accessible labe
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByLabel("Appearance").selectOption(theme);
     await page
-      .getByRole("button", { name: "Save settings", exact: true })
+      .getByRole("button", { name: "Save changes", exact: true })
       .click();
     await expect(
-      page.getByRole("button", { name: "Save settings", exact: true }),
+      page.getByRole("button", { name: "Save changes", exact: true }),
     ).toBeEnabled();
     await expect(page.locator("html")).toHaveAttribute("data-mode", theme);
     await page.getByRole("button", { name: "Groups", exact: true }).click();

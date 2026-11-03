@@ -77,7 +77,11 @@ export function useFocus() {
       });
       if (session!.settings.sound && audio.current?.state === "running") {
         try {
-          playTimerSound(audio.current, session!.settings.timerSound);
+          playTimerSound(
+            audio.current,
+            session!.settings.timerSound,
+            session!.settings.soundVolume ?? 75,
+          );
         } catch {}
       }
       if (

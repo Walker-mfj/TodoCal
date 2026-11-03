@@ -94,7 +94,14 @@ func TestNotificationDeliveryLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// Push delivery has its own lifetime, independent of access credentials.
+	if _, e = pool.Exec(ctx, "UPDATE auth_sessions SET expires_at=$1 WHERE id=$2", now.Add(-time.Hour), p.SessionID); e != nil {
+		t.Fatal(e)
+	}
 	run()
+	if _, e = pool.Exec(ctx, "UPDATE auth_sessions SET expires_at=$1 WHERE id=$2", now.Add(24*time.Hour), p.SessionID); e != nil {
+		t.Fatal(e)
+	}
 	if sender.calls != 2 {
 		t.Fatalf("two devices: %d", sender.calls)
 	}

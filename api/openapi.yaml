@@ -101,7 +101,7 @@ paths:
     post:
       operationId: register
       security: []
-      description: Creates an account, default settings, and a seven-day session atomically.
+      description: Creates an account, default settings, and a one-hour access token and rotating 30-day idle refresh token atomically.
         Requires the configured Origin and application/json. Limited by email and
         IP.
       requestBody:
@@ -146,6 +146,50 @@ paths:
           $ref: '#/components/responses/Error'
         '429':
           $ref: '#/components/responses/RateLimit'
+        default:
+          $ref: '#/components/responses/Error'
+  /auth/refresh:
+    post:
+      operationId: refreshSession
+      security: []
+      description: Rotates the HttpOnly focus_refresh cookie. Requires the configured Origin and application/json. Idle expiry is 30 days with no absolute lifetime. A 30-second retry grace tolerates concurrent tabs and lost responses; older token reuse revokes the family.
+      responses:
+        '200':
+          $ref: '#/components/responses/Session'
+        default:
+          $ref: '#/components/responses/Error'
+  /settings/workspace:
+    patch:
+      operationId: updateWorkspaceSettings
+      description: Atomically saves general settings and notification preferences with independent revision checks.
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [settings, notifications]
+              properties:
+                settings:
+                  $ref: '#/components/schemas/SettingsPatch'
+                notifications:
+                  $ref: '#/components/schemas/NotificationPreferencesInput'
+      responses:
+        '200':
+          description: Both preference groups saved
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [settings, notifications]
+                properties:
+                  settings:
+                    $ref: '#/components/schemas/Settings'
+                  notifications:
+                    $ref: '#/components/schemas/NotificationPreferences'
         default:
           $ref: '#/components/responses/Error'
   /auth/me:
@@ -943,7 +987,7 @@ components:
           type: array
           items:
             type: object
-            required: [id, createdAt, currentDevice]
+            required: [id, createdAt, currentDevice, deviceName, endpointHash]
             properties:
               id:
                 type: string
@@ -951,6 +995,10 @@ components:
               createdAt:
                 type: string
                 format: date-time
+              deviceName:
+                type: string
+              endpointHash:
+                type: string
               currentDevice:
                 type: boolean
     PushSubscriptionInput:
@@ -958,6 +1006,9 @@ components:
       additionalProperties: false
       required: [endpoint, keys]
       properties:
+        deviceName:
+          type: string
+          maxLength: 100
         endpoint:
           type: string
           format: uri
@@ -1144,6 +1195,11 @@ components:
         sound:
           type: boolean
           default: true
+        soundVolume:
+          type: integer
+          minimum: 0
+          maximum: 100
+          default: 75
         timerSound:
           type: string
           enum: [classic, bell, soft_bell, double_bell, singing_bowl, doorbell, chime, digital]
@@ -1587,6 +1643,11 @@ components:
         sound:
           type: boolean
           default: true
+        soundVolume:
+          type: integer
+          minimum: 0
+          maximum: 100
+          default: 75
         timerSound:
           type: string
           enum: [classic, bell, soft_bell, double_bell, singing_bowl, doorbell, chime, digital]

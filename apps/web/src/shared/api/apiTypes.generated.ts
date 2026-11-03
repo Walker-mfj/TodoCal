@@ -78,7 +78,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Creates an account, default settings, and a seven-day session atomically. Requires the configured Origin and application/json. Limited by email and IP. */
+    /** @description Creates an account, default settings, and a one-hour access token and rotating 30-day idle refresh token atomically. Requires the configured Origin and application/json. Limited by email and IP. */
     post: operations["register"];
     delete?: never;
     options?: never;
@@ -101,6 +101,40 @@ export interface paths {
     options?: never;
     head?: never;
     patch?: never;
+    trace?: never;
+  };
+  "/auth/refresh": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Rotates the HttpOnly focus_refresh cookie. Requires the configured Origin and application/json. Idle expiry is 30 days with no absolute lifetime. A 30-second retry grace tolerates concurrent tabs and lost responses; older token reuse revokes the family. */
+    post: operations["refreshSession"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/settings/workspace": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** @description Atomically saves general settings and notification preferences with independent revision checks. */
+    patch: operations["updateWorkspaceSettings"];
     trace?: never;
   };
   "/auth/me": {
@@ -556,10 +590,13 @@ export interface components {
         id: string;
         /** Format: date-time */
         createdAt: string;
+        deviceName: string;
+        endpointHash: string;
         currentDevice: boolean;
       }[];
     };
     PushSubscriptionInput: {
+      deviceName?: string;
       /**
        * Format: uri
        * @description HTTPS browser push endpoint on fcm.googleapis.com, updates.push.services.mozilla.com or web.push.apple.com. Credentials, custom ports and fragments are rejected.
@@ -685,6 +722,8 @@ export interface components {
       longBreakMinutes: number;
       /** @default true */
       sound: boolean;
+      /** @default 75 */
+      soundVolume: number;
       /**
        * @default classic
        * @enum {string}
@@ -874,6 +913,8 @@ export interface components {
       longBreakMinutes: number;
       /** @default true */
       sound: boolean;
+      /** @default 75 */
+      soundVolume: number;
       /**
        * @default classic
        * @enum {string}
@@ -1199,6 +1240,53 @@ export interface operations {
       200: components["responses"]["Session"];
       401: components["responses"]["Error"];
       429: components["responses"]["RateLimit"];
+      default: components["responses"]["Error"];
+    };
+  };
+  refreshSession: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: components["responses"]["Session"];
+      default: components["responses"]["Error"];
+    };
+  };
+  updateWorkspaceSettings: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description Generate once per intended command. Retry the identical method, request URI, and JSON bytes with the same key. A different request using the key returns 409. Keys are scoped to the account. */
+        "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          settings: components["schemas"]["SettingsPatch"];
+          notifications: components["schemas"]["NotificationPreferencesInput"];
+        };
+      };
+    };
+    responses: {
+      /** @description Both preference groups saved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            settings: components["schemas"]["Settings"];
+            notifications: components["schemas"]["NotificationPreferences"];
+          };
+        };
+      };
       default: components["responses"]["Error"];
     };
   };

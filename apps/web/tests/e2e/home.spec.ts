@@ -67,9 +67,7 @@ test("real API: tasks, recurrence, groups, progress, theme and second-browser pe
   await expect(page.locator(".group-row")).toContainText("Personal");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByLabel("Appearance").selectOption("dark");
-  await page
-    .getByRole("button", { name: "Save settings", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("data-mode", "dark");
   await page.getByRole("button", { name: "Calendar", exact: true }).click();
   await expect(page.locator(".fc-event")).toHaveCount(2);
@@ -113,9 +111,7 @@ test("real API: tasks, recurrence, groups, progress, theme and second-browser pe
   await page.getByRole("button", { name: "Close day details" }).click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByLabel("Appearance").selectOption("light");
-  await page
-    .getByRole("button", { name: "Save settings", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("data-mode", "light");
   await page.getByRole("button", { name: "Calendar", exact: true }).click();
   await page.screenshot({

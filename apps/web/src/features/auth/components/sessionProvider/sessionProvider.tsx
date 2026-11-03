@@ -19,6 +19,11 @@ import {
   ApiError,
   type RequestOptions,
 } from "../../../../shared/api/apiClient";
+import {
+  renewSession,
+  readOrRenewSession,
+  withSessionLock,
+} from "../../utils/renewSession";
 import type { Session } from "../../types/sessionTypes";
 type State = {
   session: Session | null;
@@ -72,7 +77,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return refreshing.current.promise;
     const promise = (async () => {
       try {
-        const result = await apiFetch<Session>("/auth/me");
+        const result = await apiFetch<Session>("/auth/me").catch((error) => {
+          if (error instanceof ApiError && error.status === 401)
+            return renewSession();
+          throw error;
+        });
         if (version !== epoch.current) return;
         if (current.current && current.current.user.id !== result.user.id) {
           clear();
@@ -130,10 +139,33 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (options.owner && options.owner !== auth?.user.id)
         throw new DOMException("Account changed", "AbortError");
       try {
-        const out = await apiFetch<T>(path, {
-          ...options,
-          csrf: auth?.csrfToken,
-          owner: options.owner || auth?.user.id,
+        const send = (csrf: string | undefined) =>
+          apiFetch<T>(path, {
+            ...options,
+            csrf,
+            owner: options.owner || auth?.user.id,
+          });
+        const out = await send(auth?.csrfToken).catch(async (error) => {
+          // These errors are emitted before mutation; never replay ambiguous
+          // network/server failures, and never replay into a different account.
+          if (
+            !(error instanceof ApiError) ||
+            error.code === "account_changed" ||
+            !(
+              error.status === 401 ||
+              (error.status === 403 && error.code === "csrf")
+            )
+          )
+            throw error;
+          const renewed = await renewSession();
+          if (
+            version !== epoch.current ||
+            (auth && renewed.user.id !== auth.user.id)
+          )
+            throw new ApiError(401, "Account changed", "account_changed");
+          current.current = renewed;
+          setSession(renewed);
+          return send(renewed.csrfToken);
         });
         if (version !== epoch.current)
           throw new ApiError(401, "Account changed");
@@ -174,24 +206,36 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     register: boolean,
   ) => {
     clear();
-    await apiFetch(register ? "/auth/register" : "/auth/login", {
-      method: "POST",
-      body: {
-        email,
-        password,
-        ...(register
-          ? { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }
-          : {}),
-      },
-    });
+    await withSessionLock(() =>
+      apiFetch(register ? "/auth/register" : "/auth/login", {
+        method: "POST",
+        body: {
+          email,
+          password,
+          ...(register
+            ? { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }
+            : {}),
+        },
+      }),
+    );
     await refresh();
     channel.current?.postMessage("session");
   };
   const logout = async () => {
     const owner = current.current?.user.id;
-    await execute("/auth/logout", { method: "POST", body: {} });
-    if (owner) sessionStore.clearOwner(owner);
-    clear();
+    await withSessionLock(async () => {
+      const latest = await readOrRenewSession();
+      if (!owner || latest.user.id !== owner)
+        throw new ApiError(401, "Account changed", "account_changed");
+      await apiFetch("/auth/logout", {
+        method: "POST",
+        body: {},
+        owner,
+        csrf: latest.csrfToken,
+      });
+      if (owner) sessionStore.clearOwner(owner);
+      clear();
+    });
     channel.current?.postMessage("session");
   };
   return (

@@ -6,7 +6,7 @@ Centralize account-level preferences and their effects on planning, recurrence, 
 
 ## Current data and behavior
 
-`settings` stores explicit IANA `timezone` (default UTC when no explicit value is provided), `appearance` (light/dark), default Focus/short-break/long-break durations, `sound`, and optimistic `revision`.
+`settings` stores explicit IANA `timezone` (default UTC when no explicit value is provided), `appearance` (light/dark), default Focus/short-break/long-break durations, `sound`, `timerSound`, `soundVolume` (0–100, default 75), and optimistic `revision`.
 
 - `PATCH /settings` requires `expectedRevision`; a stale revision returns 409 and should preserve the user's unsaved draft for review.
 - The API rejects missing/invalid IANA time zones and unknown appearance values. The UI currently constrains Focus to 1–180 minutes and breaks to 1–60 minutes; task-specific Focus duration is a separate 1–180 minute setting. The API enforces the same settings bounds. Starting a timer also validates the resolved default, rejecting out-of-range values saved by older versions; a valid explicit session override remains usable. Explicit session overrides retain their separate 1–180 minute contract.
@@ -14,7 +14,7 @@ Centralize account-level preferences and their effects on planning, recurrence, 
 - A time-zone change calls `BeforeZoneChange` to seal dates crossed by a forward time-zone jump. Existing finalized plans retain their saved timezone; future local-date calculation uses the new zone. Future invalid-wall-time recurrence exceptions may be reevaluated.
 - A changed default Focus duration should affect **new** sessions, not mutate elapsed time, targets, or past sessions already persisted.
 - The Notifications panel controls **Web Push** only. Its explanation distinguishes open-tab completion notifications (controlled by browser permission), warns that both paths can notify for the same completion, and explains how to block site notifications in browser settings. **Timer sound** remains independent. The Focus panel repeats this distinction; this clarification does not change delivery behavior.
-- Notification permissions are **device/browser local**. A separate `notification_preferences` record stores account event toggles, lead time and quiet hours; Settings also lists and revokes session-bound device subscriptions.
+- Notification permissions are **device/browser local**. A separate `notification_preferences` record stores account event toggles, lead time and quiet hours; Settings also lists and revokes device subscriptions whose delivery lifetime is independent of access-token expiry.
 
 ## Product rules and edge cases
 
@@ -38,3 +38,9 @@ Centralize account-level preferences and their effects on planning, recurrence, 
 5. Browser notification denial does not break Settings or Focus.
 
 Related: [auth](01-accounts-auth.md), [recurrence](06-recurrence.md), [finalization](07-planning-finalization.md), [PWA](12-pwa-notifications.md).
+
+## Unified workspace settings
+
+`PATCH /settings/workspace` accepts `{settings, notifications}` with each group's `expectedRevision`. The account transaction commits both or neither; the usual idempotency key prevents duplicate saves. One Save changes action covers Workspace, Focus timer and Notifications. Enable/Revoke remain immediate device actions. Drafts survive authentication renewal and explicit conflict recovery.
+
+Synthesized completion sounds last 4.8 seconds, with a modestly increased default amplitude, volume adjustment and Preview/Stop controls. Volume affects in-app timer audio only; OS Web Push sound remains browser/system controlled.

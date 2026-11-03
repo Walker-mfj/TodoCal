@@ -1,6 +1,25 @@
 import { it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { SettingsForm } from "./settingsForm";
+const notifications = {
+  publicKey: "",
+  subscriptions: [],
+  preferences: {
+    taskStart: false,
+    deadline: false,
+    focusComplete: false,
+    breakComplete: false,
+    leadMinutes: 5,
+    quietStart: "",
+    quietEnd: "",
+    revision: 2,
+  },
+};
+const read = vi
+  .fn()
+  .mockImplementation(async (path: string) =>
+    path === "/settings" ? { ...settings, revision: 5 } : notifications,
+  );
 const settings = {
   timezone: "Asia/Tokyo",
   appearance: "light" as const,
@@ -9,6 +28,7 @@ const settings = {
   longBreakMinutes: 15,
   sound: true,
   timerSound: "classic" as const,
+  soundVolume: 75,
   revision: 4,
 };
 it("persists Light/Dark with the account revision", async () => {
@@ -18,6 +38,7 @@ it("persists Light/Dark with the account revision", async () => {
   const refresh = vi.fn();
   render(
     <SettingsForm
+      read={read}
       owner="owner"
       settings={settings}
       execute={save}
@@ -25,13 +46,19 @@ it("persists Light/Dark with the account revision", async () => {
       disabled={false}
     />,
   );
+  await screen.findByLabelText("Scheduled task reminders");
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: /Save changes|Retry save/ }),
+    ).toBeEnabled(),
+  );
   fireEvent.change(screen.getByLabelText("Appearance"), {
     target: { value: "dark" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
   await waitFor(() => expect(save).toHaveBeenCalled());
-  expect(save.mock.calls[0][0]).toBe("/settings");
-  expect(save.mock.calls[0][1].body).toMatchObject({
+  expect(save.mock.calls[0][0]).toBe("/settings/workspace");
+  expect(save.mock.calls[0][1].body.settings).toMatchObject({
     appearance: "dark",
     expectedRevision: 4,
   });
@@ -45,6 +72,7 @@ it("recovers a conflict without silently replacing the draft", async () => {
     .mockResolvedValue({});
   const view = render(
     <SettingsForm
+      read={read}
       owner="owner"
       settings={settings}
       execute={save}
@@ -52,13 +80,20 @@ it("recovers a conflict without silently replacing the draft", async () => {
       disabled={false}
     />,
   );
+  await screen.findByLabelText("Scheduled task reminders");
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: /Save changes|Retry save/ }),
+    ).toBeEnabled(),
+  );
   fireEvent.change(screen.getByLabelText("Appearance"), {
     target: { value: "dark" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
   await screen.findByRole("alert");
   view.rerender(
     <SettingsForm
+      read={read}
       owner="owner"
       settings={{ ...settings, revision: 5 }}
       execute={save}
@@ -69,9 +104,12 @@ it("recovers a conflict without silently replacing the draft", async () => {
   fireEvent.click(
     screen.getByRole("button", { name: "Reapply draft to latest settings" }),
   );
-  fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
   await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
-  expect(save.mock.calls[1][1].body).toMatchObject({
+  expect(save.mock.calls[1][1].body.settings).toMatchObject({
     appearance: "dark",
     expectedRevision: 5,
   });
@@ -84,21 +122,29 @@ it("restores settings draft and exact uncertain command for the original account
     .mockResolvedValue({});
   const view = render(
     <SettingsForm
+      read={read}
       owner="owner"
       settings={settings}
       execute={save}
       refresh={vi.fn()}
       disabled={false}
     />,
+  );
+  await screen.findByLabelText("Scheduled task reminders");
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: /Save changes|Retry save/ }),
+    ).toBeEnabled(),
   );
   fireEvent.change(screen.getByLabelText("Appearance"), {
     target: { value: "dark" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
   await screen.findByRole("alert");
   view.unmount();
   render(
     <SettingsForm
+      read={read}
       owner="owner"
       settings={settings}
       execute={save}
@@ -106,7 +152,15 @@ it("restores settings draft and exact uncertain command for the original account
       disabled={false}
     />,
   );
-  expect(screen.getByLabelText("Appearance")).toHaveValue("dark");
+  await screen.findByLabelText("Scheduled task reminders");
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: /Save changes|Retry save/ }),
+    ).toBeEnabled(),
+  );
+  await waitFor(() =>
+    expect(screen.getByLabelText("Appearance")).toHaveValue("dark"),
+  );
   fireEvent.click(screen.getByRole("button", { name: "Retry save" }));
   await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
   expect(save.mock.calls[1][1]).toEqual(save.mock.calls[0][1]);
@@ -128,6 +182,7 @@ it.each([
     const save = vi.fn();
     render(
       <SettingsForm
+        read={read}
         owner="bounds"
         settings={settings}
         execute={save}
@@ -135,10 +190,16 @@ it.each([
         disabled={false}
       />,
     );
+    await screen.findByLabelText("Scheduled task reminders");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /Save changes|Retry save/ }),
+      ).toBeEnabled(),
+    );
     fireEvent.change(screen.getByLabelText(label), {
       target: { value: String(value) },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(message);
     expect(screen.getByLabelText(label)).toHaveFocus();
     expect(screen.getByLabelText(label)).toHaveValue(value);
@@ -150,6 +211,7 @@ it("saves the selected completion sound and disables selection when muted", asyn
   const save = vi.fn().mockResolvedValue({});
   render(
     <SettingsForm
+      read={read}
       owner="sound-owner"
       settings={settings}
       execute={save}
@@ -157,12 +219,18 @@ it("saves the selected completion sound and disables selection when muted", asyn
       disabled={false}
     />,
   );
+  await screen.findByLabelText("Scheduled task reminders");
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: /Save changes|Retry save/ }),
+    ).toBeEnabled(),
+  );
   fireEvent.change(screen.getByLabelText("Completion sound"), {
     target: { value: "bell" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
   await waitFor(() => expect(save).toHaveBeenCalled());
-  expect(save.mock.calls[0][1].body).toMatchObject({
+  expect(save.mock.calls[0][1].body.settings).toMatchObject({
     timerSound: "bell",
     sound: true,
   });
@@ -175,12 +243,19 @@ it("offers all eight cues and reports unavailable preview without saving", async
   const save = vi.fn();
   render(
     <SettingsForm
+      read={read}
       owner="preview-owner"
       settings={settings}
       execute={save}
       refresh={vi.fn()}
       disabled={false}
     />,
+  );
+  await screen.findByLabelText("Scheduled task reminders");
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: /Save changes|Retry save/ }),
+    ).toBeEnabled(),
   );
   const selector = screen.getByLabelText("Completion sound");
   expect(selector.querySelectorAll("option")).toHaveLength(8);
@@ -202,4 +277,129 @@ it("offers all eight cues and reports unavailable preview without saving", async
     "Sound preview is unavailable",
   );
   expect(save).not.toHaveBeenCalled();
+});
+
+it("saves settings and notification drafts together in one command", async () => {
+  const execute = vi.fn().mockResolvedValue({});
+  render(
+    <SettingsForm
+      owner="atomic"
+      settings={settings}
+      read={read}
+      execute={execute}
+      refresh={vi.fn()}
+      disabled={false}
+    />,
+  );
+  fireEvent.click(await screen.findByLabelText("Scheduled task reminders"));
+  fireEvent.change(screen.getByLabelText("Sound volume"), {
+    target: { value: "60" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+  await waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
+  expect(execute.mock.calls[0][0]).toBe("/settings/workspace");
+  expect(execute.mock.calls[0][1].body).toMatchObject({
+    settings: { soundVolume: 60, expectedRevision: 4 },
+    notifications: { taskStart: true, expectedRevision: 2 },
+  });
+  expect(
+    screen.queryByRole("button", { name: "Save notification preferences" }),
+  ).not.toBeInTheDocument();
+});
+
+it("previews without saving and stops playback explicitly", async () => {
+  const stops: ReturnType<typeof vi.fn>[] = [];
+  class PreviewContext {
+    currentTime = 0;
+    destination = {};
+    resume = vi.fn().mockResolvedValue(undefined);
+    close = vi.fn().mockResolvedValue(undefined);
+    createOscillator() {
+      const stop = vi.fn();
+      stops.push(stop);
+      return {
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        frequency: { value: 0 },
+        start: vi.fn(),
+        stop,
+        onended: null,
+      };
+    }
+    createGain() {
+      return {
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        gain: {
+          setValueAtTime: vi.fn(),
+          linearRampToValueAtTime: vi.fn(),
+          exponentialRampToValueAtTime: vi.fn(),
+        },
+      };
+    }
+  }
+  vi.stubGlobal("AudioContext", PreviewContext);
+  const execute = vi.fn();
+  try {
+    const view = render(
+      <SettingsForm
+        owner="stop-preview"
+        settings={settings}
+        read={read}
+        execute={execute}
+        refresh={vi.fn()}
+        disabled={false}
+      />,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Preview sound" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Stop preview" }),
+    );
+    expect(stops.every((stop) => stop.mock.calls.length === 2)).toBe(true);
+    expect(screen.getByRole("button", { name: "Preview sound" })).toBeVisible();
+    expect(execute).not.toHaveBeenCalled();
+    view.unmount();
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+it("reloads revoked devices on return without replacing unsaved preferences", async () => {
+  const device = {
+    id: "remote-device",
+    deviceName: "Firefox · Linux",
+    endpointHash: "remote",
+    currentDevice: false,
+    createdAt: "2026-11-03T00:00:00Z",
+  };
+  const read = vi
+    .fn()
+    .mockResolvedValue({ ...notifications, subscriptions: [device] });
+  render(
+    <SettingsForm
+      owner="returning"
+      settings={settings}
+      read={read}
+      execute={vi.fn()}
+      refresh={vi.fn()}
+      disabled={false}
+    />,
+  );
+  await screen.findByText("Firefox · Linux");
+  await waitFor(() =>
+    expect(screen.getByLabelText("Appearance")).toBeEnabled(),
+  );
+  fireEvent.change(screen.getByLabelText("Appearance"), {
+    target: { value: "dark" },
+  });
+  fireEvent.click(screen.getByLabelText("Scheduled task reminders"));
+  read.mockResolvedValue(notifications);
+  fireEvent(window, new Event("focus"));
+  await waitFor(() =>
+    expect(screen.queryByText("Firefox · Linux")).not.toBeInTheDocument(),
+  );
+  expect(screen.getByLabelText("Appearance")).toHaveValue("dark");
+  expect(screen.getByLabelText("Scheduled task reminders")).toBeChecked();
 });

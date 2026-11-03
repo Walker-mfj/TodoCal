@@ -20,6 +20,7 @@ func TestPeriodWeightedPlansDistinctEventsAndReopen(t *testing.T) {
 	}
 	a := complete(create("2030-10-14"), true)
 	now = atDate("2030-10-15")
+	renewTestSession(t, s, c, &csrf)
 	for i := 0; i < 9; i++ {
 		create("2030-10-15")
 	}
@@ -101,6 +102,7 @@ func TestPeriodComparisonUsesHistoricalTimeOfDay(t *testing.T) {
 	c, csrf := register(t, s, "compare-time@example.com")
 	a := object(t, command(s, "POST", "/api/v1/tasks", map[string]any{"title": "Afternoon finish", "scheduledDate": "2030-10-07"}, c, csrf, uuid.NewString()), 201)
 	now = now.Add(8 * time.Hour)
+	renewTestSession(t, s, c, &csrf)
 	object(t, command(s, "POST", "/api/v1/tasks/"+a["id"].(string)+"/completion", map[string]any{"complete": true, "expectedRevision": 1}, c, csrf, uuid.NewString()), 200)
 	now = time.Date(2030, 10, 14, 12, 0, 0, 0, time.UTC)
 	login := req(s, "POST", "/api/v1/auth/login", map[string]string{"email": "compare-time@example.com", "password": "correct horse battery"}, nil, "")
@@ -121,6 +123,7 @@ func TestPeriodRecurringOccurrencesCountIndependently(t *testing.T) {
 	series(t, s, c, csrf, "daily", 1, "2030-10-20")
 	for _, date := range []string{"2030-10-19", "2030-10-20"} {
 		now = atDate(date)
+		renewTestSession(t, s, c, &csrf)
 		d := object(t, req(s, "GET", "/api/v1/reports/days/"+date, nil, c, ""), 200)
 		a := d["entries"].([]any)[0].(map[string]any)["task"].(map[string]any)
 		object(t, command(s, "POST", "/api/v1/tasks/"+a["id"].(string)+"/completion", map[string]any{"complete": true, "expectedRevision": a["revision"]}, c, csrf, uuid.NewString()), 200)

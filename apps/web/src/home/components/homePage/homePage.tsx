@@ -52,7 +52,6 @@ import {
 import { TaskDetail } from "../../../features/tasks/components/taskDetail/taskDetail";
 import { TaskRow } from "../../../features/tasks/components/taskRow/taskRow";
 import { Groups } from "../../../features/tasks/components/groups/groups";
-import { NotificationSettings } from "../../../features/notifications/components/notificationSettings";
 import { SettingsForm } from "../../../features/settings/components/settingsForm/settingsForm";
 import {
   DailyProgress,
@@ -1022,17 +1021,12 @@ function AccountWorkspace() {
         {page === "settings" && (
           <>
             <SettingsForm
-              owner={account.user.id}
-              settings={account.settings}
-              execute={execute}
-              refresh={refresh}
-              disabled={!connected}
-            />
-            <NotificationSettings
               key={account.user.id}
               owner={account.user.id}
+              settings={account.settings}
               read={read}
               execute={execute}
+              refresh={refresh}
               disabled={!connected}
             />
           </>

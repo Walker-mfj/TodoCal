@@ -23,6 +23,9 @@ func validPushEndpoint(endpoint string) bool {
 	return false
 }
 func (p PushInput) Validate() error {
+	if len(p.DeviceName) > 100 {
+		return Invalid("Device name is too long")
+	}
 	if !validPushEndpoint(p.Endpoint) {
 		return Invalid("Use a supported browser push service")
 	}

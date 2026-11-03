@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"github.com/google/uuid"
 	"net"
 	"net/http"
 
@@ -20,8 +21,12 @@ func clientIP(r *http.Request) string {
 	}
 	return ip
 }
-func (s *Server) sendSession(w http.ResponseWriter, status int, u User, token, csrf string) {
-	http.SetCookie(w, &http.Cookie{Name: "focus_session", Value: token, Path: "/", HttpOnly: true, Secure: s.secure, SameSite: http.SameSiteLaxMode, MaxAge: 7 * 24 * 60 * 60})
+func (s *Server) sendSession(w http.ResponseWriter, status int, u User, token, csrf, refresh, browserID string) {
+	http.SetCookie(w, &http.Cookie{Name: "focus_session", Value: token, Path: "/", HttpOnly: true, Secure: s.secure, SameSite: http.SameSiteLaxMode, MaxAge: 60 * 60})
+	http.SetCookie(w, &http.Cookie{Name: "focus_refresh", Value: refresh, Path: "/api/v1/auth", HttpOnly: true, Secure: s.secure, SameSite: http.SameSiteLaxMode, MaxAge: 30 * 24 * 60 * 60})
+	if browserID != "" {
+		http.SetCookie(w, &http.Cookie{Name: "focus_device", Value: browserID, Path: "/api/v1/auth", HttpOnly: true, Secure: s.secure, SameSite: http.SameSiteLaxMode, MaxAge: 400 * 24 * 60 * 60})
+	}
 	writeJSON(w, status, map[string]any{"user": u, "csrfToken": csrf})
 }
 func (s *Server) Register(w http.ResponseWriter, r *http.Request) {
@@ -29,24 +34,24 @@ func (s *Server) Register(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	out, e := s.authService().Register(r.Context(), services.Credentials{Email: in.Email, Password: in.Password, Timezone: in.Timezone}, clientIP(r))
+	out, e := s.authService().Register(r.Context(), services.Credentials{Email: in.Email, Password: in.Password, Timezone: in.Timezone, BrowserID: browserIdentity(r)}, clientIP(r))
 	if e != nil {
 		domainError(w, e)
 		return
 	}
-	s.sendSession(w, 201, out.User, out.Token, out.CSRF)
+	s.sendSession(w, 201, out.User, out.Token, out.CSRF, out.Refresh, out.BrowserID)
 }
 func (s *Server) Login(w http.ResponseWriter, r *http.Request) {
 	var in dto.Credentials
 	if !decode(w, r, &in) {
 		return
 	}
-	out, e := s.authService().Login(r.Context(), services.Credentials{Email: in.Email, Password: in.Password, Timezone: in.Timezone}, clientIP(r))
+	out, e := s.authService().Login(r.Context(), services.Credentials{Email: in.Email, Password: in.Password, Timezone: in.Timezone, BrowserID: browserIdentity(r)}, clientIP(r))
 	if e != nil {
 		domainError(w, e)
 		return
 	}
-	s.sendSession(w, 200, out.User, out.Token, out.CSRF)
+	s.sendSession(w, 200, out.User, out.Token, out.CSRF, out.Refresh, out.BrowserID)
 }
 func (s *Server) authenticate(w http.ResponseWriter, r *http.Request) (Principal, bool) {
 	var p Principal
@@ -89,6 +94,7 @@ func (s *Server) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: "focus_session", Value: "", Path: "/", HttpOnly: true, Secure: s.secure, SameSite: http.SameSiteLaxMode, MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: "focus_refresh", Value: "", Path: "/api/v1/auth", HttpOnly: true, Secure: s.secure, SameSite: http.SameSiteLaxMode, MaxAge: -1})
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 func (s *Server) Password(w http.ResponseWriter, r *http.Request) {
@@ -105,4 +111,29 @@ func (s *Server) Password(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+// The security middleware requires same-origin JSON POSTs, including when the
+// access cookie (and its CSRF token) has expired.
+func (s *Server) Refresh(w http.ResponseWriter, r *http.Request) {
+	c, err := r.Cookie("focus_refresh")
+	if err != nil || len(c.Value) != 64 {
+		fail(w, 401, "unauthenticated", "Please sign in")
+		return
+	}
+	out, err := s.authService().Refresh(r.Context(), c.Value)
+	if err != nil {
+		domainError(w, err)
+		return
+	}
+	s.sendSession(w, 200, out.User, out.Token, out.CSRF, out.Refresh, out.BrowserID)
+}
+
+func browserIdentity(r *http.Request) string {
+	if c, e := r.Cookie("focus_device"); e == nil {
+		if id, e := uuid.Parse(c.Value); e == nil && id != uuid.Nil {
+			return id.String()
+		}
+	}
+	return uuid.NewString()
 }

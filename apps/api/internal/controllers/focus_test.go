@@ -35,12 +35,14 @@ func TestFocusElapsedPauseCatchupAndIndependence(t *testing.T) {
 		t.Fatal(paused)
 	}
 	now = now.Add(time.Hour)
+	renewTestSession(t, s, c, &csrf)
 	ended := object(t, command(s, "POST", "/api/v1/focus/"+id+"/end", map[string]any{"expectedRevision": 2}, c, csrf, uuid.NewString()), 200)["last"].(map[string]any)
 	if ended["focusSeconds"] != float64(600) || ended["pomodoros"] != float64(0) {
 		t.Fatal(ended)
 	}
 	a = start()
 	now = now.Add(2 * time.Hour)
+	renewTestSession(t, s, c, &csrf)
 	state := focusActive(t, s, c)
 	if state["active"] != nil || state["last"].(map[string]any)["focusSeconds"] != float64(1500) || state["last"].(map[string]any)["pomodoros"] != float64(1) {
 		t.Fatal(state)
@@ -81,6 +83,7 @@ func TestFocusDefaultsCycleSettingsAndValidation(t *testing.T) {
 			t.Fatal(b)
 		}
 		now = now.Add(time.Duration(duration) * time.Second)
+		renewTestSession(t, s, c, &csrf)
 		state = focusActive(t, s, c)
 		if state["last"].(map[string]any)["focusSeconds"] != float64(0) || state["nextKind"] != "focus" {
 			t.Fatal(state)

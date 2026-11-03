@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { subscribeBrowserPush } from "./browserPush";
+import { currentBrowserPushHash, subscribeBrowserPush } from "./browserPush";
 afterEach(() => vi.unstubAllGlobals());
 it("permission denial does not register a service worker or subscribe", async () => {
   const register = vi.fn();
@@ -33,7 +33,9 @@ it("reuses an existing browser subscription only after explicit enable", async (
   vi.stubGlobal("navigator", {
     serviceWorker: { register, ready: Promise.resolve(registration) },
   });
-  expect(await subscribeBrowserPush("AQID")).toEqual(subscription.toJSON());
+  expect(await subscribeBrowserPush("AQID")).toMatchObject(
+    subscription.toJSON(),
+  );
   expect(register).toHaveBeenCalledWith("/sw.js", { scope: "/" });
   expect(subscribe).not.toHaveBeenCalled();
 });
@@ -63,4 +65,46 @@ it("subscribes with the configured public key and user-visible notifications", a
     userVisibleOnly: true,
     applicationServerKey: new Uint8Array([1, 2, 3]),
   });
+});
+
+it("inspects the existing worker without registration or a permission prompt", async () => {
+  const requestPermission = vi.fn(),
+    register = vi.fn();
+  const getRegistration = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal("Notification", { permission: "granted", requestPermission });
+  vi.stubGlobal("PushManager", function () {});
+  vi.stubGlobal("navigator", {
+    serviceWorker: { getRegistration, register, ready: new Promise(() => {}) },
+  });
+  expect(await currentBrowserPushHash()).toBeNull();
+  expect(getRegistration).toHaveBeenCalledWith("/");
+  expect(register).not.toHaveBeenCalled();
+  expect(requestPermission).not.toHaveBeenCalled();
+});
+it("does not claim an enabled subscription when permission was revoked", async () => {
+  const getRegistration = vi.fn();
+  vi.stubGlobal("Notification", { permission: "denied" });
+  vi.stubGlobal("PushManager", function () {});
+  vi.stubGlobal("navigator", { serviceWorker: { getRegistration } });
+  expect(await currentBrowserPushHash()).toBeNull();
+  expect(getRegistration).not.toHaveBeenCalled();
+});
+it("matches a subscription using the SHA-256 endpoint fingerprint", async () => {
+  const { webcrypto, createHash } = await import("node:crypto");
+  const endpoint = "https://push.example/device-1";
+  vi.stubGlobal("crypto", webcrypto);
+  vi.stubGlobal("Notification", { permission: "granted" });
+  vi.stubGlobal("PushManager", function () {});
+  vi.stubGlobal("navigator", {
+    serviceWorker: {
+      getRegistration: vi.fn().mockResolvedValue({
+        pushManager: {
+          getSubscription: vi.fn().mockResolvedValue({ endpoint }),
+        },
+      }),
+    },
+  });
+  expect(await currentBrowserPushHash()).toBe(
+    createHash("sha256").update(endpoint).digest("hex"),
+  );
 });

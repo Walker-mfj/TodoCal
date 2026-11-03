@@ -42,10 +42,16 @@ async function fakeProvider(page: Page) {
   };
   await page.addInitScript((value) => {
     Object.defineProperty(PushManager.prototype, "getSubscription", {
-      value: async () => null,
+      value: async () =>
+        localStorage.getItem("e2e-push") === value.endpoint
+          ? { endpoint: value.endpoint, toJSON: () => value }
+          : null,
     });
     Object.defineProperty(PushManager.prototype, "subscribe", {
-      value: async () => ({ toJSON: () => value }),
+      value: async () => {
+        localStorage.setItem("e2e-push", value.endpoint);
+        return { endpoint: value.endpoint, toJSON: () => value };
+      },
     });
   }, subscription);
 }
@@ -64,28 +70,22 @@ test("Web Push device opt-in persists preferences and supports revocation", asyn
   await expect(page.getByLabel("Focus session completed")).not.toBeChecked();
   await page.getByRole("button", { name: "Enable on this device" }).click();
   await expect(
-    page.getByText(
-      "Notifications enabled for this device. Choose your reminder types below.",
-    ),
+    page.getByText("Notifications enabled on this device"),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Revoke notification device 1" }),
+    page.getByRole("button", { name: /Revoke notifications for/ }),
   ).toBeVisible();
   expect(context.serviceWorkers()).toHaveLength(1);
   await page.getByLabel("Focus session completed").check();
   await page.getByLabel("Quiet hours start").fill("22:00");
   await page.getByLabel("Quiet hours end").fill("07:00");
-  await page
-    .getByRole("button", { name: "Save notification preferences" })
-    .click();
-  await expect(page.getByText("Notification preferences saved.")).toBeVisible();
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByText("Changes saved.")).toBeVisible();
   await page.reload();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await expect(page.getByLabel("Focus session completed")).toBeChecked();
   await expect(page.getByLabel("Quiet hours start")).toHaveValue("22:00");
-  await page
-    .getByRole("button", { name: "Revoke notification device 1" })
-    .click();
+  await page.getByRole("button", { name: /Revoke notifications for/ }).click();
   await expect(page.getByText("No devices enabled.")).toBeVisible();
   const after = await (await page.request.get("/api/v1/notifications")).json();
   expect(after.subscriptions).toHaveLength(0);
@@ -138,9 +138,7 @@ test("real service worker displays injected Push after the app tab closes and ro
   await cdp.send("ServiceWorker.enable");
   await page.getByRole("button", { name: "Enable on this device" }).click();
   await expect(
-    page.getByText(
-      "Notifications enabled for this device. Choose your reminder types below.",
-    ),
+    page.getByText("Notifications enabled on this device"),
   ).toBeVisible();
   await expect.poll(() => registrationId).not.toBe("");
   const worker = context.serviceWorkers()[0];

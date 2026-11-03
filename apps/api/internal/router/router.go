@@ -12,6 +12,7 @@ type Endpoints interface {
 	IngestError(http.ResponseWriter, *http.Request)
 	Register(http.ResponseWriter, *http.Request)
 	Login(http.ResponseWriter, *http.Request)
+	Refresh(http.ResponseWriter, *http.Request)
 	Me(http.ResponseWriter, *http.Request)
 	Logout(http.ResponseWriter, *http.Request)
 	Password(http.ResponseWriter, *http.Request)
@@ -41,12 +42,14 @@ type Endpoints interface {
 	DeleteGroup(http.ResponseWriter, *http.Request)
 	GetSettings(http.ResponseWriter, *http.Request)
 	EditSettings(http.ResponseWriter, *http.Request)
+	EditWorkspaceSettings(http.ResponseWriter, *http.Request)
 	Health(http.ResponseWriter, *http.Request)
 	Ready(http.ResponseWriter, *http.Request)
 }
 
 func New(s Endpoints) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("PATCH /api/v1/settings/workspace", s.EditWorkspaceSettings)
 	mux.HandleFunc("GET /api/v1/tasks/{id}/following-deletion-preview", s.FollowingDeletionPreview)
 	mux.HandleFunc("GET /api/v1/notifications", s.Notifications)
 	mux.HandleFunc("PUT /api/v1/notifications/preferences", s.UpdateNotificationPreferences)
@@ -57,6 +60,7 @@ func New(s Endpoints) http.Handler {
 	mux.HandleFunc("POST /api/v1/auth/register", s.Register)
 	mux.HandleFunc("POST /api/v1/auth/login", s.Login)
 	mux.HandleFunc("GET /api/v1/auth/me", s.Me)
+	mux.HandleFunc("POST /api/v1/auth/refresh", s.Refresh)
 	mux.HandleFunc("POST /api/v1/auth/logout", s.Logout)
 	mux.HandleFunc("POST /api/v1/auth/password", s.Password)
 	mux.HandleFunc("GET /api/v1/focus", s.FocusState)

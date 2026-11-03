@@ -15,8 +15,9 @@ type NotificationPreferencesInput struct {
 	ExpectedRevision int64 `json:"expectedRevision"`
 }
 type PushInput struct {
-	Endpoint string `json:"endpoint"`
-	Keys     struct {
+	DeviceName string `json:"deviceName,omitempty"`
+	Endpoint   string `json:"endpoint"`
+	Keys       struct {
 		P256dh string `json:"p256dh"`
 		Auth   string `json:"auth"`
 	} `json:"keys"`

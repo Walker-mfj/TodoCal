@@ -196,12 +196,12 @@ func (s *Auth) Authenticate(ctx context.Context, token string) (Principal, error
 	return p, e
 }
 func (s *Auth) Me(ctx context.Context, p Principal) (any, error) {
-	var zone, appearance string
+	var zone, appearance, timerSound string
 	var focus, short, long int
 	var sound bool
 	var revision int64
-	e := repository.ReadAccountSettings(ctx, s.Pool, p.ID, &zone, &appearance, &focus, &short, &long, &sound, &revision)
-	return map[string]any{"user": p.User, "csrfToken": tokenHash("csrf:" + p.Token), "settings": map[string]any{"timezone": zone, "appearance": appearance, "focusMinutes": focus, "shortBreakMinutes": short, "longBreakMinutes": long, "sound": sound, "revision": revision}}, e
+	e := repository.ReadAccountSettings(ctx, s.Pool, p.ID, &zone, &appearance, &focus, &short, &long, &sound, &timerSound, &revision)
+	return map[string]any{"user": p.User, "csrfToken": tokenHash("csrf:" + p.Token), "settings": map[string]any{"timezone": zone, "appearance": appearance, "focusMinutes": focus, "shortBreakMinutes": short, "longBreakMinutes": long, "sound": sound, "timerSound": timerSound, "revision": revision}}, e
 }
 func (s *Auth) Logout(ctx context.Context, p Principal) error {
 	_, e := repository.RevokeSession(ctx, s.Pool, s.Now(), p.SessionID, p.ID)

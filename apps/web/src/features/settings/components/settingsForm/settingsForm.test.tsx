@@ -8,6 +8,7 @@ const settings = {
   shortBreakMinutes: 5,
   longBreakMinutes: 15,
   sound: true,
+  timerSound: "classic" as const,
   revision: 4,
 };
 it("persists Light/Dark with the account revision", async () => {
@@ -144,3 +145,61 @@ it.each([
     expect(save).not.toHaveBeenCalled();
   },
 );
+
+it("saves the selected completion sound and disables selection when muted", async () => {
+  const save = vi.fn().mockResolvedValue({});
+  render(
+    <SettingsForm
+      owner="sound-owner"
+      settings={settings}
+      execute={save}
+      refresh={vi.fn()}
+      disabled={false}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText("Completion sound"), {
+    target: { value: "bell" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+  await waitFor(() => expect(save).toHaveBeenCalled());
+  expect(save.mock.calls[0][1].body).toMatchObject({
+    timerSound: "bell",
+    sound: true,
+  });
+  fireEvent.click(screen.getByLabelText("Timer sound"));
+  expect(screen.getByLabelText("Completion sound")).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Preview sound" })).toBeDisabled();
+});
+
+it("offers all eight cues and reports unavailable preview without saving", async () => {
+  const save = vi.fn();
+  render(
+    <SettingsForm
+      owner="preview-owner"
+      settings={settings}
+      execute={save}
+      refresh={vi.fn()}
+      disabled={false}
+    />,
+  );
+  const selector = screen.getByLabelText("Completion sound");
+  expect(selector.querySelectorAll("option")).toHaveLength(8);
+  for (const value of [
+    "classic",
+    "bell",
+    "soft_bell",
+    "double_bell",
+    "singing_bowl",
+    "doorbell",
+    "chime",
+    "digital",
+  ]) {
+    fireEvent.change(selector, { target: { value } });
+    expect(selector).toHaveValue(value);
+  }
+  fireEvent.click(screen.getByRole("button", { name: "Preview sound" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Sound preview is unavailable",
+  );
+  expect(save).not.toHaveBeenCalled();
+});

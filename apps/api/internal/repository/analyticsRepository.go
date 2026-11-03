@@ -16,7 +16,7 @@ func ListCompletedTaskIDs(ctx context.Context, db DBTX, userID string, date stri
 }
 
 func ListFocusIntervals(ctx context.Context, db DBTX, userID string, start time.Time, end time.Time) ([]FocusInterval, error) {
-	rows, err := db.Query(ctx, `SELECT s.id::text,s.task_title,s.status,s.target_seconds,s.accumulated_us,s.ended_at,s.pomodoros,i.started_at,i.ended_at FROM focus_sessions s JOIN focus_intervals i ON i.user_id=s.user_id AND i.session_id=s.id WHERE s.user_id=$1 AND s.kind='focus' AND i.started_at<=$3 AND (COALESCE(i.ended_at,$3)>=$2 OR s.ended_at>=$2) ORDER BY s.sequence,i.ordinal`, userID, start, end)
+	rows, err := db.Query(ctx, `SELECT s.id::text,s.task_title,s.status,s.target_seconds,s.accumulated_us,s.ended_at,s.pomodoros,s.started_at,i.started_at,i.ended_at FROM focus_sessions s JOIN focus_intervals i ON i.user_id=s.user_id AND i.session_id=s.id WHERE s.user_id=$1 AND s.kind='focus' AND i.started_at<=$3 AND (COALESCE(i.ended_at,$3)>=$2 OR s.ended_at>=$2) ORDER BY s.sequence,i.ordinal`, userID, start, end)
 	if err != nil {
 		return nil, err
 	}

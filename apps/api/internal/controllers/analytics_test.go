@@ -82,8 +82,11 @@ func TestAnalyticsFocusMidnightPausesAndActiveReconciliation(t *testing.T) {
 	}
 	now = now.Add(20 * time.Minute)
 	d := day("2030-10-15")
-	if d["focusSeconds"] != float64(1200) || d["pomodoros"] != float64(1) {
+	if d["focusSeconds"] != float64(1200) || d["pomodoros"] != float64(0) {
 		t.Fatal(d)
+	}
+	if first := day("2030-10-14"); first["pomodoros"] != float64(1) || first["focusSeconds"] != float64(300) {
+		t.Fatal(first)
 	}
 	r := object(t, req(s, "GET", "/api/v1/reports/period?period=week&date=2030-10-15", nil, c, ""), 200)
 	if r["metrics"].(map[string]any)["focusSeconds"] != float64(1500) {
@@ -129,7 +132,7 @@ func TestPeriodRecurringOccurrencesCountIndependently(t *testing.T) {
 	}
 }
 
-func TestAnalyticsPomodoroAtExactMidnightBelongsToNewDay(t *testing.T) {
+func TestAnalyticsPomodoroAtExactMidnightBelongsToStartDay(t *testing.T) {
 	s, _ := testServer(t)
 	now := time.Date(2030, 10, 14, 23, 35, 0, 0, time.UTC)
 	s.now = func() time.Time { return now }
@@ -137,8 +140,12 @@ func TestAnalyticsPomodoroAtExactMidnightBelongsToNewDay(t *testing.T) {
 	object(t, command(s, "POST", "/api/v1/focus", map[string]any{"kind": "focus"}, c, csrf, uuid.NewString()), 201)
 	now = now.Add(25 * time.Minute)
 	d := object(t, req(s, "GET", "/api/v1/reports/days/2030-10-15", nil, c, ""), 200)
-	if d["pomodoros"] != float64(1) || d["focusSeconds"] != float64(0) {
+	if d["pomodoros"] != float64(0) || d["focusSeconds"] != float64(0) {
 		t.Fatal(d)
+	}
+	first := object(t, req(s, "GET", "/api/v1/reports/days/2030-10-14", nil, c, ""), 200)
+	if first["pomodoros"] != float64(1) {
+		t.Fatal(first)
 	}
 	r := object(t, req(s, "GET", "/api/v1/reports/period?period=week&date=2030-10-15", nil, c, ""), 200)
 	if r["metrics"].(map[string]any)["pomodoros"] != float64(1) {
@@ -191,5 +198,36 @@ func TestReopenOnRevisitedFinalizedDateCorrectsCompletionHistory(t *testing.T) {
 				t.Fatal("snapshot changed", day)
 			}
 		})
+	}
+}
+
+func TestPomodoroStartDayAcrossLocalMonthBoundary(t *testing.T) {
+	s, _ := testServer(t)
+	// Tokyo local time: Oct 31 23:50; UTC stays on the same day throughout.
+	now := time.Date(2030, 10, 31, 14, 50, 0, 0, time.UTC)
+	s.now = func() time.Time { return now }
+	c, csrf := register(t, s, "month-boundary@example.com")
+	object(t, command(s, "PATCH", "/api/v1/settings", map[string]any{"timezone": "Asia/Tokyo", "expectedRevision": 1}, c, csrf, uuid.NewString()), 200)
+	object(t, command(s, "POST", "/api/v1/focus", map[string]any{"kind": "focus"}, c, csrf, uuid.NewString()), 201)
+	now = now.Add(15 * time.Minute)
+	before := object(t, req(s, "GET", "/api/v1/reports/days/2030-10-31", nil, c, ""), 200)
+	if before["pomodoros"] != float64(0) {
+		t.Fatal(before)
+	}
+	now = now.Add(10 * time.Minute)
+	for _, tc := range []struct {
+		date         string
+		pom, seconds float64
+	}{
+		{"2030-10-31", 1, 600}, {"2030-11-01", 0, 900},
+	} {
+		d := object(t, req(s, "GET", "/api/v1/reports/days/"+tc.date, nil, c, ""), 200)
+		if d["pomodoros"] != tc.pom || d["focusSeconds"] != tc.seconds {
+			t.Fatal(d)
+		}
+		report := object(t, req(s, "GET", "/api/v1/reports/period?period=month&date="+tc.date, nil, c, ""), 200)
+		if report["metrics"].(map[string]any)["pomodoros"] != tc.pom {
+			t.Fatal(report)
+		}
 	}
 }

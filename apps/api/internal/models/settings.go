@@ -1,6 +1,7 @@
 package models
 
 type SettingsInput struct {
+	TimerSound        string `json:"timerSound"`
 	Timezone          string `json:"timezone"`
 	Appearance        string `json:"appearance"`
 	FocusMinutes      int    `json:"focusMinutes"`

@@ -685,6 +685,19 @@ export interface components {
       longBreakMinutes: number;
       /** @default true */
       sound: boolean;
+      /**
+       * @default classic
+       * @enum {string}
+       */
+      timerSound:
+        | "classic"
+        | "bell"
+        | "soft_bell"
+        | "double_bell"
+        | "singing_bowl"
+        | "doorbell"
+        | "chime"
+        | "digital";
       revision: number;
     };
     APIError: {
@@ -861,6 +874,19 @@ export interface components {
       longBreakMinutes: number;
       /** @default true */
       sound: boolean;
+      /**
+       * @default classic
+       * @enum {string}
+       */
+      timerSound:
+        | "classic"
+        | "bell"
+        | "soft_bell"
+        | "double_bell"
+        | "singing_bowl"
+        | "doorbell"
+        | "chime"
+        | "digital";
       expectedRevision: number;
     };
     SeriesInput: {

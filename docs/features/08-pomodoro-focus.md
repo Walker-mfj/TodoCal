@@ -40,6 +40,7 @@ flowchart TD
 
 ## Completion, progress, and notifications
 
+- A completed Pomodoro belongs to the account-local day on which the **session started**, including sessions paused/resumed across midnight or ending exactly at midnight. Active focus seconds remain split across the days when time was actually spent. Counts are awarded only after completion, including back-credit to a previous week/month. Historical comparisons respect their as-of cutoff.
 - Ending early records actual focus time but does not earn a completed Pomodoro. Paused time and break sessions never count toward task focus duration; a completed Pomodoro does **not** auto-complete the task.
 - The server is authoritative for focus timestamps, including after reload, sleep, or cross-device access. A client countdown estimates remaining time from the most recently fetched session state; it must not mutate the database or infer task completion on its own.
 - After the server confirms that a session completed, clients must invalidate/refetch task, calendar and analytics views that derive focus totals. A stale old task view must not subtract the completed session when the active timer disappears.
@@ -52,3 +53,13 @@ flowchart TD
 2. Pausing/resuming or opening a second panel/device does not double-count time or drift a newly mounted clock back to the initial duration.
 3. A session past its target is settled at the logical end time on the next relevant server read/command, with one Pomodoro only.
 4. Upon server-confirmed completion, the task, calendar and report caches refresh; the task remains incomplete until the user completes it.
+
+## Completion sounds
+
+Settings → Timer sound provides eight original synthesized cues: Classic (the default), Bell, Soft bell, Double bell, Singing bowl, Doorbell, Gentle chime, and Digital. Preview sound plays the selected draft before saving; Save settings syncs the choice to the account. Muting retains the selection. Older clients that omit `timerSound` preserve the saved choice; the migration defaults existing accounts to Classic.
+
+The selected cue plays when an observed focus or break session completes while the app is open. Browser audio restrictions still apply: starting/resuming a timer enables its audio context. Web Push uses the platform notification sound and does not use these cues.
+
+References: [Focus To-Do](https://focustodo.cn/) for focus completion reminders, [Pomofocus](https://pomofocus.io/) for selectable alarm sounds, and [Mixkit bell sounds](https://mixkit.co/free-sound-effects/bell/) for bell cue inspiration. All shipped cues are synthesized locally; no third-party audio recordings are copied or fetched.
+
+Regression checks cover pause/resume across midnight, exact-midnight completion, Tokyo-local month boundaries, no count before completion, and account sound persistence/validation.

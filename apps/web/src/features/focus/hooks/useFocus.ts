@@ -1,4 +1,5 @@
 "use client";
+import { playTimerSound } from "../utils/timerSound";
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useOwnedQuery } from "../../auth/hooks/useOwnedQuery";
@@ -76,16 +77,7 @@ export function useFocus() {
       });
       if (session!.settings.sound && audio.current?.state === "running") {
         try {
-          const ctx = audio.current,
-            osc = ctx.createOscillator(),
-            gain = ctx.createGain();
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          gain.gain.setValueAtTime(0.08, ctx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
-          osc.frequency.value = 660;
-          osc.start();
-          osc.stop(ctx.currentTime + 0.6);
+          playTimerSound(audio.current, session!.settings.timerSound);
         } catch {}
       }
       if (

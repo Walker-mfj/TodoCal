@@ -36,7 +36,7 @@ flowchart TD
 
 - Week/month completion is a weighted ratio of **summed** completed/planned counts, not the arithmetic mean of daily percentages. Days with no snapshot contribute `0/0`; future dates are not included in an in-progress period's completion totals.
 - Task completion counts and scheduled-plan completion are separate metrics: completing an unscheduled task can increase the completed-task metric without changing a daily-plan denominator.
-- Focus time comes from focus-session intervals, split at account-local day boundaries; a Pomodoro is attributed to the day on which the session completes. Live focus totals may change as sessions settle even when a finalized plan's contents remain stable.
+- Focus time comes from focus-session intervals, split at account-local day boundaries; a completed Pomodoro is attributed to the account-local day on which the session started (including completion at or after midnight), once completed; historical comparisons only include completion within their as-of cutoff. Live focus totals may change as sessions settle even when a finalized plan's contents remain stable.
 - Explain in UI when a historical adjustment has changed a past daily percentage; otherwise users may mistake the initial finalization for a permanently immutable report.
 
 Acceptance: `0 planned` = `No plan`; `0/5` = `0%`; `1/1 + 0/9` yields `10%` for the combined period; historical edits recalculate daily and period totals consistently.

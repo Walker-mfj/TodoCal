@@ -1,4 +1,6 @@
 "use client";
+import { useEffect, useRef, useState } from "react";
+import { playTimerSound, timerSounds } from "../../../focus/utils/timerSound";
 import { ContentCard } from "../../../../shared/components/contentCard/contentCard";
 import { bindStyles } from "../../../../shared/utils/classNames";
 const cx = bindStyles();
@@ -25,6 +27,32 @@ export function SettingsForm({
     `focus:form:${owner}:settings`,
     settings,
   );
+  const preview = useRef<AudioContext | null>(null);
+  const stopPreview = useRef<(() => void) | null>(null);
+  const [previewError, setPreviewError] = useState("");
+  useEffect(
+    () => () => {
+      stopPreview.current?.();
+      void preview.current?.close().catch(() => {});
+    },
+    [],
+  );
+  useEffect(() => {
+    stopPreview.current?.();
+  }, [draft.sound, draft.timerSound]);
+  const previewSound = async () => {
+    setPreviewError("");
+    try {
+      stopPreview.current?.();
+      preview.current ??= new AudioContext();
+      await preview.current.resume();
+      stopPreview.current = playTimerSound(preview.current, draft.timerSound);
+    } catch {
+      setPreviewError(
+        "Sound preview is unavailable in this browser. Please try again.",
+      );
+    }
+  };
   const command = useCommand(execute, `focus:command:${owner}:settings`);
   const field = (key: keyof Settings, value: string | number | boolean) =>
     setDraft((d) => ({ ...d, [key]: value }));
@@ -139,6 +167,30 @@ export function SettingsForm({
             />
             Timer sound
           </label>
+          <label className={cx("", true)}>
+            Completion sound
+            <select
+              value={draft.timerSound ?? "classic"}
+              disabled={!draft.sound}
+              onChange={(e) => field("timerSound", e.target.value)}
+              className={cx("", true)}
+            >
+              {timerSounds.map((sound) => (
+                <option key={sound.value} value={sound.value}>
+                  {sound.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            disabled={!draft.sound}
+            onClick={() => void previewSound()}
+            className={cx("", true)}
+          >
+            Preview sound
+          </button>
+          {previewError && <p role="alert">{previewError}</p>}
           <p>
             Play a completion sound while the app is open, independently of
             notification settings.

@@ -72,12 +72,13 @@ type FocusInterval struct {
 	Target, Accumulated int64
 	Ended               *time.Time
 	Pomodoros           int
+	SessionStarted      time.Time
 	Start               time.Time
 	End                 *time.Time
 }
 
 func scanFocusInterval(row pgx.Row) (v FocusInterval, err error) {
-	err = row.Scan(&v.ID, &v.Title, &v.Status, &v.Target, &v.Accumulated, &v.Ended, &v.Pomodoros, &v.Start, &v.End)
+	err = row.Scan(&v.ID, &v.Title, &v.Status, &v.Target, &v.Accumulated, &v.Ended, &v.Pomodoros, &v.SessionStarted, &v.Start, &v.End)
 	return
 }
 func ScanFocus(row pgx.Row) (*models.FocusSession, error) {

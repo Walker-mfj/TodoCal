@@ -72,6 +72,13 @@ func day(ctx context.Context, tx pgx.Tx, user, zone, date string, now, cutoff ti
 	if e != nil {
 		return out, e
 	}
+	// Ordinary reports credit completed sessions back to their start day even
+	// when completion falls beyond the period boundary. Historical comparisons
+	// must only count completions known at their as-of cutoff.
+	completionCutoff := now
+	if asOf {
+		completionCutoff = minTime(now, cutoff)
+	}
 	entries := map[string]*FocusEntry{}
 	order := []string{}
 	for _, interval := range intervals {
@@ -88,7 +95,7 @@ func day(ctx context.Context, tx pgx.Tx, user, zone, date string, now, cutoff ti
 		begin := analyticsMaxTime(start, intervalStart)
 		seconds := float64(max(int64(0), finish.UnixMicro()-begin.UnixMicro())) / 1e6
 		count := 0
-		if pom == 1 && ended != nil && !ended.Before(start) && ended.Before(localdate.Boundary(localdate.Add(date, 1), loc)) && !ended.After(end) {
+		if pom == 1 && ended != nil && !interval.SessionStarted.Before(start) && interval.SessionStarted.Before(localdate.Boundary(localdate.Add(date, 1), loc)) && !ended.After(completionCutoff) {
 			count = 1
 		}
 		if seconds == 0 && count == 0 {

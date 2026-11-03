@@ -1144,6 +1144,10 @@ components:
         sound:
           type: boolean
           default: true
+        timerSound:
+          type: string
+          enum: [classic, bell, soft_bell, double_bell, singing_bowl, doorbell, chime, digital]
+          default: classic
         revision:
           type: integer
           minimum: 1
@@ -1583,6 +1587,10 @@ components:
         sound:
           type: boolean
           default: true
+        timerSound:
+          type: string
+          enum: [classic, bell, soft_bell, double_bell, singing_bowl, doorbell, chime, digital]
+          default: classic
         expectedRevision:
           type: integer
           minimum: 1

@@ -57,11 +57,16 @@ func EditSettingsCommand(ctx context.Context, tx pgx.Tx, p Principal, zone strin
 			return nil, 0, err
 		}
 	}
+	switch in.TimerSound {
+	case "classic", "bell", "soft_bell", "double_bell", "singing_bowl", "doorbell", "chime", "digital":
+	default:
+		return nil, 0, Invalid("Choose a valid timer sound")
+	}
 	if in.Timezone != current.Timezone {
 		if e = BeforeZoneChange(ctx, tx, p.ID, current.Timezone, in.Timezone, now); e != nil {
 			return nil, 0, e
 		}
 	}
-	_, e = repository.UpdateSettings(ctx, tx, p.ID, in.Timezone, in.Appearance, in.FocusMinutes, in.ShortBreakMinutes, in.LongBreakMinutes, in.Sound)
+	_, e = repository.UpdateSettings(ctx, tx, p.ID, in.Timezone, in.Appearance, in.FocusMinutes, in.ShortBreakMinutes, in.LongBreakMinutes, in.Sound, in.TimerSound)
 	return Settings{SettingsInput: in, Revision: current.Revision + 1}, models.Updated, e
 }

@@ -60,3 +60,29 @@ func TestFocusRejectsInvalidLegacyDefaults(t *testing.T) {
 		t.Fatal(active)
 	}
 }
+
+func TestTimerSoundPersistsAndValidates(t *testing.T) {
+	s, _ := testServer(t)
+	c, csrf := register(t, s, "timer-sound@example.com")
+	initial := object(t, req(s, "GET", "/api/v1/settings", nil, c, ""), 200)
+	if initial["timerSound"] != "classic" {
+		t.Fatal(initial)
+	}
+	for i, sound := range []string{"bell", "soft_bell", "double_bell", "singing_bowl", "doorbell", "chime", "digital", "classic"} {
+		result := object(t, command(s, "PATCH", "/api/v1/settings", map[string]any{"timerSound": sound, "expectedRevision": i + 1}, c, csrf, uuid.NewString()), 200)
+		if result["timerSound"] != sound {
+			t.Fatal(result)
+		}
+		me := object(t, req(s, "GET", "/api/v1/auth/me", nil, c, ""), 200)
+		if me["settings"].(map[string]any)["timerSound"] != sound {
+			t.Fatal(me)
+		}
+	}
+	for _, sound := range []any{"unknown", "", nil, 1} {
+		object(t, command(s, "PATCH", "/api/v1/settings", map[string]any{"timerSound": sound, "expectedRevision": 9}, c, csrf, uuid.NewString()), 422)
+	}
+	result := object(t, command(s, "PATCH", "/api/v1/settings", map[string]any{"sound": false, "expectedRevision": 9}, c, csrf, uuid.NewString()), 200)
+	if result["timerSound"] != "classic" || result["sound"] != false {
+		t.Fatal(result)
+	}
+}

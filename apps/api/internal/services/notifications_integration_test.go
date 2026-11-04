@@ -50,7 +50,7 @@ func TestNotificationDeliveryLifecycle(t *testing.T) {
 	if e = database.Migrate(ctx, pool); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = pool.Exec(ctx, "TRUNCATE users CASCADE"); e != nil {
+	if _, e = pool.Exec(ctx, "TRUNCATE users, auth_attempts CASCADE"); e != nil {
 		t.Fatal(e)
 	}
 	now := time.Date(2026, 11, 1, 10, 0, 0, 0, time.UTC)
@@ -94,6 +94,18 @@ func TestNotificationDeliveryLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// An abandoned browser stops receiving reminders when it can no longer
+	// renew its login, without deleting consent for same-account reauthentication.
+	if _, e = pool.Exec(ctx, "UPDATE auth_sessions SET refresh_expires_at=$1 WHERE id=$2", now, p.SessionID); e != nil {
+		t.Fatal(e)
+	}
+	run()
+	if sender.calls != 0 {
+		t.Fatal("push delivered after refresh idle expiry")
+	}
+	if _, e = pool.Exec(ctx, "UPDATE auth_sessions SET refresh_expires_at=$1 WHERE id=$2", now.Add(30*24*time.Hour), p.SessionID); e != nil {
+		t.Fatal(e)
+	}
 	// Push delivery has its own lifetime, independent of access credentials.
 	if _, e = pool.Exec(ctx, "UPDATE auth_sessions SET expires_at=$1 WHERE id=$2", now.Add(-time.Hour), p.SessionID); e != nil {
 		t.Fatal(e)
@@ -117,6 +129,17 @@ func TestNotificationDeliveryLifecycle(t *testing.T) {
 	run()
 	if sender.calls != 4 {
 		t.Fatalf("start attempts: %d", sender.calls)
+	}
+	if _, e = pool.Exec(ctx, "UPDATE auth_sessions SET refresh_expires_at=$1 WHERE id=$2", now, p.SessionID); e != nil {
+		t.Fatal(e)
+	}
+	now = now.Add(time.Minute)
+	run()
+	if sender.calls != 4 {
+		t.Fatal("queued push retried after refresh idle expiry")
+	}
+	if _, e = pool.Exec(ctx, "UPDATE auth_sessions SET refresh_expires_at=$1 WHERE id=$2", now.Add(30*24*time.Hour), p.SessionID); e != nil {
+		t.Fatal(e)
 	}
 	_, e = pool.Exec(ctx, "UPDATE tasks SET start_time='12:00',end_time='12:30' WHERE id=$1", task)
 	if e != nil {

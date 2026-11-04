@@ -95,6 +95,9 @@ func TestBrowserIdentitySurvivesLogin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := pool.Exec(context.Background(), "UPDATE auth_sessions SET expires_at=now()-interval '31 days',refresh_expires_at=now()-interval '1 day'"); err != nil {
+		t.Fatal(err)
+	}
 	w = req(s, "POST", "/api/v1/auth/login", map[string]string{"email": "browser@example.com", "password": "correct horse battery"}, browser, "")
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body)
@@ -125,4 +128,99 @@ func TestBrowserIdentitySurvivesLogin(t *testing.T) {
 		t.Fatal("login restored consent revoked by logout", state)
 	}
 
+}
+
+// Both network responses may finish in either order; either cookie pair must
+// remain usable after the retry grace has elapsed.
+func TestRefreshResponsesCanArriveOutOfOrder(t *testing.T) {
+	s, _ := testServer(t)
+	now := time.Now().UTC()
+	s.now = func() time.Time { return now }
+	w := req(s, "POST", "/api/v1/auth/register", map[string]string{"email": "race@example.com", "password": "correct horse battery"}, nil, "")
+	original := w.Result().Cookies()[1]
+	responses := make(chan []*http.Cookie, 2)
+	codes := make(chan int, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			r := req(s, "POST", "/api/v1/auth/refresh", map[string]any{}, original, "")
+			codes <- r.Code
+			responses <- r.Result().Cookies()
+		}()
+	}
+	first, second := <-responses, <-responses
+	if <-codes != 200 || <-codes != 200 {
+		t.Fatal("parallel refresh failed")
+	}
+	if first[0].Value != second[0].Value || first[1].Value != second[1].Value {
+		t.Error("parallel refresh returned different credentials")
+	}
+	// A new request using the successor during grace must not invalidate the
+	// response still in flight from the first pair of requests.
+	object(t, req(s, "POST", "/api/v1/auth/refresh", map[string]any{}, second[1], ""), 200)
+	if got := req(s, "GET", "/api/v1/auth/me", nil, first[0], ""); got.Code != 200 {
+		t.Error("late access response became invalid")
+	}
+	now = now.Add(time.Hour)
+	object(t, req(s, "POST", "/api/v1/auth/refresh", map[string]any{}, first[1], ""), 200)
+}
+
+func TestAccountSwitchRevokesPreviousBrowserConsent(t *testing.T) {
+	s, pool := testServer(t)
+	ctx := context.Background()
+	w := req(s, "POST", "/api/v1/auth/register", map[string]string{"email": "owner@example.com", "password": "correct horse battery"}, nil, "")
+	var browser *http.Cookie
+	for _, c := range w.Result().Cookies() {
+		if c.Name == "focus_device" {
+			browser = c
+		}
+	}
+	if browser == nil {
+		t.Fatal("missing browser")
+	}
+	_, err := pool.Exec(ctx, `INSERT INTO push_subscriptions(id,user_id,session_id,endpoint,p256dh,auth,created_at) SELECT gen_random_uuid(),user_id,id,'https://fcm.googleapis.com/fcm/send/switch','key','auth',now() FROM auth_sessions`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = pool.Exec(ctx, `UPDATE auth_sessions SET expires_at=now()-interval '31 days',refresh_expires_at=now()-interval '1 day'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A separate browser for the same owner must keep its notification consent.
+	object(t, req(s, "POST", "/api/v1/auth/login", map[string]string{"email": "owner@example.com", "password": "correct horse battery"}, nil, ""), 200)
+	_, err = pool.Exec(ctx, `INSERT INTO push_subscriptions(id,user_id,session_id,endpoint,p256dh,auth,created_at) SELECT gen_random_uuid(),user_id,id,'https://fcm.googleapis.com/fcm/send/other-browser','key','auth',now() FROM auth_sessions WHERE browser_id<>$1::uuid`, browser.Value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	register(t, s, "other@example.com")
+	// A failed login must not revoke another account's consent.
+	req(s, "POST", "/api/v1/auth/login", map[string]string{"email": "other@example.com", "password": "wrong password"}, browser, "")
+	var active int
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM push_subscriptions WHERE revoked_at IS NULL").Scan(&active); err != nil {
+		t.Fatal(err)
+	}
+	if active != 2 {
+		t.Fatal("failed login revoked consent")
+	}
+	object(t, req(s, "POST", "/api/v1/auth/login", map[string]string{"email": "other@example.com", "password": "correct horse battery"}, browser, ""), 200)
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM push_subscriptions WHERE revoked_at IS NULL").Scan(&active); err != nil {
+		t.Fatal(err)
+	}
+	if active != 1 {
+		t.Fatal("old account still enrolled on shared browser")
+	}
+	var otherBrowserActive bool
+	if err := pool.QueryRow(ctx, "SELECT revoked_at IS NULL FROM push_subscriptions WHERE endpoint='https://fcm.googleapis.com/fcm/send/other-browser'").Scan(&otherBrowserActive); err != nil {
+		t.Fatal(err)
+	}
+	if !otherBrowserActive {
+		t.Fatal("account switch revoked another browser")
+	}
+
+	object(t, req(s, "POST", "/api/v1/auth/login", map[string]string{"email": "owner@example.com", "password": "correct horse battery"}, browser, ""), 200)
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM push_subscriptions WHERE revoked_at IS NULL").Scan(&active); err != nil {
+		t.Fatal(err)
+	}
+	if active != 1 {
+		t.Fatal("switching back resurrected revoked consent")
+	}
 }

@@ -52,6 +52,13 @@ func (s *Auth) Limited(ctx context.Context, email, ip string) (bool, error) {
 	return false, nil
 }
 func (s *Auth) createSession(ctx context.Context, tx pgx.Tx, userID, browserID string) (string, string, string, error) {
+	// Serialize successful logins for a browser, including different accounts.
+	// This identity is not authentication; only a verified login reaches here.
+	if browserID != "" {
+		if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", browserID); err != nil {
+			return "", "", "", err
+		}
+	}
 	token := randomToken(32)
 	csrf := tokenHash("csrf:" + token)
 	id := uuid.NewString()
@@ -62,6 +69,11 @@ func (s *Auth) createSession(ctx context.Context, tx pgx.Tx, userID, browserID s
 	}
 	if e == nil {
 		_, e = tx.Exec(ctx, "INSERT INTO auth_refresh_tokens(token_hash,session_id) VALUES($1,$2)", tokenHash(refresh), id)
+	}
+	if e == nil && browserID != "" {
+		// Account switching ends the previous account's consent on this browser,
+		// even when its credentials already expired. Other browsers are untouched.
+		_, e = tx.Exec(ctx, `UPDATE push_subscriptions p SET revoked_at=$3 FROM auth_sessions a WHERE p.session_id=a.id AND a.browser_id=$1::uuid AND p.user_id<>$2 AND p.revoked_at IS NULL`, browserID, userID, s.Now())
 	}
 	if e == nil && browserID != "" {
 		// Existing consent follows this browser across reauthentication, but an

@@ -67,13 +67,15 @@ flowchart TD
 
 ## Session and device behavior
 
-- Login creates a one-hour access cookie and a rotating refresh cookie with a 30-day inactivity expiry. Each successful refresh starts a new 30-day window; there is no absolute maximum lifetime. Signing in on another device creates a separate session family. Credentials are HttpOnly cookies; only hashes are stored server-side.
+- Login creates a one-hour access cookie and a rotating refresh cookie with a 30-day inactivity expiry. Each credential rotation starts a new 30-day window; there is no absolute maximum lifetime. Signing in on another device creates a separate session family. Credentials are HttpOnly cookies; credential verifiers are stored as hashes. Retry responses are AES-GCM encrypted using a domain-separated key derived from the presented refresh secret; that key is not stored.
 - Logout terminates only the current session. Changing a password invalidates the other sessions and leaves the current session valid.
 - `Execute` rechecks ownership and session validity under the write transaction. Read endpoints are authenticated before `View`; do not treat this as a fresh session check *inside* every read transaction.
 - The browser must clear account-owned cached query data on logout/account switch. A cached browser view or installed PWA must not treat an expired cookie as proof of authentication.
-- When access expires, the browser renews it on demand and retries only a rejected authentication/CSRF request, retaining its idempotency key and account guard. Refresh expiry/revocation requires sign-in. Credential-changing requests share a Web Lock across tabs, with a local queue fallback. Refresh reuse outside a fixed 30-second concurrency/lost-response grace revokes the family.
+- When access expires, the browser renews it on demand and retries only a rejected authentication/CSRF request, retaining its idempotency key and account guard. Refresh expiry/revocation requires sign-in. Credential-changing requests share a Web Lock across tabs, with a local queue fallback. Refresh reuse outside a fixed 30-second concurrency/lost-response grace revokes the family. Within grace, retries return the same credentials from an encrypted response cache; the successor does not rotate again until grace ends. Retries extend neither the grace period nor the server-side idle expiry.
 
 See [settings](13-settings.md) for account preferences and [PWA/notifications](12-pwa-notifications.md) for device-local permissions.
 
 ### Upgrade behavior
-Existing pre-refresh sessions retain their original expiry. Signing in again issues the new credential pair. `focus_device` is a persistent, non-authenticating browser identifier: a successful login reattaches that account's still-authorized push subscriptions to the new family. It never restores consent after logout or notification revocation.
+Existing pre-refresh sessions retain their original expiry. Signing in again issues the new credential pair. `focus_device` is a persistent, non-authenticating browser identifier: a successful login reattaches that account's still-authorized push subscriptions to the new family. Switching accounts revokes the previous account’s Push subscriptions on that browser, including expired sessions. It never restores consent after logout or notification revocation.
+
+Apply migration `000018_refresh_retry_response` before deploying the API update that caches encrypted refresh responses. Consumed tokens created before this migration have no cached response and are rejected during grace without rotating again.

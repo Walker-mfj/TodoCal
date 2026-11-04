@@ -148,8 +148,10 @@ func TestRefreshResponsesCanArriveOutOfOrder(t *testing.T) {
 		}()
 	}
 	first, second := <-responses, <-responses
-	if <-codes != 200 || <-codes != 200 {
-		t.Fatal("parallel refresh failed")
+	for i := 0; i < 2; i++ {
+		if code := <-codes; code != http.StatusOK {
+			t.Fatalf("parallel refresh failed: status %d", code)
+		}
 	}
 	if first[0].Value != second[0].Value || first[1].Value != second[1].Value {
 		t.Error("parallel refresh returned different credentials")

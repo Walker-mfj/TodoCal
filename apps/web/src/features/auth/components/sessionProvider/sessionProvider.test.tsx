@@ -132,3 +132,57 @@ it("coalesces session refresh and avoids starting requests canceled by Strict Mo
   expect(dataCalls).toBe(1);
   view.unmount();
 });
+
+it("normalizes canceled reads without marking the session offline", async () => {
+  const { isCancelledError } = await import("@tanstack/react-query");
+  let canceled: unknown;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+    if (String(url).endsWith("/auth/me"))
+      return new Response(
+        JSON.stringify({
+          user: { id: "one", email: "one@example.com" },
+          csrfToken: "csrf",
+          settings,
+        }),
+      );
+    return new Promise<Response>((_, reject) => {
+      init!.signal!.addEventListener(
+        "abort",
+        () =>
+          reject(new DOMException("The operation was aborted.", "AbortError")),
+        { once: true },
+      );
+    });
+  });
+  function CancellationHarness() {
+    const s = useSession();
+    return (
+      <>
+        <span>{s.session?.user.email}</span>
+        <span>{s.connected ? "Connected" : "Offline"}</span>
+        <button
+          onClick={() => {
+            const controller = new AbortController();
+            void s
+              .read("/reports/period", { signal: controller.signal })
+              .catch((error) => {
+                canceled = error;
+              });
+            controller.abort();
+          }}
+        >
+          Cancel report
+        </button>
+      </>
+    );
+  }
+  render(
+    <Providers>
+      <CancellationHarness />
+    </Providers>,
+  );
+  await screen.findByText("one@example.com");
+  fireEvent.click(screen.getByText("Cancel report"));
+  await waitFor(() => expect(isCancelledError(canceled)).toBe(true));
+  expect(screen.getByText("Connected")).toBeInTheDocument();
+});

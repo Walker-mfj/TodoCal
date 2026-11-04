@@ -13,7 +13,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { CancelledError, useQueryClient } from "@tanstack/react-query";
 import {
   apiFetch,
   ApiError,
@@ -145,7 +145,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             csrf,
             owner: options.owner || auth?.user.id,
           });
-        const out = await send(auth?.csrfToken).catch(async (error) => {
+        let out: T;
+        try {
+          out = await send(auth?.csrfToken);
+        } catch (error) {
+          if (options.signal?.aborted)
+            throw new CancelledError({ silent: true });
           // These errors are emitted before mutation; never replay ambiguous
           // network/server failures, and never replay into a different account.
           if (
@@ -165,13 +170,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             throw new ApiError(401, "Account changed", "account_changed");
           current.current = renewed;
           setSession(renewed);
-          return send(renewed.csrfToken);
-        });
+          out = await send(renewed.csrfToken);
+        }
         if (version !== epoch.current)
           throw new ApiError(401, "Account changed");
         setConnected(navigator.onLine);
         return out;
       } catch (e) {
+        // Query cancellation is expected when a view/period changes. Normalize
+        // the browser's abort into React Query's silent cancellation rather than
+        // propagating a native DOMException through the authentication chain.
+        if (options.signal?.aborted) throw new CancelledError({ silent: true });
         if (e instanceof DOMException && e.name === "AbortError") throw e;
         if (version === epoch.current) {
           if (e instanceof ApiError && e.status === 401) clear(true);

@@ -166,6 +166,9 @@ test("expired session keeps the original account draft and never shows it to ano
     .getByRole("dialog", { name: "Account options" })
     .getByRole("button", { name: "Sign out", exact: true })
     .click();
+  // Clicking starts async logout; navigation must wait until credentials and
+  // the account UI have both been cleared.
+  await expect(page.getByLabel("Email", { exact: true })).toBeVisible();
   await signIn(page, a);
   await expect(page.getByLabel("Task title")).toHaveValue(
     "Private unfinished draft",
@@ -313,4 +316,42 @@ test("calendar click/selection, filtered progress, conflicts, offline writes and
     page.locator(".task-open").filter({ hasText: "Offline draft" }),
   ).toBeVisible();
   await second.close();
+});
+
+test("changing report periods cancels an in-flight read without page errors", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await signIn(page, `cancel-report-${Date.now()}@example.com`, true);
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/v1/reports/period?period=week&*", async (route) => {
+    await held;
+    await route.abort();
+  });
+  const requested = page.waitForRequest((request) =>
+    request.url().includes("/reports/period?period=week&"),
+  );
+  await page.getByRole("button", { name: "Progress", exact: true }).click();
+  const week = await requested;
+  const canceled = page.waitForEvent("requestfailed", {
+    predicate: (request) => request === week,
+  });
+  await page.getByLabel("Progress period").selectOption("month");
+  await expect(page.locator(".report-days.month")).toBeVisible();
+  release();
+  await canceled;
+  await page
+    .getByRole("button", { name: "New task", exact: true })
+    .first()
+    .click();
+  await page
+    .getByLabel("Task title")
+    .fill("Still connected after cancellation");
+  await page.getByRole("button", { name: "Create task", exact: true }).click();
+  await expect(page.getByLabel("Task title")).toBeHidden();
+  expect(errors).toEqual([]);
 });

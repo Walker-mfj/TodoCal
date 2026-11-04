@@ -94,20 +94,8 @@ func TestNotificationDeliveryLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// An abandoned browser stops receiving reminders when it can no longer
-	// renew its login, without deleting consent for same-account reauthentication.
-	if _, e = pool.Exec(ctx, "UPDATE auth_sessions SET refresh_expires_at=$1 WHERE id=$2", now, p.SessionID); e != nil {
-		t.Fatal(e)
-	}
-	run()
-	if sender.calls != 0 {
-		t.Fatal("push delivered after refresh idle expiry")
-	}
-	if _, e = pool.Exec(ctx, "UPDATE auth_sessions SET refresh_expires_at=$1 WHERE id=$2", now.Add(30*24*time.Hour), p.SessionID); e != nil {
-		t.Fatal(e)
-	}
-	// Push delivery has its own lifetime, independent of access credentials.
-	if _, e = pool.Exec(ctx, "UPDATE auth_sessions SET expires_at=$1 WHERE id=$2", now.Add(-time.Hour), p.SessionID); e != nil {
+	// Enrollment outlives both credentials, including browsers idle >30 days.
+	if _, e = pool.Exec(ctx, "UPDATE auth_sessions SET expires_at=$1,refresh_expires_at=$1 WHERE id=$2", now.Add(-31*24*time.Hour), p.SessionID); e != nil {
 		t.Fatal(e)
 	}
 	run()
@@ -130,16 +118,11 @@ func TestNotificationDeliveryLifecycle(t *testing.T) {
 	if sender.calls != 4 {
 		t.Fatalf("start attempts: %d", sender.calls)
 	}
-	if _, e = pool.Exec(ctx, "UPDATE auth_sessions SET refresh_expires_at=$1 WHERE id=$2", now, p.SessionID); e != nil {
-		t.Fatal(e)
-	}
+	// An already queued transient failure must also retry after credential expiry.
 	now = now.Add(time.Minute)
 	run()
-	if sender.calls != 4 {
-		t.Fatal("queued push retried after refresh idle expiry")
-	}
-	if _, e = pool.Exec(ctx, "UPDATE auth_sessions SET refresh_expires_at=$1 WHERE id=$2", now.Add(30*24*time.Hour), p.SessionID); e != nil {
-		t.Fatal(e)
+	if sender.calls != 6 {
+		t.Fatal("queued push stopped after refresh expiry")
 	}
 	_, e = pool.Exec(ctx, "UPDATE tasks SET start_time='12:00',end_time='12:30' WHERE id=$1", task)
 	if e != nil {
@@ -147,7 +130,7 @@ func TestNotificationDeliveryLifecycle(t *testing.T) {
 	}
 	now = now.Add(2 * time.Minute)
 	run()
-	if sender.calls != 4 {
+	if sender.calls != 6 {
 		t.Fatal("stale schedule retried")
 	}
 	// A deleted task must cancel already-queued transient failures.
@@ -157,7 +140,7 @@ func TestNotificationDeliveryLifecycle(t *testing.T) {
 		t.Fatal(e)
 	}
 	run()
-	if sender.calls != 6 {
+	if sender.calls != 8 {
 		t.Fatalf("deadline attempts: %d", sender.calls)
 	}
 	_, e = pool.Exec(ctx, "UPDATE tasks SET deleted_at=$2 WHERE id=$1", deleted, now)
@@ -166,7 +149,7 @@ func TestNotificationDeliveryLifecycle(t *testing.T) {
 	}
 	now = now.Add(2 * time.Minute)
 	run()
-	if sender.calls != 6 {
+	if sender.calls != 8 {
 		t.Fatal("deleted task retried")
 	}
 	// Quiet hours suppress completion notifications permanently; toggles are rechecked.
@@ -177,12 +160,12 @@ func TestNotificationDeliveryLifecycle(t *testing.T) {
 	}
 	sender.status = 201
 	run()
-	if sender.calls != 6 {
+	if sender.calls != 8 {
 		t.Fatal("quiet hours ignored")
 	}
 	command(map[string]any{"expectedRevision": 3, "taskStart": true, "deadline": true, "focusComplete": true, "breakComplete": true, "leadMinutes": 5, "quietStart": "", "quietEnd": ""}, services.EditNotificationPreferencesCommand)
 	run()
-	if sender.calls != 6 {
+	if sender.calls != 8 {
 		t.Fatal("quiet backlog delivered")
 	}
 	now = now.Add(time.Minute)
@@ -191,7 +174,7 @@ func TestNotificationDeliveryLifecycle(t *testing.T) {
 		t.Fatal(e)
 	}
 	run()
-	if sender.calls != 8 {
+	if sender.calls != 10 {
 		t.Fatalf("break completions: %d", sender.calls)
 	}
 	// Simultaneous workers claim each event/device once.
@@ -213,7 +196,7 @@ func TestNotificationDeliveryLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if sender.calls != 10 {
+	if sender.calls != 12 {
 		t.Fatalf("parallel delivery calls: %d", sender.calls)
 	}
 	// Delayed worker runs must not release events that were due during quiet hours.
@@ -224,7 +207,7 @@ func TestNotificationDeliveryLifecycle(t *testing.T) {
 		t.Fatal(e)
 	}
 	run()
-	if sender.calls != 10 {
+	if sender.calls != 12 {
 		t.Fatal("delayed quiet event sent")
 	}
 	// Nonexistent local time produces no candidates; fall-back has one stable instant.
@@ -260,7 +243,7 @@ func TestNotificationDeliveryLifecycle(t *testing.T) {
 	}
 	now = time.Date(2026, 11, 1, 11, 55, 0, 0, time.UTC)
 	run()
-	if sender.calls != 10 {
+	if sender.calls != 12 {
 		t.Fatal("revoked session sent")
 	}
 	// An explicit new login/opt-in may take over the browser endpoint, and 410
@@ -296,11 +279,11 @@ func TestNotificationDeliveryLifecycle(t *testing.T) {
 	}
 	sender.status = 410
 	run()
-	if sender.calls != 11 {
+	if sender.calls != 13 {
 		t.Fatalf("expired push endpoint calls: %d", sender.calls)
 	}
 	run()
-	if sender.calls != 11 {
+	if sender.calls != 13 {
 		t.Fatal("expired endpoint retried")
 	}
 	var live int

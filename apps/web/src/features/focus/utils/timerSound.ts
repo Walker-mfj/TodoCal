@@ -59,10 +59,19 @@ const melodies: Record<string, Note[]> = {
 export function playTimerSound(
   ctx: AudioContext,
   sound = "classic",
+  volume = 75,
 ): () => void {
   const nodes: OscillatorNode[] = [];
-  for (const [frequency, offset, duration, volume] of melodies[sound] ??
-    melodies.classic) {
+  const level = Math.max(0, Math.min(100, volume)) / 75;
+  if (level === 0) return () => {};
+  const notes = melodies[sound] ?? melodies.classic;
+  const originalDuration = Math.max(
+    ...notes.map(([, offset, duration]) => offset + duration),
+  );
+  const stretch = 4.8 / originalDuration;
+  for (const [frequency, originalOffset, originalLength, amplitude] of notes) {
+    const offset = originalOffset * stretch;
+    const duration = originalLength * stretch;
     const oscillator = ctx.createOscillator();
     const gain = ctx.createGain();
     const start = ctx.currentTime + offset;
@@ -70,7 +79,7 @@ export function playTimerSound(
     gain.connect(ctx.destination);
     oscillator.frequency.value = frequency;
     gain.gain.setValueAtTime(0.001, start);
-    gain.gain.linearRampToValueAtTime(volume, start + 0.008);
+    gain.gain.linearRampToValueAtTime(amplitude * 1.5 * level, start + 0.012);
     gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
     oscillator.onended = () => {
       oscillator.disconnect();

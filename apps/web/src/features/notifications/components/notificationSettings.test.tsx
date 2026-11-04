@@ -1,86 +1,102 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { NotificationSettings } from "./notificationSettings";
-import { ApiError } from "../../../shared/api/apiClient";
-const data = {
-  publicKey: "",
-  preferences: {
-    taskStart: false,
-    deadline: false,
-    focusComplete: false,
-    breakComplete: false,
-    leadMinutes: 5,
-    quietStart: "",
-    quietEnd: "",
-    revision: 1,
-  },
-  subscriptions: [],
+import {
+  currentBrowserPushHash,
+  subscribeBrowserPush,
+} from "../utils/browserPush";
+vi.mock("../utils/browserPush", () => ({
+  currentBrowserPushHash: vi.fn(),
+  subscribeBrowserPush: vi.fn(),
+  supportsBrowserPush: () => true,
+}));
+afterEach(() => vi.unstubAllGlobals());
+const preferences = {
+  taskStart: false,
+  deadline: false,
+  focusComplete: false,
+  breakComplete: false,
+  leadMinutes: 5,
+  quietStart: "",
+  quietEnd: "",
+  revision: 1,
 };
-it("loads opt-in preferences without requesting browser permission", async () => {
-  const read = vi.fn().mockResolvedValue(data);
-  const execute = vi.fn();
+const device = {
+  id: "device-1",
+  deviceName: "Chrome · macOS",
+  endpointHash: "local",
+  currentDevice: true,
+  createdAt: "2026-11-03T00:00:00Z",
+};
+function setup(hash: string | null = "local", subscriptions = [device]) {
+  vi.mocked(currentBrowserPushHash).mockResolvedValue(hash);
+  const execute = vi.fn().mockResolvedValue({});
+  const reload = vi.fn().mockResolvedValue({});
+  const setDraft = vi.fn();
   render(
     <NotificationSettings
       owner="a"
-      read={read}
+      state={{ publicKey: "key", preferences, subscriptions }}
+      draft={preferences}
+      setDraft={setDraft}
       execute={execute}
+      reload={reload}
       disabled={false}
+      onPendingChange={vi.fn()}
     />,
   );
+  return { execute, reload, setDraft };
+}
+it("shows verified enabled device with Revoke and never offers redundant Enable", async () => {
+  const { execute, reload } = setup();
   expect(
-    await screen.findByLabelText("Scheduled task reminders"),
-  ).not.toBeChecked();
-  expect(
-    screen.getByText("Background notifications are not configured yet."),
+    await screen.findByText("Notifications enabled on this device"),
   ).toBeVisible();
-  fireEvent.click(screen.getByLabelText("Scheduled task reminders"));
+  expect(
+    screen.queryByRole("button", { name: "Enable on this device" }),
+  ).not.toBeInTheDocument();
+  expect(subscribeBrowserPush).not.toHaveBeenCalled();
   fireEvent.click(
-    screen.getByRole("button", { name: "Save notification preferences" }),
-  );
-  await waitFor(() => expect(execute).toHaveBeenCalled());
-  expect(execute.mock.calls[0][1].body).toMatchObject({
-    expectedRevision: 1,
-    taskStart: true,
-  });
-});
-it("keeps a draft on conflict and requires an explicit reapply", async () => {
-  const read = vi.fn().mockResolvedValue(data);
-  const execute = vi.fn().mockRejectedValue(new ApiError(409, "Changed"));
-  render(
-    <NotificationSettings
-      owner="b"
-      read={read}
-      execute={execute}
-      disabled={false}
-    />,
-  );
-  fireEvent.click(await screen.findByLabelText("Scheduled task reminders"));
-  fireEvent.click(
-    screen.getByRole("button", { name: "Save notification preferences" }),
-  );
-  await screen.findByRole("alert");
-  expect(screen.getByLabelText("Scheduled task reminders")).toBeChecked();
-  read.mockResolvedValue({
-    ...data,
-    preferences: { ...data.preferences, revision: 2 },
-  });
-  fireEvent.click(
-    screen.getByRole("button", { name: "Load latest revision and keep draft" }),
+    screen.getByRole("button", {
+      name: "Revoke notifications for Chrome · macOS",
+    }),
   );
   await waitFor(() =>
+    expect(execute).toHaveBeenCalledWith(
+      "/notifications/subscriptions/device-1",
+      expect.objectContaining({ method: "DELETE" }),
+    ),
+  );
+  await waitFor(() => expect(reload).toHaveBeenCalled());
+});
+it.each([null, "other-endpoint"])(
+  "does not claim enabled for missing or mismatched local subscription (%s)",
+  async (hash) => {
+    setup(hash);
     expect(
-      screen.queryByRole("button", {
-        name: "Load latest revision and keep draft",
-      }),
-    ).not.toBeInTheDocument(),
-  );
-  execute.mockResolvedValue({});
-  fireEvent.click(
-    screen.getByRole("button", { name: "Save notification preferences" }),
-  );
-  await waitFor(() => expect(execute).toHaveBeenCalledTimes(2));
-  expect(execute.mock.calls[1][1].body).toMatchObject({
-    taskStart: true,
-    expectedRevision: 2,
-  });
+      await screen.findByRole("button", { name: "Enable on this device" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByText("Notifications enabled on this device"),
+    ).not.toBeInTheDocument();
+  },
+);
+it("keeps reminder editing controlled by the unified form without its own save", async () => {
+  const { setDraft, execute } = setup();
+  await screen.findByText("Notifications enabled on this device");
+  fireEvent.click(screen.getByLabelText("Scheduled task reminders"));
+  expect(setDraft).toHaveBeenCalledWith({ ...preferences, taskStart: true });
+  expect(execute).not.toHaveBeenCalled();
+  expect(
+    screen.queryByRole("button", { name: /Save/ }),
+  ).not.toBeInTheDocument();
+});
+it("disables device actions while a revoke is pending", async () => {
+  const { execute } = setup();
+  await screen.findByText("Notifications enabled on this device");
+  execute.mockImplementation(() => new Promise(() => {}));
+  fireEvent.click(screen.getByRole("button", { name: /Revoke notifications/ }));
+  expect(
+    screen.getByRole("button", { name: /Revoke notifications/ }),
+  ).toBeDisabled();
 });

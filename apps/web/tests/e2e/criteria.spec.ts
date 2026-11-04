@@ -85,10 +85,10 @@ test("criteria 11–14, 18, 35–36: exact progress transitions and independent 
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByLabel("Appearance").selectOption(theme);
     await page
-      .getByRole("button", { name: "Save settings", exact: true })
+      .getByRole("button", { name: "Save changes", exact: true })
       .click();
     await expect(
-      page.getByRole("button", { name: "Save settings", exact: true }),
+      page.getByRole("button", { name: "Save changes", exact: true }),
     ).toBeEnabled();
     await page.getByRole("button", { name: "Progress", exact: true }).click();
     await expect(page.locator(".progress-legend")).toContainText("100%");
@@ -216,11 +216,9 @@ test("criteria 35–36: every completion band and exact 100% checkmark across th
   await expect(page.locator(".progress-hero .ring-check")).toBeVisible();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByLabel("Appearance").selectOption("dark");
-  await page
-    .getByRole("button", { name: "Save settings", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Save settings", exact: true }),
+    page.getByRole("button", { name: "Save changes", exact: true }),
   ).toBeEnabled();
   await page.getByRole("button", { name: "Tasks", exact: true }).click();
   await expect(page.locator(".progress-hero.complete")).toContainText("100%");

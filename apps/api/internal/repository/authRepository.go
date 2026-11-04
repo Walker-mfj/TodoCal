@@ -53,8 +53,8 @@ func ReadSessionPrincipal(ctx context.Context, db DBTX, tokenHash string, now ti
 	return db.QueryRow(ctx, `SELECT u.id::text,u.email,a.id::text,a.csrf_hash FROM auth_sessions a JOIN users u ON u.id=a.user_id WHERE a.token_hash=$1 AND a.revoked_at IS NULL AND a.expires_at>$2`, tokenHash, now).Scan(&out.ID, &out.Email, &out.SessionID, &out.CSRFHash)
 }
 
-func ReadAccountSettings(ctx context.Context, db DBTX, userID string, resultZone *string, resultAppearance *string, resultFocus *int, resultShort *int, resultLong *int, resultSound *bool, resultTimerSound *string, resultRevision *int64) error {
-	return db.QueryRow(ctx, "SELECT timezone,appearance,focus_minutes,short_break_minutes,long_break_minutes,sound,timer_sound,revision FROM settings WHERE user_id=$1", userID).Scan(resultZone, resultAppearance, resultFocus, resultShort, resultLong, resultSound, resultTimerSound, resultRevision)
+func ReadAccountSettings(ctx context.Context, db DBTX, userID string, resultZone *string, resultAppearance *string, resultFocus *int, resultShort *int, resultLong *int, resultSound *bool, resultTimerSound *string, resultVolume *int, resultRevision *int64) error {
+	return db.QueryRow(ctx, "SELECT timezone,appearance,focus_minutes,short_break_minutes,long_break_minutes,sound,timer_sound,sound_volume,revision FROM settings WHERE user_id=$1", userID).Scan(resultZone, resultAppearance, resultFocus, resultShort, resultLong, resultSound, resultTimerSound, resultVolume, resultRevision)
 }
 
 func RevokeSession(ctx context.Context, db DBTX, now time.Time, sessionID string, userID string) (pgconn.CommandTag, error) {

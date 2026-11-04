@@ -67,12 +67,15 @@ func SubscribePushCommand(ctx context.Context, tx pgx.Tx, p Principal, zone stri
 		return nil, 0, e
 	}
 	var count int
-	e = tx.QueryRow(ctx, "SELECT count(*) FROM push_subscriptions s JOIN auth_sessions a ON a.id=s.session_id WHERE s.user_id=$1 AND s.revoked_at IS NULL AND a.revoked_at IS NULL AND a.expires_at>$2 AND s.endpoint<>$3", p.ID, now, in.Endpoint).Scan(&count)
+	e = tx.QueryRow(ctx, "SELECT count(*) FROM push_subscriptions s JOIN auth_sessions a ON a.id=s.session_id WHERE s.user_id=$1 AND s.revoked_at IS NULL AND a.revoked_at IS NULL AND s.endpoint<>$2", p.ID, in.Endpoint).Scan(&count)
 	if e != nil {
 		return nil, 0, e
 	}
 	if count >= 20 {
 		return nil, 0, Invalid("Revoke an existing device before adding another")
+	}
+	if in.DeviceName == "" {
+		in.DeviceName = "Unknown browser"
 	}
 	id := uuid.NewString()
 	// A browser endpoint can move to its new account/session only through an explicit
@@ -81,7 +84,7 @@ func SubscribePushCommand(ctx context.Context, tx pgx.Tx, p Principal, zone stri
 	if e != nil {
 		return nil, 0, e
 	}
-	_, e = tx.Exec(ctx, `INSERT INTO push_subscriptions(id,user_id,session_id,endpoint,p256dh,auth,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)`, id, p.ID, p.SessionID, in.Endpoint, in.Keys.P256dh, in.Keys.Auth, now)
+	_, e = tx.Exec(ctx, `INSERT INTO push_subscriptions(id,user_id,session_id,endpoint,p256dh,auth,created_at,device_name) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, id, p.ID, p.SessionID, in.Endpoint, in.Keys.P256dh, in.Keys.Auth, now, in.DeviceName)
 	return map[string]string{"id": id}, models.Created, e
 }
 func RevokePushCommand(ctx context.Context, tx pgx.Tx, p Principal, zone string, now time.Time, input CommandInput, params Parameters) (any, models.Outcome, error) {

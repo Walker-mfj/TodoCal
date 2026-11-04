@@ -82,6 +82,7 @@ func TestDailyHistoryCarryoverAndProgress(t *testing.T) {
 		t.Fatal("wrong weighted progress")
 	}
 	now = atDate("2030-10-20")
+	renewTestSession(t, s, c, &csrf)
 	moved := object(t, command(s, "PATCH", "/api/v1/tasks/"+moving["id"].(string), map[string]any{"scheduledDate": "2030-10-20", "expectedRevision": 1}, c, csrf, uuid.NewString()), 200)
 	object(t, command(s, "POST", "/api/v1/tasks/"+moved["id"].(string)+"/completion", map[string]any{"complete": true, "expectedRevision": 2}, c, csrf, uuid.NewString()), 200)
 	days = calendar(t, s, c, "2030-10-19", "2030-10-21")["days"].([]any)
@@ -127,6 +128,7 @@ func TestDelayedCatchupAndTimezoneSnapshotProtection(t *testing.T) {
 	c, csrf := register(t, s, "catchup@example.com")
 	series(t, s, c, csrf, "daily", 1, "2030-10-25")
 	now = atDate("2030-10-23")
+	renewTestSession(t, s, c, &csrf)
 	out := calendar(t, s, c, "2030-10-19", "2030-10-24")
 	for _, day := range out["days"].([]any)[:4] {
 		d := day.(map[string]any)
@@ -137,6 +139,7 @@ func TestDelayedCatchupAndTimezoneSnapshotProtection(t *testing.T) {
 	object(t, command(s, "PATCH", "/api/v1/settings", map[string]any{"timezone": "Etc/GMT+12", "expectedRevision": 1}, c, csrf, uuid.NewString()), 200)
 	// 00:30 UTC on the 23rd becomes the already-finalized 22nd in UTC-12.
 	now = time.Date(2030, 10, 23, 0, 30, 0, 0, time.UTC)
+	renewTestSession(t, s, c, &csrf)
 	object(t, command(s, "POST", "/api/v1/tasks", map[string]any{"title": "Historical adjustment", "scheduledDate": "2030-10-22"}, c, csrf, uuid.NewString()), 201)
 	if calendar(t, s, c, "2030-10-22", "2030-10-23")["days"].([]any)[0].(map[string]any)["planned"] != float64(2) {
 		t.Fatal("timezone changed history")
@@ -190,6 +193,7 @@ func TestRecurrenceDSTGapIsReportedWithoutBlockingCatchup(t *testing.T) {
 		t.Fatal("gap occurrence not handled", out)
 	}
 	now = atDate("2030-03-12")
+	renewTestSession(t, s, c, &csrf)
 	out = calendar(t, s, c, "2030-03-09", "2030-03-12")
 	if out["days"].([]any)[1].(map[string]any)["planned"] != float64(0) {
 		t.Fatal("gap counted as a missed plan")
@@ -203,6 +207,7 @@ func TestWorkerAndAPIConcurrentlyFinalizeOnce(t *testing.T) {
 	c, csrf := register(t, s, "worker@example.com")
 	series(t, s, c, csrf, "daily", 1, nil)
 	now = atDate("2030-10-22")
+	renewTestSession(t, s, c, &csrf)
 	results := make(chan error, 1)
 	go func() { _, e := workers.Sweep(context.Background(), p, s.now); results <- e }()
 	out := calendar(t, s, c, "2030-10-19", "2030-10-23")
@@ -261,6 +266,8 @@ func TestSeriesOwnershipRangeAndGroupHistory(t *testing.T) {
 	}
 	object(t, req(s, "GET", "/api/v1/calendar?from=2030-10-19&to=2031-10-19", nil, a, ""), 422)
 	now = atDate("2030-10-20")
+	renewTestSession(t, s, a, &ac)
+	renewTestSession(t, s, b, &bc)
 	object(t, command(s, "DELETE", "/api/v1/groups/"+g["id"].(string), map[string]any{"expectedRevision": 1}, a, ac, uuid.NewString()), 200)
 	out := calendar(t, s, a, "2030-10-19", "2030-10-22")
 	old := out["days"].([]any)[0].(map[string]any)["entries"].([]any)[0].(map[string]any)
@@ -437,6 +444,7 @@ func TestSeriesEditPreservesHistoryAndRollsBackInvalidShift(t *testing.T) {
 	sr := series(t, s, c, csrf, "daily", 1, "2030-10-22")
 	calendar(t, s, c, "2030-10-19", "2030-10-23")
 	s.now = func() time.Time { return atDate("2030-10-20") }
+	renewTestSession(t, s, c, &csrf)
 	out := calendar(t, s, c, "2030-10-19", "2030-10-23")
 	live := out["tasks"].([]any)
 	selected := live[1].(map[string]any)

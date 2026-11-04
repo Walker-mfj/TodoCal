@@ -60,7 +60,14 @@ func register(t *testing.T, s *Server, email string) (*http.Cookie, string) {
 	}
 	var out map[string]any
 	_ = json.Unmarshal(w.Body.Bytes(), &out)
-	return w.Result().Cookies()[0], out["csrfToken"].(string)
+	cookie := w.Result().Cookies()[0]
+	// Keep the test browser's refresh cookie alongside its access cookie.
+	for _, c := range w.Result().Cookies() {
+		if c.Name == "focus_refresh" {
+			cookie.Unparsed = []string{c.Value}
+		}
+	}
+	return cookie, out["csrfToken"].(string)
 }
 func TestAuthLifecycle(t *testing.T) {
 	s, p := testServer(t)
@@ -238,4 +245,15 @@ func TestAuthenticatedResponsesIdentifyActualAccount(t *testing.T) {
 			t.Fatalf("%s missing authenticated identity", path)
 		}
 	}
+}
+
+// Time-travel domain tests renew credentials explicitly after advancing clocks.
+// Authentication tests deliberately do not call this helper.
+func renewTestSession(t *testing.T, s *Server, cookie *http.Cookie, csrf *string) {
+	t.Helper()
+	w := req(s, "POST", "/api/v1/auth/refresh", map[string]any{}, &http.Cookie{Name: "focus_refresh", Value: cookie.Unparsed[0]}, "")
+	body := object(t, w, 200)
+	*cookie = *w.Result().Cookies()[0]
+	cookie.Unparsed = []string{w.Result().Cookies()[1].Value}
+	*csrf = body["csrfToken"].(string)
 }

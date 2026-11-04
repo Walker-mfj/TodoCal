@@ -57,6 +57,9 @@ func EditSettingsCommand(ctx context.Context, tx pgx.Tx, p Principal, zone strin
 			return nil, 0, err
 		}
 	}
+	if in.SoundVolume < 0 || in.SoundVolume > 100 {
+		return nil, 0, Invalid("Choose a volume from 0 to 100")
+	}
 	switch in.TimerSound {
 	case "classic", "bell", "soft_bell", "double_bell", "singing_bowl", "doorbell", "chime", "digital":
 	default:
@@ -67,6 +70,28 @@ func EditSettingsCommand(ctx context.Context, tx pgx.Tx, p Principal, zone strin
 			return nil, 0, e
 		}
 	}
-	_, e = repository.UpdateSettings(ctx, tx, p.ID, in.Timezone, in.Appearance, in.FocusMinutes, in.ShortBreakMinutes, in.LongBreakMinutes, in.Sound, in.TimerSound)
+	_, e = repository.UpdateSettings(ctx, tx, p.ID, in.Timezone, in.Appearance, in.FocusMinutes, in.ShortBreakMinutes, in.LongBreakMinutes, in.Sound, in.TimerSound, in.SoundVolume)
 	return Settings{SettingsInput: in, Revision: current.Revision + 1}, models.Updated, e
+}
+
+func EditWorkspaceSettingsCommand(ctx context.Context, tx pgx.Tx, p Principal, zone string, now time.Time, input CommandInput, params Parameters) (any, models.Outcome, error) {
+	decoder, ok := input.(interface {
+		WorkspaceSettings() (CommandInput, CommandInput, error)
+	})
+	if !ok {
+		return nil, 0, Invalid("Invalid settings")
+	}
+	settingsInput, notificationsInput, err := decoder.WorkspaceSettings()
+	if err != nil {
+		return nil, 0, err
+	}
+	settings, _, err := EditSettingsCommand(ctx, tx, p, zone, now, settingsInput, params)
+	if err != nil {
+		return nil, 0, err
+	}
+	notifications, _, err := EditNotificationPreferencesCommand(ctx, tx, p, zone, now, notificationsInput, params)
+	if err != nil {
+		return nil, 0, err
+	}
+	return map[string]any{"settings": settings, "notifications": notifications}, models.Updated, nil
 }

@@ -92,9 +92,7 @@ test("optional timer persists across reloads and devices; task completion is ind
   await panel.getByRole("button", { name: "Close focus timer" }).click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByLabel("Appearance").selectOption("dark");
-  await page
-    .getByRole("button", { name: "Save settings", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("data-mode", "dark");
   await page.screenshot({
     animations: "disabled",

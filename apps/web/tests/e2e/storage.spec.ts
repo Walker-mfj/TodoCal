@@ -70,10 +70,10 @@ for (const failure of ["denied", "quota"]) {
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByLabel("Appearance").selectOption("dark");
     await page
-      .getByRole("button", { name: "Save settings", exact: true })
+      .getByRole("button", { name: "Save changes", exact: true })
       .click();
     await expect(
-      page.getByRole("button", { name: "Save settings", exact: true }),
+      page.getByRole("button", { name: "Save changes", exact: true }),
     ).toBeEnabled();
     await expect(page.locator("html")).toHaveAttribute("data-mode", "dark");
     await page.getByRole("button", { name: /^Focus timer/ }).click();

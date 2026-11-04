@@ -113,11 +113,11 @@ test("acceptance: keyboard-only task workflow, custom errors, long names and emp
     await page.getByLabel("Appearance").selectOption(theme);
     await activate(
       page,
-      page.getByRole("button", { name: "Save settings", exact: true }),
+      page.getByRole("button", { name: "Save changes", exact: true }),
     );
     await expect(page.locator("html")).toHaveAttribute("data-mode", theme);
     await expect(
-      page.getByRole("button", { name: "Save settings", exact: true }),
+      page.getByRole("button", { name: "Save changes", exact: true }),
     ).toBeEnabled();
     await activate(
       page,

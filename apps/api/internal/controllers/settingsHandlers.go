@@ -12,3 +12,7 @@ func (s *Server) GetSettings(w http.ResponseWriter, r *http.Request) {
 func (s *Server) EditSettings(w http.ResponseWriter, r *http.Request) {
 	s.mutate(w, r, services.EditSettingsCommand)
 }
+
+func (s *Server) EditWorkspaceSettings(w http.ResponseWriter, r *http.Request) {
+	s.mutate(w, r, services.EditWorkspaceSettingsCommand)
+}

@@ -17,15 +17,15 @@ import (
 )
 
 type User = models.User
-type Credentials struct{ Email, Password, Timezone string }
+type Credentials struct{ Email, Password, Timezone, BrowserID string }
 type PasswordInput struct{ OldPassword, NewPassword string }
 type Auth struct {
 	Pool *pgxpool.Pool
 	Now  func() time.Time
 }
 type SessionResult struct {
-	User        User
-	Token, CSRF string
+	User                            User
+	Token, CSRF, Refresh, BrowserID string
 }
 
 func normalizedEmail(v string) (string, bool) {
@@ -51,11 +51,36 @@ func (s *Auth) Limited(ctx context.Context, email, ip string) (bool, error) {
 	}
 	return false, nil
 }
-func (s *Auth) createSession(ctx context.Context, tx pgx.Tx, userID string) (string, string, error) {
+func (s *Auth) createSession(ctx context.Context, tx pgx.Tx, userID, browserID string) (string, string, string, error) {
+	// Serialize successful logins for a browser, including different accounts.
+	// This identity is not authentication; only a verified login reaches here.
+	if browserID != "" {
+		if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", browserID); err != nil {
+			return "", "", "", err
+		}
+	}
 	token := randomToken(32)
 	csrf := tokenHash("csrf:" + token)
-	_, e := repository.InsertSession(ctx, tx, uuid.NewString(), userID, tokenHash(token), tokenHash(csrf), s.Now().Add(7*24*time.Hour))
-	return token, csrf, e
+	id := uuid.NewString()
+	refresh := randomToken(32)
+	_, e := repository.InsertSession(ctx, tx, id, userID, tokenHash(token), tokenHash(csrf), s.Now().Add(time.Hour))
+	if e == nil {
+		_, e = tx.Exec(ctx, "UPDATE auth_sessions SET refresh_expires_at=$2,browser_id=NULLIF($3,'')::uuid WHERE id=$1", id, s.Now().Add(30*24*time.Hour), browserID)
+	}
+	if e == nil {
+		_, e = tx.Exec(ctx, "INSERT INTO auth_refresh_tokens(token_hash,session_id) VALUES($1,$2)", tokenHash(refresh), id)
+	}
+	if e == nil && browserID != "" {
+		// Account switching ends the previous account's consent on this browser,
+		// even when its credentials already expired. Other browsers are untouched.
+		_, e = tx.Exec(ctx, `UPDATE push_subscriptions p SET revoked_at=$3 FROM auth_sessions a WHERE p.session_id=a.id AND a.browser_id=$1::uuid AND p.user_id<>$2 AND p.revoked_at IS NULL`, browserID, userID, s.Now())
+	}
+	if e == nil && browserID != "" {
+		// Existing consent follows this browser across reauthentication, but an
+		// explicit logout/revocation must never be undone by login.
+		_, e = tx.Exec(ctx, `UPDATE push_subscriptions p SET session_id=$1 FROM auth_sessions a WHERE p.session_id=a.id AND p.user_id=$2 AND a.browser_id=$3::uuid AND a.revoked_at IS NULL AND p.revoked_at IS NULL`, id, userID, browserID)
+	}
+	return token, csrf, refresh, e
 }
 func (s *Auth) Register(ctx context.Context, in Credentials, ip string) (SessionResult, error) {
 	email, ok := normalizedEmail(in.Email)
@@ -92,14 +117,14 @@ func (s *Auth) Register(ctx context.Context, in Credentials, ip string) (Session
 	if e != nil {
 		return SessionResult{}, e
 	}
-	token, csrf, e := s.createSession(ctx, tx, u.ID)
+	token, csrf, refresh, e := s.createSession(ctx, tx, u.ID, in.BrowserID)
 	if e == nil {
 		e = tx.Commit(ctx)
 	}
 	if e != nil {
 		return SessionResult{}, e
 	}
-	return SessionResult{User: u, Token: token, CSRF: csrf}, nil
+	return SessionResult{User: u, Token: token, CSRF: csrf, Refresh: refresh, BrowserID: in.BrowserID}, nil
 }
 func (s *Auth) Login(ctx context.Context, in Credentials, ip string) (SessionResult, error) {
 	email, _ := normalizedEmail(in.Email)
@@ -135,14 +160,14 @@ func (s *Auth) Login(ctx context.Context, in Credentials, ip string) (SessionRes
 	if currentHash != hash {
 		return SessionResult{}, &Fault{Code: "credentials", Message: "Email or password is incorrect"}
 	}
-	token, csrf, e := s.createSession(ctx, tx, u.ID)
+	token, csrf, refresh, e := s.createSession(ctx, tx, u.ID, in.BrowserID)
 	if e == nil {
 		e = tx.Commit(ctx)
 	}
 	if e != nil {
 		return SessionResult{}, e
 	}
-	return SessionResult{User: u, Token: token, CSRF: csrf}, nil
+	return SessionResult{User: u, Token: token, CSRF: csrf, Refresh: refresh, BrowserID: in.BrowserID}, nil
 }
 func (s *Auth) Password(ctx context.Context, p Principal, in PasswordInput, ip string) error {
 	if !validPassword(in.NewPassword) {
@@ -197,11 +222,11 @@ func (s *Auth) Authenticate(ctx context.Context, token string) (Principal, error
 }
 func (s *Auth) Me(ctx context.Context, p Principal) (any, error) {
 	var zone, appearance, timerSound string
-	var focus, short, long int
+	var focus, short, long, volume int
 	var sound bool
 	var revision int64
-	e := repository.ReadAccountSettings(ctx, s.Pool, p.ID, &zone, &appearance, &focus, &short, &long, &sound, &timerSound, &revision)
-	return map[string]any{"user": p.User, "csrfToken": tokenHash("csrf:" + p.Token), "settings": map[string]any{"timezone": zone, "appearance": appearance, "focusMinutes": focus, "shortBreakMinutes": short, "longBreakMinutes": long, "sound": sound, "timerSound": timerSound, "revision": revision}}, e
+	e := repository.ReadAccountSettings(ctx, s.Pool, p.ID, &zone, &appearance, &focus, &short, &long, &sound, &timerSound, &volume, &revision)
+	return map[string]any{"user": p.User, "csrfToken": tokenHash("csrf:" + p.Token), "settings": map[string]any{"timezone": zone, "appearance": appearance, "focusMinutes": focus, "shortBreakMinutes": short, "longBreakMinutes": long, "sound": sound, "timerSound": timerSound, "soundVolume": volume, "revision": revision}}, e
 }
 func (s *Auth) Logout(ctx context.Context, p Principal) error {
 	_, e := repository.RevokeSession(ctx, s.Pool, s.Now(), p.SessionID, p.ID)

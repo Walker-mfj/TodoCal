@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"focuscalendar/internal/models"
 	"github.com/jackc/pgx/v5"
 	"time"
@@ -22,13 +24,15 @@ func SaveNotificationPreferences(ctx context.Context, tx pgx.Tx, user string, p 
 }
 
 type PushDevice struct {
+	DeviceName    string    `json:"deviceName"`
+	EndpointHash  string    `json:"endpointHash"`
 	ID            string    `json:"id"`
 	CreatedAt     time.Time `json:"createdAt"`
 	CurrentDevice bool      `json:"currentDevice"`
 }
 
 func ListPushDevices(ctx context.Context, tx pgx.Tx, user, session string, now time.Time) ([]PushDevice, error) {
-	rows, e := tx.Query(ctx, `SELECT p.id,p.created_at,p.session_id=$2::uuid FROM push_subscriptions p JOIN auth_sessions a ON a.id=p.session_id WHERE p.user_id=$1 AND p.revoked_at IS NULL AND a.revoked_at IS NULL AND a.expires_at>$3 ORDER BY p.created_at,p.id`, user, session, now)
+	rows, e := tx.Query(ctx, `SELECT p.id,p.created_at,p.session_id=$2::uuid,p.device_name,p.endpoint FROM push_subscriptions p JOIN auth_sessions a ON a.id=p.session_id WHERE p.user_id=$1 AND p.revoked_at IS NULL AND a.revoked_at IS NULL ORDER BY p.created_at,p.id`, user, session)
 	if e != nil {
 		return nil, e
 	}
@@ -36,9 +40,12 @@ func ListPushDevices(ctx context.Context, tx pgx.Tx, user, session string, now t
 	out := []PushDevice{}
 	for rows.Next() {
 		var d PushDevice
-		if e = rows.Scan(&d.ID, &d.CreatedAt, &d.CurrentDevice); e != nil {
+		var endpoint string
+		if e = rows.Scan(&d.ID, &d.CreatedAt, &d.CurrentDevice, &d.DeviceName, &endpoint); e != nil {
 			return nil, e
 		}
+		hash := sha256.Sum256([]byte(endpoint))
+		d.EndpointHash = hex.EncodeToString(hash[:])
 		out = append(out, d)
 	}
 	return out, rows.Err()

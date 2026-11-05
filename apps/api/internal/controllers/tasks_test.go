@@ -62,6 +62,12 @@ func TestTasksIdempotencyRevisionAndOptionalFocus(t *testing.T) {
 	}
 	object(t, command(s, "DELETE", "/api/v1/tasks/"+id, map[string]any{"expectedRevision": 3}, c, csrf, uuid.NewString()), 200)
 	object(t, req(s, "GET", "/api/v1/tasks/"+id, nil, c, ""), 404)
+	// A delayed retry after deletion must replay the original receipt, even
+	// though the task's current revision and visibility have since changed.
+	replay := command(s, "POST", "/api/v1/tasks", input, c, csrf, key)
+	if replay.Code != first.Code || replay.Body.String() != first.Body.String() {
+		t.Fatalf("late retry changed the original create response: %d %s", replay.Code, replay.Body)
+	}
 	list := object(t, req(s, "GET", "/api/v1/tasks", nil, c, ""), 200)
 	if len(list["items"].([]any)) != 0 {
 		t.Fatal("deleted task still listed")

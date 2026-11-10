@@ -103,14 +103,19 @@ jobs:
         if: matrix.browser == 'chrome'
         run: npx playwright install --with-deps chrome
         working-directory: apps/web
-      # Firefox and WebKit use the matching Playwright image with OS deps preinstalled.
-      # Keep the pull step separate to benchmark registry download versus APT setup.
+      # Match the installed package; the image contains Chromium, not branded Chrome.
       - name: Pull prebuilt Playwright image
+        id: playwright-image
         if: matrix.browser != 'chrome'
-        run: docker pull mcr.microsoft.com/playwright:v1.64.1-noble
+        working-directory: apps/web
+        run: |
+          version=$(node -p "require('@playwright/test/package.json').version")
+          image="mcr.microsoft.com/playwright:v${version}-noble"
+          docker pull "$image"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
       - name: Run against isolated database and local servers
         env:
-          E2E_PLAYWRIGHT_IMAGE: ${{ matrix.browser != 'chrome' && 'mcr.microsoft.com/playwright:v1.64.1-noble' || '' }}
+          E2E_PLAYWRIGHT_IMAGE: ${{ steps.playwright-image.outputs.image }}
         run: sh scripts/testE2e.sh --project=${{ matrix.browser }}
       - name: Retain browser traces and server logs
         if: always()

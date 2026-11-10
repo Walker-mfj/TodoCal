@@ -86,7 +86,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        browser: [chrome, firefox, webkit]
+        browser: [chromium, firefox, webkit]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -99,10 +99,17 @@ jobs:
           cache-dependency-path: apps/web/package-lock.json
       - run: npm ci
         working-directory: apps/web
-      - name: Install browser and system dependencies
-        run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Pull prebuilt Playwright image
+        id: playwright-image
         working-directory: apps/web
+        run: |
+          version=$(node -p "require('@playwright/test/package.json').version")
+          image="mcr.microsoft.com/playwright:v${version}-noble"
+          docker pull "$image"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
       - name: Run against isolated database and local servers
+        env:
+          E2E_PLAYWRIGHT_IMAGE: ${{ steps.playwright-image.outputs.image }}
         run: sh scripts/testE2e.sh --project=${{ matrix.browser }}
       - name: Retain browser traces and server logs
         if: always()

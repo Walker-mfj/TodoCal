@@ -38,7 +38,7 @@ Before enabling production reminders, verify permission grant/denial, two device
 
 ## Automated browser coverage and live verification boundary
 
-Run `sh scripts/testE2e.sh tests/e2e/webPush.spec.ts --project=chrome`. The runner creates an ephemeral test-only VAPID identity; no production credentials or real provider delivery are used. This file is included in the normal Chrome CI job. Firefox/WebKit explicitly skip it because incoming Push injection uses Chromium DevTools; their delivery behavior is not certified by this test.
+Run `sh scripts/testE2e.sh tests/e2e/webPush.spec.ts --project=chromium`. The runner creates an ephemeral test-only VAPID identity; no production credentials or real provider delivery are used. This file is included in the normal Chromium CI job. Firefox/WebKit explicitly skip it because incoming Push injection uses Chromium DevTools; their delivery behavior is not certified by this test.
 
 Three browser journeys exercise the actual UI, authenticated API, isolated database and shipped service worker:
 

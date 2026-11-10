@@ -186,3 +186,52 @@ test("an uncertain timer start retries the identical command without a second se
   expect(requests[1]).toEqual(requests[0]);
   await page.getByRole("button", { name: "End session", exact: true }).click();
 });
+
+test("Focus pause, resume and end synchronize across tabs without reloading", async ({
+  page,
+  context,
+}) => {
+  await signIn(page, `focus-tabs-${randomUUID()}@example.com`, true);
+  const other = await context.newPage();
+  await other.goto("/");
+  for (const tab of [page, other]) {
+    await tab.getByRole("button", { name: /^Focus timer/ }).click();
+  }
+  const panel = page.getByRole("dialog", { name: "Focus timer", exact: true });
+  const otherPanel = other.getByRole("dialog", {
+    name: "Focus timer",
+    exact: true,
+  });
+  await panel
+    .getByRole("button", { name: "Start session", exact: true })
+    .click();
+  await expect(
+    otherPanel.getByRole("button", { name: "Pause", exact: true }),
+  ).toBeEnabled();
+  const active = await (await page.request.get("/api/v1/focus")).json();
+  expect(active.active).not.toBeNull();
+  await otherPanel.getByRole("button", { name: "Pause", exact: true }).click();
+  await expect(panel).toContainText("Paused");
+  await expect(otherPanel).toContainText("Paused");
+  await expect(panel.getByRole("timer")).toHaveText(
+    (await otherPanel.getByRole("timer").textContent())!,
+  );
+  await panel.getByRole("button", { name: "Resume", exact: true }).click();
+  await expect(
+    otherPanel.getByRole("button", { name: "Pause", exact: true }),
+  ).toBeEnabled();
+  const resumed = await (await other.request.get("/api/v1/focus")).json();
+  expect(resumed.active.id).toBe(active.active.id);
+  await otherPanel
+    .getByRole("button", { name: "End session", exact: true })
+    .click();
+  for (const dialog of [panel, otherPanel]) {
+    await expect(
+      dialog.getByRole("button", { name: "Start session", exact: true }),
+    ).toBeEnabled();
+  }
+  const ended = await (await page.request.get("/api/v1/focus")).json();
+  expect(ended.active).toBeNull();
+  expect(ended.last.id).toBe(active.active.id);
+  await other.close();
+});

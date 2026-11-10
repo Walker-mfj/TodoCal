@@ -218,6 +218,10 @@ test("calendar external drop assigns 30 minutes, clear-time drop and uncertain r
   expect(requests[1]).toEqual(requests[0]);
   await page.unroute("**/api/v1/tasks/*/schedule");
   const event = page.locator(".fc-timegrid-event");
+  // The API write is visible before query invalidation and the retry command
+  // finish. Wait for the refreshed, editable event before starting another drag.
+  await expect(event).toHaveAttribute("aria-label", /T09:30/);
+  await expect(event).toHaveClass(/fc-event-draggable/);
   const allDay = page.locator(".fc-daygrid-day.fc-day-today");
   await event.dragTo(allDay);
   await expect

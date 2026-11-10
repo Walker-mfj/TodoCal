@@ -103,7 +103,6 @@ jobs:
         if: matrix.browser == 'chrome'
         run: npx playwright install --with-deps chrome
         working-directory: apps/web
-      # Match the installed package; the image contains Chromium, not branded Chrome.
       - name: Pull prebuilt Playwright image
         id: playwright-image
         if: matrix.browser != 'chrome'

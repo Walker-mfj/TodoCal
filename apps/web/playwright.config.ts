@@ -4,7 +4,7 @@ export default defineConfig({
   fullyParallel: false,
   // Benchmark two parallel Playwright workers on CI; keep local runs unchanged.
   workers: process.env.CI ? 2 : 1,
-  timeout: 45_000,
+  timeout: 30_000,
   use: {
     baseURL: process.env.E2E_BASE_URL || "http://localhost:3000",
     viewport: { width: 1440, height: 1000 },

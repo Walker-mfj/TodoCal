@@ -47,10 +47,8 @@ test("offline draft survives reconnect and page reload and saves exactly once", 
     .toBe(true);
   await context.setOffline(false);
   await page.reload();
-  await page
-    .getByRole("button", { name: "New task", exact: true })
-    .first()
-    .click();
+  // New-task drafts reopen automatically; clicking New task again would ask
+  // whether to discard the restored editor's unsaved changes.
   await expect(page.getByLabel("Task title")).toHaveValue(
     "Recover after network loss",
   );

@@ -25,7 +25,7 @@ Record PASS only with observed real delivery and correct click routing. Record B
 ## Draft recovery after lost connectivity
 
 1. Sign in, open New task and enter a unique title and notes. Disable the device network connection. Confirm the editor and Save are disabled and the existing draft text remains visible.
-2. Reconnect, reload the same tab, reopen New task and verify the latest draft fields are restored. The app is not required to load a fresh page while offline.
+2. Reconnect and reload the same tab. Verify New task reopens automatically with the latest draft fields restored. The app is not required to load a fresh page while offline.
 3. Save once. Verify exactly one task appears, reload and confirm New task is empty. Repeat with a request interrupted during Save: reconnect and use Retry save, confirming no duplicate task.
 4. Drafts use session storage; closing the entire tab/session is outside this reload-persistence check. Do not clear site data between steps.
 

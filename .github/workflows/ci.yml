@@ -100,9 +100,16 @@ jobs:
       - run: npm ci
         working-directory: apps/web
       - name: Install browser and system dependencies
+        if: matrix.browser != 'webkit'
         run: npx playwright install --with-deps ${{ matrix.browser }}
         working-directory: apps/web
+      # Measure image pull time separately from E2E runtime against the old ~9m WebKit install.
+      - name: Pull prebuilt Playwright WebKit image
+        if: matrix.browser == 'webkit'
+        run: docker pull mcr.microsoft.com/playwright:v1.64.1-noble
       - name: Run against isolated database and local servers
+        env:
+          E2E_WEBKIT_IMAGE: ${{ matrix.browser == 'webkit' && 'mcr.microsoft.com/playwright:v1.64.1-noble' || '' }}
         run: sh scripts/testE2e.sh --project=${{ matrix.browser }}
       - name: Retain browser traces and server logs
         if: always()

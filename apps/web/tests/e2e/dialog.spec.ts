@@ -1,5 +1,6 @@
-import { test, expect, type Page } from "@playwright/test";
-import { randomUUID } from "node:crypto";
+import { test, expect } from "./fixtures";
+import type { Page } from "@playwright/test";
+import { selectCalendarSlot } from "./calendarHelpers";
 import AxeBuilder from "@axe-core/playwright";
 async function setup(page: Page) {
   const nativeDialogs: string[] = [];
@@ -7,40 +8,17 @@ async function setup(page: Page) {
     nativeDialogs.push(dialog.message());
     await dialog.dismiss();
   });
-  await page.goto("/");
-  await page
-    .getByRole("button", { name: "Create an account", exact: true })
-    .click();
-  await page
-    .getByLabel("Email", { exact: true })
-    .fill(`dialogs-${randomUUID()}@example.com`);
-  await page
-    .getByLabel("Password", { exact: true })
-    .fill("Dialog-password-123");
-  await page
-    .getByRole("button", { name: "Create account", exact: true })
-    .click();
-  await expect(page.locator(".fc")).toBeVisible();
   return nativeDialogs;
-}
-async function slot(page: Page, time: string) {
-  const row = page.locator(`.fc-timegrid-slot[data-time="${time}:00"]`).last();
-  await row.scrollIntoViewIfNeeded();
-  const col = (await page
-    .locator(".fc-timegrid-col.fc-day-today")
-    .boundingBox())!;
-  const cell = (await row.boundingBox())!;
-  await page.mouse.click(col.x + col.width / 2, cell.y + 4);
 }
 test("calendar slot changes retain content; only edited drafts need a close decision", async ({
   page,
 }) => {
   const native = await setup(page);
-  await slot(page, "09:00");
+  await selectCalendarSlot(page, "09:00");
   await page.getByRole("button", { name: "Close editor", exact: true }).click();
   await expect(page.getByLabel("Task title")).toBeHidden();
   await expect(page.getByRole("alertdialog")).toBeHidden();
-  await slot(page, "09:00");
+  await selectCalendarSlot(page, "09:00");
   await page.getByLabel("Task title").fill("Keep my draft");
   await page.getByLabel("Description").fill("Keep notes, too");
   await page
@@ -49,7 +27,7 @@ test("calendar slot changes retain content; only edited drafts need a close deci
   await page
     .getByRole("combobox", { name: "Repeat", exact: true })
     .selectOption("weekly");
-  await slot(page, "11:00");
+  await selectCalendarSlot(page, "11:00");
   await expect(page.getByLabel("Start time", { exact: true })).toHaveValue(
     "11:00",
   );
@@ -131,7 +109,9 @@ test("shared delete confirmation supports cancel, light/dark and accessible labe
       .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
       .analyze();
     expect(audit.violations).toEqual([]);
-    await page.screenshot({ path: `test-results/shared-dialog-${theme}.png` });
+    await page.screenshot({
+      path: test.info().outputPath(`shared-dialog-${theme}.png`),
+    });
     await dialog
       .getByRole("button", { name: "Close dialog", exact: true })
       .click();

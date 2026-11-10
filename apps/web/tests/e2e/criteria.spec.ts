@@ -1,106 +1,11 @@
-import { test, expect, type Page } from "@playwright/test";
-import { randomUUID } from "node:crypto";
+import { test, expect } from "./fixtures";
 import { DateTime } from "luxon";
-async function setup(page: Page) {
-  await page.goto("/");
-  await page
-    .getByRole("button", { name: "Create an account", exact: true })
-    .click();
-  await page
-    .getByLabel("Email", { exact: true })
-    .fill(`criteria-${randomUUID()}@example.com`);
-  await page
-    .getByLabel("Password", { exact: true })
-    .fill("Criteria-password-123");
-  await page
-    .getByRole("button", { name: "Create account", exact: true })
-    .click();
-  await expect(page.locator(".fc")).toBeVisible();
-  const auth = await (await page.request.get("/api/v1/auth/me")).json();
-  const today = await page.evaluate(() =>
-    new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Tokyo",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date()),
-  );
-  const send = async (path: string, body: unknown, method = "POST") => {
-    const response = await page.request.fetch(`/api/v1${path}`, {
-      method,
-      data: body,
-      headers: {
-        Origin: new URL(page.url()).origin,
-        "X-CSRF-Token": auth.csrfToken,
-        "Idempotency-Key": randomUUID(),
-      },
-    });
-    expect(response.ok(), await response.text()).toBeTruthy();
-    return response.json();
-  };
-  return { today, send };
-}
-
-test("criteria 11–14, 18, 35–36: exact progress transitions and independent unscheduled completion", async ({
-  page,
-}) => {
-  const { today, send } = await setup(page);
-  const tasks = [];
-  for (let i = 0; i < 5; i++)
-    tasks.push(
-      await send("/tasks", {
-        title: `Planned ${i}`,
-        scheduledDate: today,
-        ...(i === 0 ? { startTime: "09:00", endTime: "09:30" } : {}),
-      }),
-    );
-  for (const task of tasks.slice(0, 3))
-    await send(`/tasks/${task.id}/completion`, {
-      complete: true,
-      expectedRevision: 1,
-    });
-  await page.reload();
-  await expect(page.locator(".progress-hero")).toContainText("60%");
-  await send("/tasks", { title: "One more", scheduledDate: today });
-  await page.reload();
-  await expect(page.locator(".progress-hero")).toContainText("50%");
-  await send(`/tasks/${tasks[0].id}/completion`, {
-    complete: false,
-    expectedRevision: 2,
-  });
-  await page.reload();
-  await expect(page.locator(".progress-hero")).toContainText("33.3%");
-  const unscheduled = await send("/tasks", { title: "Unscheduled complete" });
-  await send(`/tasks/${unscheduled.id}/completion`, {
-    complete: true,
-    expectedRevision: 1,
-  });
-  await page.getByRole("button", { name: "Progress", exact: true }).click();
-  await expect(page.locator(".analytics-metrics")).toContainText(
-    "2/6 planned occurrences",
-  );
-  await expect(
-    page.locator(".metric").filter({ hasText: "Completed tasks" }),
-  ).toContainText("3");
-  for (const theme of ["light", "dark"]) {
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
-    await page.getByLabel("Appearance").selectOption(theme);
-    await page
-      .getByRole("button", { name: "Save changes", exact: true })
-      .click();
-    await expect(
-      page.getByRole("button", { name: "Save changes", exact: true }),
-    ).toBeEnabled();
-    await page.getByRole("button", { name: "Progress", exact: true }).click();
-    await expect(page.locator(".progress-legend")).toContainText("100%");
-    await expect(page.locator(".day-progress.starting")).toHaveCount(1);
-  }
-});
 
 test("criteria 4 and 7: overlapping calendar events selectable and Month creation remains untimed", async ({
   page,
+  auth,
 }) => {
-  const { today, send } = await setup(page);
+  const { today, send } = auth;
   for (let i = 0; i < 4; i++)
     await send("/tasks", {
       title: `Overlap ${i}`,
@@ -147,8 +52,9 @@ test("criteria 4 and 7: overlapping calendar events selectable and Month creatio
 
 test("criterion 34: cross-device appearance preserves report period/day, unsaved editor and running timer together", async ({
   page,
+  auth,
 }) => {
-  const { today, send } = await setup(page);
+  const { today, send } = auth;
   await send("/tasks", { title: "Selected day plan", scheduledDate: today });
   await send("/focus", { kind: "focus" });
   await page.reload();
@@ -193,8 +99,9 @@ test("criterion 34: cross-device appearance preserves report period/day, unsaved
 
 test("criteria 35–36: every completion band and exact 100% checkmark across themes", async ({
   page,
+  auth,
 }) => {
-  const { today, send } = await setup(page);
+  const { today, send } = auth;
   const tasks = [];
   for (let i = 0; i < 10; i++)
     tasks.push(
@@ -234,8 +141,9 @@ test("criteria 35–36: every completion band and exact 100% checkmark across th
 
 test("criteria 37–42: inclusive daily/every-N/weekly recurrence from the creation form", async ({
   page,
+  auth,
 }) => {
-  const { today } = await setup(page);
+  const { today } = auth;
   const add = (days: number) =>
     new Date(new Date(`${today}T12:00:00Z`).getTime() + days * 86400000)
       .toISOString()

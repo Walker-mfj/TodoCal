@@ -353,12 +353,15 @@ it("previews without saving and stops playback explicitly", async () => {
         disabled={false}
       />,
     );
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Preview sound" }),
-    );
+    const previewButton = await screen.findByRole("button", {
+      name: "Preview sound",
+    });
+    await waitFor(() => expect(previewButton).toBeEnabled());
+    fireEvent.click(previewButton);
     fireEvent.click(
       await screen.findByRole("button", { name: "Stop preview" }),
     );
+    expect(stops.length).toBeGreaterThan(0);
     expect(stops.every((stop) => stop.mock.calls.length === 2)).toBe(true);
     expect(screen.getByRole("button", { name: "Preview sound" })).toBeVisible();
     expect(execute).not.toHaveBeenCalled();

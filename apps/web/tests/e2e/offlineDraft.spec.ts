@@ -22,8 +22,12 @@ test("offline draft survives reconnect and page reload and saves exactly once", 
     .getByRole("button", { name: "New task", exact: true })
     .first()
     .click();
-  await context.setOffline(true);
   await page.getByLabel("Task title").fill("Recover after network loss");
+  await context.setOffline(true);
+  await expect(page.getByLabel("Task title")).toBeDisabled();
+  await expect(page.getByLabel("Task title")).toHaveValue(
+    "Recover after network loss",
+  );
   await expect(
     page.getByRole("button", { name: "Create task", exact: true }),
   ).toBeDisabled();

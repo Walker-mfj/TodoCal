@@ -2,7 +2,8 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: false,
-  workers: 1,
+  // Benchmark two parallel Playwright workers on CI; keep local runs unchanged.
+  workers: process.env.CI ? 2 : 1,
   timeout: 45_000,
   use: {
     baseURL: process.env.E2E_BASE_URL || "http://localhost:3000",

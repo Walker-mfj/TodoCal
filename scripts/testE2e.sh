@@ -41,19 +41,19 @@ done
 reset_test_limits() {
   docker compose exec -T postgres psql -U focus -d focus_web_test -v ON_ERROR_STOP=1 -c 'TRUNCATE auth_attempts' >/dev/null
 }
-# Opt-in CI experiment: only the browser test process runs in the official
-# Playwright image. Compose, migrations, Go API and Next.js servers stay on the
+# Opt-in CI experiment: Firefox/WebKit Playwright test processes run in the
+# official image. Compose, migrations, Go API and Next.js servers stay on the
 # Linux runner, so the same isolated database and test endpoints are reused.
 run_browser_tests() {
-  if [ -n "${E2E_WEBKIT_IMAGE:-}" ]; then
-    echo "Running Playwright in prebuilt image: $E2E_WEBKIT_IMAGE"
+  if [ -n "${E2E_PLAYWRIGHT_IMAGE:-}" ]; then
+    echo "Running Playwright in prebuilt image: $E2E_PLAYWRIGHT_IMAGE"
     # GitHub's Linux host network lets the container reach 127.0.0.1 test servers.
     # Keep the repository mounted so Playwright traces remain uploadable by CI.
     docker run --rm --init --ipc=host --network=host \
       --volume "$PWD:/workspace" --workdir /workspace/apps/web \
       --env E2E_BASE_URL="$E2E_BASE_URL" --env API_URL="$API_URL" \
       --env CI="${CI:-true}" \
-      "$E2E_WEBKIT_IMAGE" npm run test:e2e -- "$@"
+      "$E2E_PLAYWRIGHT_IMAGE" npm run test:e2e -- "$@"
   else
     (cd apps/web && npm run test:e2e -- "$@")
   fi

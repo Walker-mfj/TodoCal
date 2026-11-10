@@ -99,17 +99,18 @@ jobs:
           cache-dependency-path: apps/web/package-lock.json
       - run: npm ci
         working-directory: apps/web
-      - name: Install browser and system dependencies
-        if: matrix.browser != 'webkit'
-        run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Install Chrome and system dependencies
+        if: matrix.browser == 'chrome'
+        run: npx playwright install --with-deps chrome
         working-directory: apps/web
-      # Measure image pull time separately from E2E runtime against the old ~9m WebKit install.
-      - name: Pull prebuilt Playwright WebKit image
-        if: matrix.browser == 'webkit'
+      # Firefox and WebKit use the matching Playwright image with OS deps preinstalled.
+      # Keep the pull step separate to benchmark registry download versus APT setup.
+      - name: Pull prebuilt Playwright image
+        if: matrix.browser != 'chrome'
         run: docker pull mcr.microsoft.com/playwright:v1.64.1-noble
       - name: Run against isolated database and local servers
         env:
-          E2E_WEBKIT_IMAGE: ${{ matrix.browser == 'webkit' && 'mcr.microsoft.com/playwright:v1.64.1-noble' || '' }}
+          E2E_PLAYWRIGHT_IMAGE: ${{ matrix.browser != 'chrome' && 'mcr.microsoft.com/playwright:v1.64.1-noble' || '' }}
         run: sh scripts/testE2e.sh --project=${{ matrix.browser }}
       - name: Retain browser traces and server logs
         if: always()

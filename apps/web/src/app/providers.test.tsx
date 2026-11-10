@@ -1,9 +1,9 @@
 import { it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { Providers } from "../../../../app/providers";
-import { useSession } from "./sessionProvider";
-import { useOwnedQuery } from "../../hooks/useOwnedQuery";
-import { AuthScreen } from "../authScreen/authScreen";
+import { Providers } from "./providers";
+import { useSession } from "../features/auth";
+import { useOwnedQuery } from "../features/auth";
+import { AuthScreen } from "../features/auth";
 const settings = { timezone: "Asia/Tokyo", appearance: "dark", revision: 1 };
 function Harness() {
   const s = useSession();

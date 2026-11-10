@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { TimerPanel } from "./timerPanel";
 const mocks = vi.hoisted(() => ({ read: vi.fn(), query: null as any }));
-vi.mock("../../../auth/components/sessionProvider/sessionProvider", () => ({
+vi.mock("../../../auth", () => ({
   useSession: () => ({ session: { user: { id: "owner" } }, read: mocks.read }),
 }));
 vi.mock("@tanstack/react-query", () => ({

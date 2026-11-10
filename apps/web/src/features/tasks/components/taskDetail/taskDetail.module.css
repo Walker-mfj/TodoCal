@@ -9,14 +9,3 @@
   gap: 8px;
   margin-bottom: 24px;
 }
-.series-summary {
-  padding: 20px 0;
-  border-top: 1px solid var(--color-border);
-  font-size: 12px;
-}
-.series-summary h3 {
-  margin-bottom: 10px;
-}
-.series-summary small {
-  margin-bottom: 10px;
-}

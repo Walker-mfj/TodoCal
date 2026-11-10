@@ -41,7 +41,7 @@ for (const compact of [false, true]) {
         </div>,
       );
       await page.setContent(
-        `<html><head><style>${layoutStyles("src/features/calendar/components/calendar/calendar.module.css", "src/features/calendar/components/eventContent/eventContent.module.css", "src/features/tasks/components/priorityBadge/priorityBadge.module.css")}</style></head><body>${markup}</body></html>`,
+        `<html><head><style>${layoutStyles("src/features/calendar/components/calendar/calendar.module.css", "src/features/calendar/components/eventContent/eventContent.module.css", "src/shared/components/priorityBadge/priorityBadge.module.css")}</style></head><body>${markup}</body></html>`,
       );
       for (const event of await page.locator(".fc-timegrid-event").all()) {
         const bounds = (await event.boundingBox())!;

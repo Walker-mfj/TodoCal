@@ -291,7 +291,9 @@ it("saves settings and notification drafts together in one command", async () =>
       disabled={false}
     />,
   );
-  fireEvent.click(await screen.findByLabelText("Scheduled task reminders"));
+  const reminders = await screen.findByLabelText("Scheduled task reminders");
+  await waitFor(() => expect(reminders).toBeEnabled());
+  fireEvent.click(reminders);
   fireEvent.change(screen.getByLabelText("Sound volume"), {
     target: { value: "60" },
   });

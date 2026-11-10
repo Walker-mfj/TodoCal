@@ -8,7 +8,7 @@ import {
   supportsBrowserPush,
 } from "../utils/browserPush";
 import { bindStyles } from "../../../shared/utils/classNames";
-import styles from "../../settings/components/settingsForm/settingsForm.module.css";
+import styles from "./notificationSettings.module.css";
 import type { components } from "../../../shared/api/apiTypes.generated";
 export type NotificationPreferences =
   components["schemas"]["NotificationPreferences"];

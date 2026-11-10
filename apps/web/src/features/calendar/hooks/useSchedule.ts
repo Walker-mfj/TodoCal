@@ -1,7 +1,7 @@
 "use client";
 import { sessionStore } from "../../../shared/utils/sessionStorage";
 import { useEffect, useRef, useState } from "react";
-import { useSession } from "../../auth/components/sessionProvider/sessionProvider";
+import { useSession } from "../../auth";
 import {
   ApiError,
   errorMessage,

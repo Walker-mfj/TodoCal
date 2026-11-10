@@ -6,10 +6,10 @@ const cx = bindStyles(styles);
 import { useState, useLayoutEffect, useRef, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { Pause, Play, Repeat2 } from "lucide-react";
-import { PriorityBadge } from "../../../tasks/components/priorityBadge/priorityBadge";
+import { PriorityBadge } from "../../../../shared/components/priorityBadge/priorityBadge";
 import type { Task } from "../../../../shared/api/domainTypes";
-import type { FocusController } from "../../../focus/hooks/useFocus";
-import { useRemaining } from "../../../focus/hooks/useRemaining";
+import type { FocusView } from "../../../focus";
+import { useRemaining } from "../../../focus";
 
 type CardTask = Task & {
   focusMinutes?: number | null;
@@ -40,7 +40,7 @@ export function CalendarEventContent({
   draft: boolean;
   repeating: boolean;
   task?: CardTask;
-  focus?: FocusController;
+  focus?: FocusView;
   defaultFocusMinutes?: number;
   onOpenFocus?: () => void;
 }) {

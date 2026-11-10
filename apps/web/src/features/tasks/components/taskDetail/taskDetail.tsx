@@ -3,17 +3,22 @@ import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./taskDetail.module.css";
 const cx = bindStyles(styles);
 
-import { PriorityBadge } from "../priorityBadge/priorityBadge";
+import { PriorityBadge } from "../../../../shared/components/priorityBadge/priorityBadge";
 import { Dialog } from "../../../../shared/components/dialog/dialog";
 import { Repeat2 } from "lucide-react";
 import { DateTime } from "luxon";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { SidebarPanel } from "../../../../shared/components/sidebarPanel/sidebarPanel";
-import { useOwnedQuery } from "../../../auth/hooks/useOwnedQuery";
+import { useOwnedQuery } from "../../../auth";
 import { type Execute } from "../../../../shared/api/apiClient";
 import { useCommand } from "../../../../shared/hooks/useCommand";
 import { dateLabel, today } from "../../../../shared/utils/dateUtils";
-import { recurrenceSummary } from "../../utils/recurrenceSummary";
+import { CompletionTimeForm } from "./completionTimeForm";
+import {
+  TaskRecurrenceDetails,
+  TaskFocusHistory,
+  type FocusHistory,
+} from "./taskDetailSections";
 import {
   type Task,
   type Group,
@@ -21,10 +26,6 @@ import {
 } from "../../../../shared/api/domainTypes";
 import type { components } from "../../../../shared/api/apiTypes.generated";
 
-type FocusHistory = {
-  actualFocusSeconds: number;
-  sessions: components["schemas"]["FocusSession"][];
-};
 export function TaskDetail({
   task,
   historical,
@@ -92,17 +93,6 @@ export function TaskDetail({
   const command = useCommand(execute);
   const [stopped, setStopped] = useState(false);
   const [confirmCompleted, setConfirmCompleted] = useState(false);
-  const [completionError, setCompletionError] = useState("");
-  const [completedAt, setCompletedAt] = useState("");
-  useEffect(() => {
-    setCompletedAt(
-      task.completedAt
-        ? DateTime.fromISO(task.completedAt)
-            .setZone(zone)
-            .toFormat("yyyy-MM-dd'T'HH:mm")
-        : "",
-    );
-  }, [task.completedAt, zone]);
   const locked = disabled || command.busy || command.uncertain;
   const stopDate = today(zone);
   const timestamp = (value: string) =>
@@ -166,7 +156,8 @@ export function TaskDetail({
           <br />
           {task.startTime
             ? `${task.startTime}–${task.endTime}`
-            : "Untimed"} · {zone}
+            : "Untimed"} ·{" "}
+          {zone}
         </dd>
         <dt>Completed at</dt>
         <dd>
@@ -214,128 +205,29 @@ export function TaskDetail({
         )}
       </div>
       {task.status === "complete" && (
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            const value = DateTime.fromISO(completedAt, { zone });
-            if (
-              !value.isValid ||
-              value.toFormat("yyyy-MM-dd'T'HH:mm") !== completedAt
-            ) {
-              setCompletionError("Enter a valid completion time.");
-              return;
-            }
-            setCompletionError("");
+        <CompletionTimeForm
+          task={task}
+          zone={zone}
+          locked={locked}
+          onSave={(completedAt) =>
             void command.run(
               `/tasks/${task.id}/completion`,
               "POST",
-              {
-                complete: true,
-                completedAt: value.toUTC().toISO(),
-                expectedRevision: task.revision,
-              },
+              { complete: true, completedAt, expectedRevision: task.revision },
               onClose,
-            );
-          }}
-        >
-          <label className={cx("", true)}>
-            Change completed at
-            <input
-              type="datetime-local"
-              required
-              value={completedAt}
-              disabled={locked}
-              onChange={(event) => setCompletedAt(event.target.value)}
-              className={cx("", true)}
-            />
-          </label>
-          <small>Time uses {zone}; the scheduled date stays unchanged.</small>
-          <button disabled={locked} className={cx("", true)}>
-            Save completion time
-          </button>
-          {completionError && <p role="alert">{completionError}</p>}
-        </form>
+            )
+          }
+        />
       )}
       {task.seriesId && (
-        <section className={cx("series-summary")}>
-          <h3>Repeating task</h3>
-          {series.isPending ? (
-            <p>Loading repeat details…</p>
-          ) : series.error ? (
-            <p className={cx("error")}>Unable to load repeat details.</p>
-          ) : (
-            series.data && (
-              <>
-                <p>
-                  {recurrenceSummary(
-                    series.data.cadence,
-                    series.data.intervalDays,
-                    series.data.endDate || "",
-                  )}
-                </p>
-                <dl>
-                  <dt>Starts</dt>
-                  <dd>{dateLabel(series.data.task.scheduledDate)}</dd>
-                  <dt>Ends</dt>
-                  <dd>
-                    {series.data.endDate
-                      ? dateLabel(series.data.endDate)
-                      : "No end date"}
-                  </dd>
-                  <dt>Timezone</dt>
-                  <dd>{zone}</dd>
-                </dl>
-                <small>
-                  Each occurrence has its own focus goal and sessions. When
-                  editing, choose this occurrence or current and future
-                  occurrences.
-                </small>
-                {(series.data.stoppedAfter || stopped) && (
-                  <p>
-                    Recurrence stopped after{" "}
-                    {dateLabel(series.data.stoppedAfter || stopDate)}.
-                  </p>
-                )}
-              </>
-            )
-          )}
-        </section>
+        <TaskRecurrenceDetails
+          series={series}
+          zone={zone}
+          stopped={stopped}
+          stopDate={stopDate}
+        />
       )}
-      <section className={cx("series-summary")}>
-        <h3>Focus sessions</h3>
-        {focus.isPending ? (
-          <p>Loading sessions…</p>
-        ) : focus.error ? (
-          <p role="alert">Unable to load sessions.</p>
-        ) : !focus.data?.sessions.length ? (
-          <p>No focus sessions yet.</p>
-        ) : (
-          <ul>
-            {focus.data.sessions.map((session) => (
-              <li key={session.id}>
-                <strong>
-                  {session.status === "ended"
-                    ? "Ended early"
-                    : session.status.charAt(0).toUpperCase() +
-                      session.status.slice(1)}
-                </strong>{" "}
-                · {Math.round((session.focusSeconds / 60) * 10) / 10} active min
-                / {session.targetSeconds / 60} min target
-                <br />
-                <small>
-                  {timestamp(session.startedAt)} –{" "}
-                  {session.endedAt ? timestamp(session.endedAt) : "In progress"}{" "}
-                  · {zone}
-                </small>
-              </li>
-            ))}
-          </ul>
-        )}
-        <small>
-          Active time excludes pauses and breaks. Session targets stay as they
-          were when started.
-        </small>
-      </section>
+      <TaskFocusHistory focus={focus} zone={zone} />
       {command.error && (
         <p className={cx("error")} role="alert">
           {command.error}

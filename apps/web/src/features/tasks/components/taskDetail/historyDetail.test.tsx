@@ -1,7 +1,7 @@
 import { it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { TaskDetail } from "./taskDetail";
-vi.mock("../../../auth/hooks/useOwnedQuery", () => ({
+vi.mock("../../../auth", () => ({
   useOwnedQuery: (name: string) => ({
     data:
       name === "historical-day"

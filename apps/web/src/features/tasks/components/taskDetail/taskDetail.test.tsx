@@ -41,7 +41,7 @@ const fixtures = vi.hoisted(() => ({
     ],
   },
 }));
-vi.mock("../../../auth/hooks/useOwnedQuery", () => ({
+vi.mock("../../../auth", () => ({
   useOwnedQuery: (name: string) => ({
     data:
       name === "following-deletion-preview"

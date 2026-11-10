@@ -1,10 +1,10 @@
-import { bindStyles } from "../../../../shared/utils/classNames";
+import { bindStyles } from "../../utils/classNames";
 import styles from "./priorityBadge.module.css";
 const cx = bindStyles(styles);
 import { ArrowUp, ArrowDown, Minus } from "lucide-react";
-import type { Task } from "../../../../shared/api/domainTypes";
+import type { Task } from "../../api/domainTypes";
 
-import { priorityLabels } from "../../constants/taskConstants";
+import { priorityLabels } from "../../constants/priorityLabels";
 const icons = { low: ArrowDown, medium: Minus, high: ArrowUp };
 
 export function PriorityBadge({

@@ -8,7 +8,7 @@ API_ADDR ?= 127.0.0.1:8080
 
 .PHONY: help db-up migrate api-dev test-go test-integration build-api
 help:
-	@echo 'Commands: db-up migrate api-dev worker-dev worker-once test-go test-integration build-api build-worker web-dev typecheck test-web build-web test-e2e'
+	@echo 'Commands: db-up migrate api-dev worker-dev worker-once test-go test-integration build-api build-worker web-dev typecheck test-web build-web test-e2e lint-go format-go-check check-go-architecture check-web-architecture'
 db-up:
 	docker compose up -d --wait
 migrate:
@@ -55,3 +55,19 @@ test-operations: build-api
 .PHONY: test-load
 test-load:
 	python3 scripts/testLoad.py
+
+GO_LINT_VERSION := $(strip $(shell cat scripts/tools/golangci-lint.version))
+GO_LINT_BIN := .local/tools/golangci-lint-$(GO_LINT_VERSION)
+
+.PHONY: lint-go format-go-check check-go-architecture check-web-architecture
+$(GO_LINT_BIN): scripts/installGoLint.sh scripts/tools/golangci-lint.version
+	sh scripts/installGoLint.sh
+lint-go: $(GO_LINT_BIN)
+	cd apps/api && ../../$(GO_LINT_BIN) run ./...
+format-go-check:
+	cd apps/api && unformatted=$$(gofmt -l .) && { test -z "$$unformatted" || { echo "$$unformatted"; exit 1; }; }
+check-go-architecture:
+	python3 -B scripts/checkGoArchitecture.py
+	python3 -B scripts/testGoArchitecture.py
+check-web-architecture:
+	cd apps/web && npm run check:architecture

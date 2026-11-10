@@ -1,0 +1,18 @@
+.day-detail > :global(.progress-ring) {
+  margin: 30px auto 20px;
+}
+.day-detail > p {
+  text-align: center;
+}
+.day-detail > small {
+  text-align: center;
+}
+.day-tasks {
+  margin-top: 25px;
+}
+.day-detail :global(.task-row) {
+  gap: 7px;
+}
+.day-detail :global(.priority) {
+  display: none;
+}

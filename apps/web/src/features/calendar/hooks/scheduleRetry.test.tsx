@@ -3,7 +3,7 @@ import { renderHook, act } from "@testing-library/react";
 import { useSchedule } from "./useSchedule";
 import type { Task } from "../../../shared/api/domainTypes";
 const mocks = vi.hoisted(() => ({ execute: vi.fn(), read: vi.fn() }));
-vi.mock("../../auth/components/sessionProvider/sessionProvider", () => ({
+vi.mock("../../auth", () => ({
   useSession: () => ({
     session: { user: { id: "A" } },
     connected: true,

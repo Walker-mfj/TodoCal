@@ -4,13 +4,14 @@ import styles from "./timerPanel.module.css";
 const cx = bindStyles(styles);
 
 import { useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { useSession } from "../../../auth/components/sessionProvider/sessionProvider";
 import { today } from "../../../../shared/utils/dateUtils";
 import type { Task, Settings } from "../../../../shared/api/domainTypes";
-import { kindLabel, timerLabel } from "../../utils/clock";
+import { kindLabel } from "../../utils/clock";
 import type { FocusController, FocusKind } from "../../hooks/useFocus";
 import { useRemaining } from "../../hooks/useRemaining";
+import { useFocusTasks } from "../../hooks/useFocusTasks";
+import { TimerTaskPicker } from "./timerTaskPicker";
+import { TimerClock } from "./timerClock";
 export function TimerPanel({
   focus,
   task,
@@ -24,26 +25,8 @@ export function TimerPanel({
   onClose: () => void;
   onFree: () => void;
 }) {
-  const { session, read } = useSession();
   const focusDate = today(settings.timezone);
-  const choices = useQuery({
-    queryKey: [session?.user.id, "focus-task-choices", focusDate],
-    queryFn: async ({ signal }) => {
-      const result: Task[] = [];
-      let cursor: string | null = null;
-      do {
-        const params = new URLSearchParams({ limit: "100", view: "today" });
-        if (cursor) params.set("cursor", cursor);
-        const page = await read<{ items: Task[]; nextCursor: string | null }>(
-          `/tasks?${params}`,
-          { signal, owner: session?.user.id },
-        );
-        result.push(...page.items.filter((t) => t.scheduledDate === focusDate));
-        cursor = page.nextCursor;
-      } while (cursor);
-      return result;
-    },
-  });
+  const choices = useFocusTasks(focusDate);
   const [selectedId, setSelectedId] = useState(task?.id || "");
   const selectedTask =
     choices.data?.find((t) => t.id === selectedId) ||
@@ -131,58 +114,21 @@ export function TimerPanel({
             : selectedTask?.title || "One thing at a time."}
         </h2>
         {!active && kind === "focus" && (
-          <label className={cx("focus-task-picker", true)}>
-            Task
-            <select
-              aria-label="Task"
-              value={selectedTask?.id || ""}
-              disabled={focus.blocked || choices.isPending}
-              onChange={(event) => {
-                setSelectedId(event.target.value);
-                const next = choices.data?.find(
-                  (t) => t.id === event.target.value,
-                );
-                setDurations((old) => ({
-                  ...old,
-                  focus: String(next?.focusMinutes ?? settings.focusMinutes),
-                }));
-                if (!event.target.value) onFree();
-              }}
-              className={cx("", true)}
-            >
-              <option value="">Free focus · no task</option>
-              {(task && !choices.data?.some((t) => t.id === task.id)
-                ? [task, ...(choices.data || [])]
-                : choices.data || []
-              ).map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.title}
-                  {t.estimatedPomodoros
-                    ? ` · ${t.estimatedPomodoros} Pomodoros`
-                    : ""}
-                </option>
-              ))}
-            </select>
-            <small>
-              Today’s tasks · {focusDate}. Open another day’s task from Calendar
-              to focus on it.
-            </small>
-            {choices.isPending && <small>Loading tasks…</small>}
-            {choices.error && (
-              <button
-                type="button"
-                onClick={() => void choices.refetch()}
-                className={cx("", true)}
-              >
-                Retry loading tasks
-              </button>
-            )}
-            {choices.data?.length === 0 && (
-              <small>
-                Focus is optional. Choose a task or start free focus.
-              </small>
-            )}
-          </label>
+          <TimerTaskPicker
+            task={task}
+            choices={choices}
+            selectedTask={selectedTask}
+            blocked={focus.blocked}
+            focusDate={focusDate}
+            onChoose={(id, next) => {
+              setSelectedId(id);
+              setDurations((old) => ({
+                ...old,
+                focus: String(next?.focusMinutes ?? settings.focusMinutes),
+              }));
+              if (!id) onFree();
+            }}
+          />
         )}
         <div
           className={cx("focus-modes")}
@@ -223,34 +169,12 @@ export function TimerPanel({
         {!active && !valid && (
           <p role="alert">Enter a whole number from 1 to 180 minutes.</p>
         )}
-        <div className={cx("focus-clock")}>
-          <svg viewBox="0 0 360 360" aria-hidden="true">
-            <circle cx="180" cy="180" r="170" />
-            <circle
-              className={cx("focus-arc")}
-              cx="180"
-              cy="180"
-              r="170"
-              style={{
-                strokeDashoffset: 1068 * (1 - Math.max(0, Math.min(1, ratio))),
-              }}
-            />
-          </svg>
-          <span role="timer" aria-label="Time remaining">
-            {timerLabel(seconds)}
-          </span>
-          <small>
-            {active
-              ? active.status === "paused"
-                ? "Paused"
-                : !focus.connected
-                  ? "Offline · estimated"
-                  : seconds === 0
-                    ? "Confirming completion…"
-                    : "Time to focus"
-              : "Ready when you are"}
-          </small>
-        </div>
+        <TimerClock
+          seconds={seconds}
+          ratio={ratio}
+          active={active}
+          connected={focus.connected}
+        />
         <div className={cx("focus-actions")}>
           <button
             className={cx("focus-start", true)}

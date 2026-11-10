@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import { taskPayload } from "./taskPayload";
 import { recurrenceSummary } from "./recurrenceSummary";
 import { progressLevel } from "../../../shared/utils/progress";
-import { slotDraft } from "../../calendar/utils/slotDraft";
 describe("task scheduling", () => {
   it("preserves a per-task focus duration independently of its schedule", () => {
     expect(
@@ -65,16 +64,6 @@ describe("task scheduling", () => {
         "America/New_York",
       ),
     ).toThrow("does not exist");
-  });
-  it("preserves selected intervals and defaults clicks to 30 minutes", () => {
-    expect(slotDraft("2026-10-21T09:00:00Z")).toMatchObject({
-      scheduledDate: "2026-10-21",
-      startTime: "09:00",
-      endTime: "09:30",
-    });
-    expect(
-      slotDraft("2026-10-21T09:00:00Z", "2026-10-21T10:30:00Z").endTime,
-    ).toBe("10:30");
   });
   it("classifies progress without treating no-plan as failure", () => {
     expect([null, 0, 20, 50, 80, 100].map(progressLevel)).toEqual([

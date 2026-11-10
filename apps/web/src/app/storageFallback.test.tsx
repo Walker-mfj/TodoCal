@@ -7,9 +7,9 @@ import {
   fireEvent,
   waitFor,
 } from "@testing-library/react";
-import { useCommand } from "../../../shared/hooks/useCommand";
-import { useAccountDraft } from "../../../shared/hooks/useAccountDraft";
-import { TaskEditor } from "../../../features/tasks/components/taskEditor/taskEditor";
+import { useCommand } from "../shared/hooks/useCommand";
+import { useAccountDraft } from "../shared/hooks/useAccountDraft";
+import { TaskEditor } from "../features/tasks";
 
 it("keeps exact uncertain command across remounts when storage writes exceed quota", async () => {
   vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
@@ -101,7 +101,7 @@ it("resets form values on an account change without copying the former account d
 });
 
 it("announces reload limitations accessibly when storage fails", async () => {
-  const { Providers } = await import("../../../app/providers");
+  const { Providers } = await import("./providers");
   vi.spyOn(globalThis, "fetch").mockResolvedValue(
     new Response("{}", { status: 401 }),
   );

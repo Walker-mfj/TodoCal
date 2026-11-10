@@ -3,7 +3,7 @@ import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./taskRow.module.css";
 const cx = bindStyles(styles);
 
-import { PriorityBadge } from "../priorityBadge/priorityBadge";
+import { PriorityBadge } from "../../../../shared/components/priorityBadge/priorityBadge";
 import { useEffect, useRef } from "react";
 import { Draggable } from "@fullcalendar/interaction";
 import { Check, Repeat2, GripVertical } from "lucide-react";

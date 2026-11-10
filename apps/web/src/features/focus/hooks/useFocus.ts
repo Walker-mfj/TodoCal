@@ -2,8 +2,8 @@
 import { playTimerSound } from "../utils/timerSound";
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useOwnedQuery } from "../../auth/hooks/useOwnedQuery";
-import { useSession } from "../../auth/components/sessionProvider/sessionProvider";
+import { useOwnedQuery } from "../../auth";
+import { useSession } from "../../auth";
 import { useCommand } from "../../../shared/hooks/useCommand";
 import type { components } from "../../../shared/api/apiTypes.generated";
 export type FocusState = components["schemas"]["FocusState"];
@@ -30,17 +30,17 @@ export function useFocus() {
     },
     [],
   );
-  const state = query.data;
+  const { data: state, dataUpdatedAt, refetch } = query;
   const active = state?.active;
   // Anchor each server snapshot once in the shared controller. Newly mounted
   // displays must not restart the countdown from the old elapsedSeconds.
   const received = useRef({
-    version: query.dataUpdatedAt,
+    version: dataUpdatedAt,
     at: performance.now(),
   });
-  if (received.current.version !== query.dataUpdatedAt) {
+  if (received.current.version !== dataUpdatedAt) {
     received.current = {
-      version: query.dataUpdatedAt,
+      version: dataUpdatedAt,
       at: performance.now(),
     };
   }
@@ -49,7 +49,7 @@ export function useFocus() {
   // the running session expires, so the server can confirm completion.
   useEffect(() => {
     if (active?.status !== "running" || !connected) return;
-    const key = `${active.id}:${active.revision}:${query.dataUpdatedAt}`;
+    const key = `${active.id}:${active.revision}:${dataUpdatedAt}`;
     if (checked.current === key) return;
     const ms = Math.max(
       0,
@@ -58,10 +58,10 @@ export function useFocus() {
     );
     const id = setTimeout(() => {
       checked.current = key;
-      void query.refetch();
+      void refetch();
     }, ms + 300);
     return () => clearTimeout(id);
-  }, [active, connected, query.dataUpdatedAt, receivedAt]);
+  }, [active, connected, dataUpdatedAt, receivedAt, refetch]);
   useEffect(() => {
     if (
       previous.current &&

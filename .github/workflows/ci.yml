@@ -86,7 +86,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        browser: [chrome, firefox, webkit]
+        browser: [chromium, firefox, webkit]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -99,13 +99,8 @@ jobs:
           cache-dependency-path: apps/web/package-lock.json
       - run: npm ci
         working-directory: apps/web
-      - name: Install Chrome and system dependencies
-        if: matrix.browser == 'chrome'
-        run: npx playwright install --with-deps chrome
-        working-directory: apps/web
       - name: Pull prebuilt Playwright image
         id: playwright-image
-        if: matrix.browser != 'chrome'
         working-directory: apps/web
         run: |
           version=$(node -p "require('@playwright/test/package.json').version")

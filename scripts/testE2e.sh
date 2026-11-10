@@ -55,7 +55,7 @@ run_browser_tests() {
   fi
 }
 if [ "$#" -eq 0 ]; then
-  for browser_project in chrome firefox webkit; do
+  for browser_project in chromium firefox webkit; do
     reset_test_limits
     run_browser_tests --project="$browser_project"
   done

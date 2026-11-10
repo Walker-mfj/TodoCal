@@ -11,7 +11,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   projects: [
-    { name: "chrome", use: { browserName: "chromium", channel: "chrome" } },
+    { name: "chromium", use: { browserName: "chromium", channel: "chromium" } },
     { name: "firefox", use: { browserName: "firefox" } },
     { name: "webkit", use: { browserName: "webkit" } },
   ],

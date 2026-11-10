@@ -1,10 +1,10 @@
 import { DateTime } from "luxon";
-import type { Draft } from "../../tasks/types/taskTypes";
+import type { CalendarSlot } from "../types/calendarTypes";
 export function slotDraft(
   start: string,
   end?: string,
   allDay = false,
-): Partial<Draft> {
+): CalendarSlot {
   const a = DateTime.fromISO(start, { zone: "UTC" });
   const b = end
     ? DateTime.fromISO(end, { zone: "UTC" })

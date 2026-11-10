@@ -1,0 +1,16 @@
+.focus-task-picker {
+  width: min(440px, 100%);
+  color: #b5c6d0;
+  text-align: left;
+  margin: 0 0 20px;
+}
+.focus-task-picker select {
+  background: #122737;
+  color: #e9f1f4;
+  border-color: #48616f;
+  color-scheme: dark;
+}
+.focus-task-picker small {
+  color: #b5c6d0;
+  font-weight: 400;
+}

@@ -4,7 +4,6 @@ import styles from "./progress.module.css";
 const cx = bindStyles(styles);
 
 import { DateTime } from "luxon";
-import type { CSSProperties } from "react";
 import { dateLabel } from "../../../../shared/utils/dateUtils";
 import {
   progressLevel,

@@ -10,7 +10,7 @@ The frontend lives in `apps/web/src`: `app` contains Next.js entry points, `home
 
 The Go backend lives in `apps/api/internal`: HTTP controllers call services, services coordinate business rules and transactions, and repositories own persistence. Database migrations remain embedded in the database package. API and worker executables stay under `apps/api/cmd`.
 
-Custom file and folder names use camelCase; CSS classes use kebab-case. Framework-required names and existing migration names remain unchanged. See the [folder structure guide](docs/architecture/folderStructure.md) for the current layout, module ownership, dependency boundaries, and placement rules. See the [technology stack guide](docs/architecture/techStack.md) for library usage rules and format/lint/typecheck coverage.
+Custom file and folder names use camelCase; CSS classes use kebab-case. Framework-required names and existing migration names remain unchanged. See the [folder structure guide](docs/architecture/folderStructure.md) for the current layout, module ownership, dependency boundaries, and placement rules. See the [technology stack guide](docs/architecture/techStack.md) for library usage rules and format/lint/typecheck coverage. See [local and CI quality checks](docs/architecture/qualityChecks.md) for the implemented commands.
 
 ## Current implementation
 
@@ -63,17 +63,21 @@ make build-worker     # .local/focus-worker
 The periodic worker retains its account cursor between bounded sweeps and limits individual account attempts to two seconds. Blocked accounts are retried after the cursor wraps, without preventing later accounts from being processed. The API uses the same lock/catch-up code and remains correct when the worker is stopped. Very large single-account batches may require query tuning; production load testing is not part of this milestone.
 
 ```sh
+make lint-go           # installs the pinned linter locally on first run
+make check-go-architecture format-go-check
 make test-go           # unit tests; deliberately excludes database integration tests
-make test-integration  # real PostgreSQL + race detector, using focus_test only
+make test-integration  # real PostgreSQL + race detector, using dedicated test databases
 make build-api        # .local/focus-api
 ```
 
-Integration tests truncate the dedicated `focus_test` database. The runner ignores the development `DATABASE_URL`, and the Go helper refuses database names without an `_test` suffix. Do not run multiple copies of the integration suite against this shared test database simultaneously.
+Integration tests reset the dedicated `focus_test` and `focus_notifications_test` databases. The runner ignores the development `DATABASE_URL`, and the Go helper refuses database names without an `_test` suffix. Do not run multiple copies of the integration suite against this shared test database simultaneously.
 
 Frontend verification:
 
 ```sh
-make generate-api-types  # checked-in OpenAPI -> TypeScript (formatted)
+(cd apps/web && npm ci && npm run format:check && npm run lint)
+make check-web-architecture
+make generate-api-types  # checked-in OpenAPI -> TypeScript (formatted with oxfmt)
 make test-web            # UI/model/API regression tests
 make typecheck
 make build-web

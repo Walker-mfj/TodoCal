@@ -3,17 +3,18 @@ import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./calendar.module.css";
 const cx = bindStyles(styles);
 
-import type { FocusController } from "../../../focus/hooks/useFocus";
+import type { FocusView } from "../../../focus";
 import { CalendarEventContent } from "../eventContent/eventContent";
-import { priorityLabels } from "../../../tasks/constants/taskConstants";
+import { priorityLabels } from "../../../../shared/constants/priorityLabels";
 import { draftEvent, type CalendarDraft } from "../../utils/draftPreview";
 import { useMemo, useEffect, useRef } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
-import { scheduleFromDrop, type Schedule } from "../../utils/interactions";
+import type { Schedule } from "../../utils/interactions";
+import { calendarInteractions } from "../../utils/calendarInteractions";
+import { calendarEvents } from "../../utils/calendarEvents";
 import interactionPlugin from "@fullcalendar/interaction";
-import { slotDraft } from "../../utils/slotDraft";
 import {
   completionRatio,
   progressLevel,
@@ -23,7 +24,7 @@ import {
   type Group,
   type Task,
 } from "../../../../shared/api/domainTypes";
-import { type Draft } from "../../../tasks/types/taskTypes";
+import type { CalendarSlot } from "../../types/calendarTypes";
 export default function Calendar({
   draftPreview,
   draftDisabled = false,
@@ -42,7 +43,7 @@ export default function Calendar({
   defaultFocusMinutes,
   onOpenFocus,
 }: {
-  focus: FocusController;
+  focus: FocusView;
   defaultFocusMinutes: number;
   onOpenFocus: () => void;
   draftPreview?: CalendarDraft | null;
@@ -52,7 +53,7 @@ export default function Calendar({
   today: string;
   onRange: (from: string, to: string) => void;
   onTask: (task: Task, historical: boolean) => void;
-  onCreate: (seed: Partial<Draft>) => void;
+  onCreate: (seed: CalendarSlot) => void;
   filter: (task: Task) => boolean;
   disabled: boolean;
   onSchedule: (task: Task, schedule: Schedule) => void;
@@ -72,59 +73,8 @@ export default function Calendar({
   }, []);
   const preview = draftEvent(draftPreview);
   if (preview) preview.editable = !disabled && !draftDisabled;
-  const moveDraft = (
-    start: string,
-    end: string | undefined,
-    allDay: boolean,
-    kind: "move" | "resize" | "month",
-  ) => {
-    if (!draftPreview || disabled || draftDisabled) return;
-    const schedule = scheduleFromDrop(
-      {
-        startTime: draftPreview.draft.startTime || null,
-        endTime: draftPreview.draft.endTime || null,
-      },
-      start,
-      end,
-      allDay,
-      kind,
-    );
-    onCreate({
-      scheduledDate: schedule.scheduledDate || "",
-      startTime: schedule.startTime || "",
-      endTime: schedule.endTime || "",
-    });
-  };
   const events = useMemo(
-    () =>
-      days.flatMap((day) =>
-        day.entries
-          .filter(
-            (e) =>
-              filter(e.task) &&
-              !(
-                draftPreview?.taskId === e.task.id &&
-                (draftEvent(draftPreview) || !draftPreview.draft.scheduledDate)
-              ),
-          )
-          .map(({ task, groupColor }) => ({
-            id: `${day.date}:${task.id}`,
-            title: task.title,
-            start: day.date + (task.startTime ? `T${task.startTime}:00` : ""),
-            end: task.endTime ? `${day.date}T${task.endTime}:00` : undefined,
-            allDay: !task.startTime,
-            editable: !disabled,
-            classNames: [
-              task.status === "complete" ? "event-complete" : "",
-              day.finalized ? "event-historical" : "",
-            ],
-            borderColor:
-              groupColor ||
-              groups.find((g) => g.id === task.groupId)?.color ||
-              "#7391ba",
-            extendedProps: { task, historical: day.finalized },
-          })),
-      ),
+    () => calendarEvents({ days, groups, filter, disabled, draftPreview }),
     [days, groups, filter, disabled, draftPreview],
   );
   const progress = (date: string) => {
@@ -224,91 +174,18 @@ export default function Calendar({
         droppable={!disabled}
         eventResizableFromStart
         snapDuration="00:15:00"
-        eventDrop={(arg) => {
-          try {
-            if (arg.oldEvent.extendedProps.draft) {
-              const { startStr, endStr, allDay } = arg.event;
-              arg.revert();
-              moveDraft(
-                startStr,
-                endStr || undefined,
-                allDay,
-                arg.view.type === "dayGridMonth" ? "month" : "move",
-              );
-              return;
-            }
-            const task = arg.oldEvent.extendedProps.task as Task;
-            const schedule = scheduleFromDrop(
-              task,
-              arg.event.startStr,
-              arg.event.endStr || undefined,
-              arg.event.allDay,
-              arg.view.type === "dayGridMonth" ? "month" : "move",
-            );
-            arg.revert();
-            onSchedule(task, schedule);
-          } catch (error) {
-            arg.revert();
-            onScheduleError(error);
-          }
-        }}
-        eventResize={(arg) => {
-          try {
-            if (arg.oldEvent.extendedProps.draft) {
-              const { startStr, endStr, allDay } = arg.event;
-              arg.revert();
-              moveDraft(startStr, endStr || undefined, allDay, "resize");
-              return;
-            }
-            const task = arg.oldEvent.extendedProps.task as Task;
-            const schedule = scheduleFromDrop(
-              task,
-              arg.event.startStr,
-              arg.event.endStr || undefined,
-              arg.event.allDay,
-              "resize",
-            );
-            arg.revert();
-            onSchedule(task, schedule);
-          } catch (error) {
-            arg.revert();
-            onScheduleError(error);
-          }
-        }}
-        eventReceive={(arg) => {
-          try {
-            const task = arg.event.extendedProps.task as Task;
-            const schedule = scheduleFromDrop(
-              task,
-              arg.event.startStr,
-              arg.event.endStr || undefined,
-              arg.event.allDay,
-              arg.view.type === "dayGridMonth" ? "month" : "move",
-            );
-            arg.revert();
-            onSchedule(task, schedule);
-          } catch (error) {
-            arg.revert();
-            onScheduleError(error);
-          }
-        }}
+        {...calendarInteractions({
+          draftPreview,
+          disabled,
+          draftDisabled,
+          onCreate,
+          onSchedule,
+          onScheduleError,
+        })}
         events={preview ? [...events, preview] : events}
         datesSet={(arg) =>
           onRange(arg.startStr.slice(0, 10), arg.endStr.slice(0, 10))
         }
-        dateClick={(arg) => {
-          if (!disabled)
-            onCreate(slotDraft(arg.dateStr, undefined, arg.allDay));
-        }}
-        select={(arg) => {
-          if (
-            !disabled &&
-            (arg.allDay ||
-              arg.startStr.slice(0, 10) === arg.endStr.slice(0, 10))
-          )
-            onCreate(slotDraft(arg.startStr, arg.endStr, arg.allDay));
-          arg.view.calendar.unselect();
-        }}
         eventClick={(arg) => {
           if ((arg.jsEvent.target as HTMLElement).closest(".quick-focus"))
             return;

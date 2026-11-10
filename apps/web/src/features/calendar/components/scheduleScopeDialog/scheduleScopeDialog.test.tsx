@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { ScheduleScopeDialog } from "../../../features/calendar/components/scheduleScopeDialog/scheduleScopeDialog";
+import { ScheduleScopeDialog } from "./scheduleScopeDialog";
 
 beforeEach(() => {
   Object.defineProperty(HTMLDialogElement.prototype, "showModal", {

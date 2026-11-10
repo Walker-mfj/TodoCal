@@ -188,3 +188,10 @@
 :where(.calendar-wrap) :global(.fc-event-main) {
   container-type: inline-size;
 }
+
+:global(.calendar-workspace)
+  :where(.calendar-wrap)
+  :global(.fc)
+  :global(.fc-toolbar):global(.fc-header-toolbar) {
+  margin-bottom: 12px;
+}

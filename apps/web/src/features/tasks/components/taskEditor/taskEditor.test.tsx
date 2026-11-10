@@ -426,3 +426,51 @@ it("sends only changed fields for a following edit", async () => {
     vi.unstubAllGlobals();
   }
 });
+
+it("emits the task draft independently of calendar preview types", async () => {
+  const onDraftChange = vi.fn();
+  render(
+    <TaskEditor {...base} execute={vi.fn()} onDraftChange={onDraftChange} />,
+  );
+  fireEvent.change(screen.getByLabelText("Task title"), {
+    target: { value: "Draft title" },
+  });
+  await waitFor(() =>
+    expect(onDraftChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ title: "Draft title" }),
+    ),
+  );
+});
+
+it("restores an uncertain recurring create and retries its exact command", async () => {
+  const execute = vi
+    .fn()
+    .mockRejectedValueOnce(new TypeError("Lost response"))
+    .mockResolvedValue({});
+  const first = render(<TaskEditor {...base} execute={execute} />);
+  fireEvent.change(screen.getByLabelText("Task title"), {
+    target: { value: "Recurring draft" },
+  });
+  fireEvent.change(screen.getByLabelText("Scheduled date"), {
+    target: { value: "2030-03-10" },
+  });
+  fireEvent.change(screen.getByLabelText("Repeat"), {
+    target: { value: "daily" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Create task" }));
+  await screen.findByRole("button", { name: "Retry save" });
+  const original = execute.mock.calls[0];
+  expect(original[0]).toBe("/series");
+  first.unmount();
+  render(
+    <TaskEditor
+      {...base}
+      execute={execute}
+      seed={{ scheduledDate: "2030-03-11" }}
+    />,
+  );
+  expect(screen.getByLabelText("Scheduled date")).toHaveValue("2030-03-10");
+  fireEvent.click(screen.getByRole("button", { name: "Retry save" }));
+  await waitFor(() => expect(execute).toHaveBeenCalledTimes(2));
+  expect(execute.mock.calls[1]).toEqual(original);
+});

@@ -3,12 +3,14 @@ set -eu
 cd "$(dirname "$0")/.."
 # Isolated browser-test database; never truncate or reset the development database.
 docker compose up -d --wait
+# Resolve this project's published port so parallel worktrees can use separate volumes.
+pg_address=$(docker compose port postgres 5432)
 if ! docker compose exec -T postgres psql -U focus -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='focus_web_test'" | grep -qx 1; then
   docker compose exec -T postgres createdb -U focus focus_web_test
 fi
 mkdir -p .local
 (cd apps/api && go build -o ../../.local/focus-api-e2e ./cmd/api)
-export DATABASE_URL='postgres://focus:focus_local_only@localhost:55432/focus_web_test?sslmode=disable'
+export DATABASE_URL="postgres://focus:focus_local_only@$pg_address/focus_web_test?sslmode=disable"
 export API_ADDR=127.0.0.1:18080 APP_ORIGIN=http://127.0.0.1:3002 COOKIE_SECURE=false
 export API_URL=http://127.0.0.1:18080 E2E_BASE_URL=http://127.0.0.1:3002
 . ./scripts/e2ePushEnv.sh

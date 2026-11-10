@@ -1,6 +1,8 @@
 # TodoCal — Integrated Frontend & Go Refactoring Plan
 
-> **Status:** Proposed code-refactoring plan. This document does not itself implement changes.
+> **Status:** Implemented on the combined `codex/integrated-refactor` branch. See [quality checks](qualityChecks.md) for current commands and [verification](refactorVerification.md) for recorded results.
+>
+> **Baseline update:** The code refactor starts from the merged session-renewal implementation, preserving shipped `following` recurrence scopes, notifications and current validation. The original scope descriptions below record the planning baseline; they do not request reverting subsequently shipped features.
 >
 > **Delivery:** **ONE implementation branch, ONE implementation PR covering both FE and Go.** The steps below are internal checkpoints in that same PR, not separately deployed phases or PRs.
 >
@@ -67,7 +69,7 @@ app → home → features → shared
 - Auth session/query features may expose an `index.ts` as a public boundary. **Do not move `useOwnedQuery` unchanged into `shared`** because it imports `useSession`.
 - Generated shared types remain sourced from `api/openapi.yaml`, not copied into each feature.
 
-### Quality-tooling decisions for this refactor (not installed yet)
+### Quality-tooling decisions (implemented in this refactor)
 
 | Concern | Selected tool | Ownership / requirement |
 |---|---|---|
@@ -196,55 +198,55 @@ The numbered steps below are **checkpoints within one implementation PR**. Work 
 
 ### Step 0 — Baseline and characterization tests
 
-- [ ] Inventory current FE import graph, Go package graph, file owners, CSS selectors and test coverage.
-- [ ] Capture passing and failing baseline commands. A blocked/untested command is not a pass.
-- [ ] Add characterization tests for Task draft/retry, calendar drag/Undo, Focus clock synchronization; recurrence create/materialize/edit/stop/restore; planning finalization/zone changes; revision/idempotency.
-- [ ] Keep current API/UX semantics frozen and use deterministic dates, timezone/DST fixtures where needed.
+- [x] Inventory current FE import graph, Go package graph, file owners, CSS selectors and test coverage.
+- [x] Capture passing and failing baseline commands. A blocked/untested command is not a pass.
+- [x] Add characterization tests for Task draft/retry, calendar drag/Undo, Focus clock synchronization; recurrence create/materialize/edit/stop/restore; planning finalization/zone changes; revision/idempotency.
+- [x] Keep current API/UX semantics frozen and use deterministic dates, timezone/DST fixtures where needed.
 
 ### Step 1 — FE dependency cleanup and shared promotion
 
-- [ ] Remove `TaskEditor → calendar/draftPreview`: editor emits Task `Draft`, `home` adapts preview input.
-- [ ] Remove `Calendar → TaskEditor Draft`, use a narrow Calendar-owned create/preview input.
-- [ ] Move reusable `PriorityBadge` and its styles/tests to `shared`; extract shared priority labels only.
-- [ ] Replace direct Calendar imports of Focus private hooks and entire `FocusController` with a small view/actions contract; preserve one countdown anchor.
-- [ ] Add public Auth exports or inject narrow authenticated capabilities; avoid moving Auth-dependent hooks directly to `shared`.
-- [ ] Confirm no `shared → features` or feature cycles.
+- [x] Remove `TaskEditor → calendar/draftPreview`: editor emits Task `Draft`, `home` adapts preview input.
+- [x] Remove `Calendar → TaskEditor Draft`, use a narrow Calendar-owned create/preview input.
+- [x] Move reusable `PriorityBadge` and its styles/tests to `shared`; extract shared priority labels only.
+- [x] Replace direct Calendar imports of Focus private hooks and entire `FocusController` with a small view/actions contract; preserve one countdown anchor.
+- [x] Add public Auth exports or inject narrow authenticated capabilities; avoid moving Auth-dependent hooks directly to `shared`.
+- [x] Confirm no `shared → features` or feature cycles.
 
 ### Step 2 — FE components/hooks/CSS decomposition
 
-- [ ] Split `homePage.tsx` into workspace layout, sidebar/navigation, panels and related focused hooks; avoid creating a mega-hook.
-- [ ] Split `taskEditor.tsx` into field sections and recurrence dialog; extract draft and save workflows without duplicating state or losing saved draft/uncertain command.
-- [ ] Separate Calendar event conversion, interaction mapping and FullCalendar component responsibility without changing 15-minute snapping or DST behavior.
-- [ ] Extract coherent TaskDetail sections and TimerPanel presentation/task-selection controls as useful.
-- [ ] Colocate CSS Modules and component tests; keep FullCalendar overrides scoped under the Calendar wrapper.
-- [ ] Test keyboard focus/escape, responsive layout, light/dark mode, preview dismissal and cross-device timer behavior.
+- [x] Split `homePage.tsx` into workspace layout, sidebar/navigation, panels and related focused hooks; avoid creating a mega-hook.
+- [x] Split `taskEditor.tsx` into field sections and recurrence dialog; extract draft and save workflows without duplicating state or losing saved draft/uncertain command.
+- [x] Separate Calendar event conversion, interaction mapping and FullCalendar component responsibility without changing 15-minute snapping or DST behavior.
+- [x] Extract coherent TaskDetail sections and TimerPanel presentation/task-selection controls as useful.
+- [x] Colocate CSS Modules and component tests; keep FullCalendar overrides scoped under the Calendar wrapper.
+- [x] Test keyboard focus/escape, responsive layout, light/dark mode, preview dismissal and cross-device timer behavior.
 
 ### Step 3 — Go recurrence and planning file extraction
 
-- [ ] Split `recurrenceService.go` into creation/read, materialization, editing and stop/restore workflows **without changing existing recurrence scopes**.
-- [ ] Preserve stable original-slot identity, tombstones/exceptions, DST guards, historical and Focus links, revisions and idempotency.
-- [ ] Split `planningService.go` into snapshot/finalization, settlement/transactions/zone changes and day/report helpers.
-- [ ] Preserve bounded catch-up batches, historical adjustments, account locking and final transaction semantics.
+- [x] Split `recurrenceService.go` into creation/read, materialization, editing and stop/restore workflows **without changing existing recurrence scopes**.
+- [x] Preserve stable original-slot identity, tombstones/exceptions, DST guards, historical and Focus links, revisions and idempotency.
+- [x] Split `planningService.go` into snapshot/finalization, settlement/transactions/zone changes and day/report helpers.
+- [x] Preserve bounded catch-up batches, historical adjustments, account locking and final transaction semantics.
 
 ### Step 4 — Go task/Focus and tests
 
-- [ ] Separate `task.go` into validation, lifecycle, events and recurrence-exception helpers; only deduplicate truly identical semantics.
-- [ ] Preserve task events before/after states, completion attribution, soft deletion/restore, stale revisions and historical recount.
-- [ ] Extract Focus settlement helpers only if they improve cohesion. Preserve intervals, active-session exclusivity, pause/resume/end, logical completion and Pomodoro counting.
-- [ ] Leave cohesive repository SQL in `repository`; do not add new generic abstractions.
-- [ ] Split oversized test files by scenario only if navigation and isolation improve; keep fixtures focused.
+- [x] Separate `task.go` into validation, lifecycle, events and recurrence-exception helpers; only deduplicate truly identical semantics.
+- [x] Preserve task events before/after states, completion attribution, soft deletion/restore, stale revisions and historical recount.
+- [x] Extract Focus settlement helpers only if they improve cohesion. Preserve intervals, active-session exclusivity, pause/resume/end, logical completion and Pomodoro counting.
+- [x] Leave cohesive repository SQL in `repository`; do not add new generic abstractions.
+- [x] Split oversized test files by scenario only if navigation and isolation improve; keep fixtures focused.
 
 ### Step 5 — Tooling migration, architecture gates and end-to-end integration
 
-- [ ] Add pinned project-local **oxfmt** and **oxlint** dev dependencies to `apps/web/package.json` and update the npm lockfile.
-- [ ] Replace Prettier formatting with oxfmt: configure project-specific rules/ignore paths, retain public npm script names `format` and `format:check`, and update `generate:api` so it no longer calls Prettier. Avoid unrelated formatter churn and generated-code diffs.
-- [ ] Add Oxlint configuration, `lint` and `lint:fix` npm scripts. Include React Hooks, TypeScript, Next.js and import rules; check feature boundaries (`shared → features/home/app`, `features → home/app`) and circular dependencies. Add a small dedicated graph check **only** if needed for unsupported ownership rules.
-- [ ] Add **local Go lint** target `make lint-go` invoking a pinned `golangci-lint run` via an accessible local tool; commit a shared `.golangci.yml` (v2-compatible with selected CLI) and pin the **same** version in `.github/workflows/ci.yml`'s `api-lint` action. Maintain `go vet` and existing `gofmt` checks.
-- [ ] Add lightweight Go package architecture checks (e.g. `go list`) for forbidden layer edges; compiler already catches cycles but not TodoCal-specific layering.
-- [ ] Wire `npm run format:check`, `npm run lint`, `npm run typecheck`, `make lint-go`, Go format/vet/build/tests and architecture checks into local documented commands and CI. Ensure the exact same rules can be run by a developer before pushing.
-- [ ] Update affected imports, CSS references, tests, Makefile, tooling configs and documentation; remove stale Prettier dependencies and references **only after** all scripts (including API generation) have migrated.
-- [ ] Run **all** FE and Go checks on the **complete combined branch**. Verify quality tools report a deliberately introduced violation in an isolated test, and clean any intentional formatter-only diff.
-- [ ] Review the full **single PR** diff for unrelated formatting, generated files, accidental API/schema changes and feature work.
+- [x] Add pinned project-local **oxfmt** and **oxlint** dev dependencies to `apps/web/package.json` and update the npm lockfile.
+- [x] Replace Prettier formatting with oxfmt: configure project-specific rules/ignore paths, retain public npm script names `format` and `format:check`, and update `generate:api` so it no longer calls Prettier. Avoid unrelated formatter churn and generated-code diffs.
+- [x] Add Oxlint configuration, `lint` and `lint:fix` npm scripts. Include React Hooks, TypeScript, Next.js and import rules; check feature boundaries (`shared → features/home/app`, `features → home/app`) and circular dependencies. Add a small dedicated graph check **only** if needed for unsupported ownership rules.
+- [x] Add **local Go lint** target `make lint-go` invoking a pinned `golangci-lint run` via an accessible local tool; commit a shared `.golangci.yml` (v2-compatible with selected CLI) and pin the **same** version in `.github/workflows/ci.yml`'s `api-lint` action. Maintain `go vet` and existing `gofmt` checks.
+- [x] Add lightweight Go package architecture checks (e.g. `go list`) for forbidden layer edges; compiler already catches cycles but not TodoCal-specific layering.
+- [x] Wire `npm run format:check`, `npm run lint`, `npm run typecheck`, `make lint-go`, Go format/vet/build/tests and architecture checks into local documented commands and CI. Ensure the exact same rules can be run by a developer before pushing.
+- [x] Update affected imports, CSS references, tests, Makefile, tooling configs and documentation; remove stale Prettier dependencies and references **only after** all scripts (including API generation) have migrated.
+- [x] Run **all** FE and Go checks on the **complete combined branch**. Verify quality tools report a deliberately introduced violation in an isolated test, and clean any intentional formatter-only diff.
+- [x] Review the full **single PR** diff for unrelated formatting, generated files, accidental API/schema changes and feature work.
 
 ## 6. Required regression matrix
 
@@ -264,7 +266,7 @@ The numbered steps below are **checkpoints within one implementation PR**. Work 
 
 ## 7. Verification before merging
 
-**Target commands after tooling migration** (the newly proposed `lint` and `lint-go` scripts are **not available on current main**). Run locally and in CI on the **same integrated implementation branch**:
+**Implemented commands after tooling migration** (available on this combined branch). Run locally and in CI on the **same integrated implementation branch**:
 
 ```bash
 # Read-only Go quality gates
@@ -294,15 +296,15 @@ For local edits, `npm run format` runs oxfmt and `npm run lint:fix` runs Oxlint 
 
 ## 8. Definition of done — ONE code PR
 
-- [ ] All FE + Go refactor tasks in **one** implementation branch and **one** code PR; no partial deployment or merge.
-- [ ] No user-visible change, API/schema/migration change, new feature or changed recurrence behavior.
-- [ ] Shared and feature dependency rules pass checks; no circular FE imports or Go forbidden package edges.
-- [ ] Components/hooks/styles owned correctly with one source of state and colocated tests.
-- [ ] Go service workflows cohesive; exported entry points and transactional invariants intact.
-- [ ] Project-local oxfmt/oxlint and Go `make lint-go` are configured, reproducible and run in CI. Full Go, frontend, E2E, format, lint, typecheck and architectural checks pass with documented output.
-- [ ] No unused duplicate files, speculative abstractions, unrelated reformatting or manual generated-type edits.
-- [ ] Final file layout matches [folderStructure.md](folderStructure.md); update that guide only to reflect real ownership changes.
-- [ ] Consolidated PR description lists moved files, intentional exceptions, risks and verification results.
+- [x] All FE + Go refactor tasks in **one** implementation branch and **one** code PR; no partial deployment or merge.
+- [x] No user-visible change, API/schema/migration change, new feature or changed recurrence behavior.
+- [x] Shared and feature dependency rules pass checks; no circular FE imports or Go forbidden package edges.
+- [x] Components/hooks/styles owned correctly with one source of state and colocated tests.
+- [x] Go service workflows cohesive; exported entry points and transactional invariants intact.
+- [x] Project-local oxfmt/oxlint and Go `make lint-go` are configured, reproducible and run in CI. Full Go, frontend, E2E, format, lint, typecheck and architectural checks pass with documented output.
+- [x] No unused duplicate files, speculative abstractions, unrelated reformatting or manual generated-type edits.
+- [x] Final file layout matches [folderStructure.md](folderStructure.md); update that guide only to reflect real ownership changes.
+- [x] Consolidated PR description lists moved files, intentional exceptions, risks and verification results.
 
 ## 9. Deferred product changes and references
 

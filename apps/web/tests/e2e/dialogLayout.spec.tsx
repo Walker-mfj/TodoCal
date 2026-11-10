@@ -12,8 +12,8 @@ for (const mode of ["light", "dark"]) {
         "/src/features/calendar/components/scheduleScopeDialog/scheduleScopeDialog.tsx",
       );
       const { PriorityBadge } = await layoutComponent<
-        typeof import("../../src/features/tasks/components/priorityBadge/priorityBadge")
-      >("/src/features/tasks/components/priorityBadge/priorityBadge.tsx");
+        typeof import("../../src/shared/components/priorityBadge/priorityBadge")
+      >("/src/shared/components/priorityBadge/priorityBadge.tsx");
       const markup = renderToStaticMarkup(
         <ScheduleScopeDialog
           busy={false}
@@ -31,7 +31,7 @@ for (const mode of ["light", "dark"]) {
         </div>,
       );
       await page.setContent(
-        `<html data-mode="${mode}"><head><style>${layoutStyles("src/shared/components/dialog/dialog.module.css", "src/shared/components/dialogHeading/dialogHeading.module.css", "src/features/tasks/components/priorityBadge/priorityBadge.module.css")}</style></head><body>${badges}${markup}</body></html>`,
+        `<html data-mode="${mode}"><head><style>${layoutStyles("src/shared/components/dialog/dialog.module.css", "src/shared/components/dialogHeading/dialogHeading.module.css", "src/shared/components/priorityBadge/priorityBadge.module.css")}</style></head><body>${badges}${markup}</body></html>`,
       );
       await page
         .locator("dialog")

@@ -1,0 +1,192 @@
+.app-shell {
+  display: grid;
+  grid-template-columns: 190px minmax(500px, 1fr) 280px;
+  min-height: 100vh;
+}
+.workspace {
+  padding: 34px 28px;
+  min-width: 0;
+}
+.skip-link {
+  position: fixed;
+  top: -100px;
+  z-index: 50;
+  padding: 12px;
+  background: var(--color-panel);
+  color: var(--color-accent);
+}
+.skip-link:focus {
+  top: 8px;
+  left: 8px;
+}
+@media (max-width: 1200px) {
+  .app-shell {
+    grid-template-columns: 155px minmax(440px, 1fr) 260px;
+  }
+}
+@media (max-width: 1200px) {
+  .workspace {
+    padding: 28px 18px;
+  }
+}
+@media (max-width: 1000px) {
+  .app-shell {
+    min-width: 1000px;
+  }
+}
+@media (max-width: 1000px) {
+  .app-shell {
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 1000px) {
+  .workspace {
+    padding: 20px 16px;
+  }
+}
+.app-shell {
+  grid-template-columns: 208px minmax(0, 1fr);
+}
+.app-shell.has-panel {
+  grid-template-columns: 208px minmax(0, 1fr) 320px;
+}
+.app-shell.sidebar-collapsed {
+  grid-template-columns: 72px minmax(0, 1fr);
+}
+.app-shell.sidebar-collapsed.has-panel {
+  grid-template-columns: 72px minmax(0, 1fr) 320px;
+}
+.sidebar-collapsed :global(.brand) {
+  justify-content: center;
+}
+.sidebar-collapsed :global(.brand) > span:last-child {
+  display: none;
+}
+.calendar-workspace {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 24px 16px;
+  overflow: auto;
+}
+.calendar-workspace > * {
+  flex-shrink: 0;
+}
+.calendar-workspace :global(.calendar-wrap) {
+  flex: 1;
+  min-height: 0;
+}
+.calendar-workspace :global(.progress-legend) {
+  margin: 10px 0 0;
+}
+
+@media (max-width: 1000px) {
+  .app-shell {
+    grid-template-columns: 180px minmax(0, 1fr);
+  }
+}
+@media (max-width: 1000px) {
+  .app-shell.has-panel {
+    grid-template-columns: 180px minmax(0, 1fr);
+  }
+}
+@media (max-width: 1000px) {
+  .app-shell.sidebar-collapsed {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+}
+@media (max-width: 1000px) {
+  .app-shell.sidebar-collapsed.has-panel {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+}
+@media (max-width: 1000px) {
+  .app-shell > :global(.detail-panel) {
+    position: fixed;
+    right: 0;
+    top: 0;
+    width: min(360px, 90vw);
+    height: 100dvh;
+    z-index: 15;
+    box-shadow: -8px 0 32px #0002;
+  }
+}
+@media (max-width: 1000px) {
+  .calendar-workspace {
+    padding: 16px;
+  }
+}
+@media (max-width: 600px) {
+  .app-shell {
+    grid-template-columns: 140px minmax(0, 1fr);
+  }
+}
+@media (max-width: 600px) {
+  .app-shell.has-panel {
+    grid-template-columns: 140px minmax(0, 1fr);
+  }
+}
+@media (max-width: 600px) {
+  .calendar-workspace :global(.calendar-wrap) {
+    overflow-x: auto;
+  }
+}
+.calendar-workspace :global(.progress-hero) {
+  padding: 8px 12px;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: nowrap;
+}
+.calendar-workspace :global(.progress-hero) h2 {
+  display: none;
+}
+.calendar-workspace :global(.progress-hero) :global(.eyebrow) {
+  margin-bottom: 3px;
+}
+.calendar-workspace :global(.progress-hero) :global(.progress-ring) {
+  width: 40px;
+  height: 40px;
+}
+.calendar-workspace :global(.progress-hero) :global(.progress-ring) > span {
+  width: 33px;
+  height: 33px;
+  font-size: 10px;
+}
+@media (max-width: 600px) {
+  .app-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 600px) {
+  .app-shell.has-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 600px) {
+  .app-shell.sidebar-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 600px) {
+  .app-shell.sidebar-collapsed.has-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 600px) {
+  .calendar-workspace {
+    height: calc(100dvh - 120px);
+    padding: 12px;
+  }
+}
+@media (max-width: 600px) {
+  .sidebar-collapsed .calendar-workspace {
+    height: calc(100dvh - 64px);
+  }
+}
+.sidebar-collapsed :global(.account-trigger-email) {
+  display: none;
+}
+.sidebar-collapsed :global(.account-chevron) {
+  display: none;
+}

@@ -1,0 +1,50 @@
+.filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.filters label {
+  margin: 0;
+}
+.filters .search {
+  flex: 1;
+  min-width: 130px;
+  position: relative;
+  display: flex;
+}
+.search svg {
+  position: absolute;
+  left: 11px;
+  top: 11px;
+  color: var(--color-muted);
+}
+.search input {
+  padding-left: 35px;
+}
+.filters select {
+  width: auto;
+  max-width: 135px;
+  font-size: 11px;
+}
+.filters input {
+  font-size: 12px;
+}
+@media (max-width: 1200px) {
+  .filters {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 1000px) {
+  .filters {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 1000px) {
+  .filters > * {
+    max-width: 100%;
+  }
+}
+:global(.calendar-workspace) .filters {
+  margin-bottom: 14px;
+  gap: 8px;
+}

@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { playTimerSound, timerSounds } from "../../../focus/utils/timerSound";
+import { playTimerSound, timerSounds } from "../../../focus";
 import { ContentCard } from "../../../../shared/components/contentCard/contentCard";
 import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./settingsForm.module.css";
@@ -8,7 +8,7 @@ import {
   NotificationSettings,
   type NotificationState,
   type NotificationPreferences,
-} from "../../../notifications/components/notificationSettings";
+} from "../../../notifications";
 import { errorMessage } from "../../../../shared/api/apiClient";
 const cx = bindStyles(styles);
 
@@ -26,6 +26,7 @@ type Props = {
   disabled: boolean;
 };
 export function SettingsForm(props: Props) {
+  const { read, owner } = props;
   const [state, setState] = useState<NotificationState | null>(null);
   const [error, setError] = useState("");
   const alive = useRef(false);
@@ -33,8 +34,8 @@ export function SettingsForm(props: Props) {
   const load = useCallback(async () => {
     const version = ++loadVersion.current;
     try {
-      const latest = await props.read<NotificationState>("/notifications", {
-        owner: props.owner,
+      const latest = await read<NotificationState>("/notifications", {
+        owner,
       });
       if (alive.current && version === loadVersion.current) {
         setState(latest);
@@ -46,7 +47,7 @@ export function SettingsForm(props: Props) {
         setError(errorMessage(e));
       return null;
     }
-  }, [props.read, props.owner]);
+  }, [read, owner]);
   useEffect(() => {
     alive.current = true;
     void load();
@@ -62,7 +63,6 @@ export function SettingsForm(props: Props) {
     if (channel) channel.onmessage = onReturn;
     return () => {
       alive.current = false;
-      loadVersion.current++;
       window.removeEventListener("focus", onReturn);
       document.removeEventListener("visibilitychange", onReturn);
       channel?.close();

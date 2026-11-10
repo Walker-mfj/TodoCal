@@ -1,7 +1,7 @@
 import { DateTime } from "luxon";
 import type { EventInput } from "@fullcalendar/core";
-import type { Draft } from "../../tasks/types/taskTypes";
-export type CalendarDraft = { draft: Draft; taskId?: string };
+import type { CalendarDraft } from "../types/calendarTypes";
+export type { CalendarDraft } from "../types/calendarTypes";
 export function draftEvent(preview?: CalendarDraft | null): EventInput | null {
   if (!preview) return null;
   const { draft } = preview;

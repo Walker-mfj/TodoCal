@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
+import { DateTime } from "luxon";
 async function setup(page: Page) {
   await page.goto("/");
   await page
@@ -120,10 +121,16 @@ test("criteria 4 and 7: overlapping calendar events selectable and Month creatio
     ).toBeVisible();
   }
   await page.getByRole("button", { name: "Month", exact: true }).click();
-  await page
-    .locator(`.fc-daygrid-day[data-date="${today}"] .fc-daygrid-day-frame`)
+  // Today contains four overlapping events; in a six-row month the old
+  // fixed point hits the first event instead of an empty slot in WebKit.
+  const emptyDate = DateTime.fromISO(today).plus({ days: 1 }).toISODate()!;
+  const emptyCell = page.locator(`.fc-daygrid-day[data-date="${emptyDate}"]`);
+  await expect(emptyCell.locator(".fc-event")).toHaveCount(0);
+  await emptyCell
+    .locator(".fc-daygrid-day-frame")
     .click({ position: { x: 12, y: 40 } });
   await expect(page.getByLabel("Task title")).toBeVisible();
+  await expect(page.getByLabel("Scheduled date")).toHaveValue(emptyDate);
   await expect(page.getByLabel("Start time", { exact: true })).toHaveValue("");
   await expect(page.getByLabel("End time", { exact: true })).toHaveValue("");
   await page.getByLabel("Task title").fill("Month untimed");

@@ -3,7 +3,14 @@ import { bindStyles } from "../../utils/classNames";
 import styles from "./validatedForm.module.css";
 const cx = bindStyles(styles);
 
-import { useEffect, useId, useRef, useState, type ComponentProps } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ComponentProps,
+} from "react";
 import { createPortal } from "react-dom";
 type Field = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 function message(field: Field) {
@@ -46,22 +53,25 @@ export function ValidatedForm({
     invalid.current = null;
     setError("");
   };
-  const show = (field: Field, text: string) => {
-    invalid.current = field;
-    field.setAttribute("aria-invalid", "true");
-    field.setAttribute("aria-describedby", id);
-    if (!field.hasAttribute("aria-label")) {
-      const label = Array.from(field.labels?.[0]?.childNodes || [])
-        .filter((n) => n.nodeType === 3)
-        .map((n) => n.textContent)
-        .join("")
-        .trim();
-      if (label) field.setAttribute("aria-label", label);
-    }
-    setHost(field.parentElement);
-    setError(text);
-    field.focus();
-  };
+  const show = useCallback(
+    (field: Field, text: string) => {
+      invalid.current = field;
+      field.setAttribute("aria-invalid", "true");
+      field.setAttribute("aria-describedby", id);
+      if (!field.hasAttribute("aria-label")) {
+        const label = Array.from(field.labels?.[0]?.childNodes || [])
+          .filter((n) => n.nodeType === 3)
+          .map((n) => n.textContent)
+          .join("")
+          .trim();
+        if (label) field.setAttribute("aria-label", label);
+      }
+      setHost(field.parentElement);
+      setError(text);
+      field.focus();
+    },
+    [id],
+  );
   useEffect(() => {
     if (!fieldError) return;
     const field = form.current?.elements.namedItem(fieldError.field);
@@ -71,7 +81,7 @@ export function ValidatedForm({
       field instanceof HTMLTextAreaElement
     )
       show(field, fieldError.message);
-  }, [fieldError]);
+  }, [fieldError, show]);
   return (
     <form
       ref={form}

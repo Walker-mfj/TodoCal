@@ -62,7 +62,9 @@ func internal(w http.ResponseWriter, err error) {
 	if reporter, ok := w.(interface{ ReportError(error) }); ok {
 		reporter.ReportError(err)
 	}
-	slog.Error("request failed", "requestId", w.Header().Get("X-Request-ID"), "type", errorType(err))
+	if observed, ok := w.(interface{ DiagnosticsEnabled() bool }); !ok || !observed.DiagnosticsEnabled() {
+		slog.Error("request failed", "requestId", w.Header().Get("X-Request-ID"), "type", errorType(err))
+	}
 	fail(w, 500, "internal", "Something went wrong. Please try again.")
 }
 func errorType(err error) string {

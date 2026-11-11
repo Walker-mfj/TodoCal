@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"focuscalendar/internal/database"
+	"focuscalendar/internal/diagnostics"
 	"focuscalendar/internal/middleware"
 	"log/slog"
 	"net/http"
@@ -38,7 +39,15 @@ func run() error {
 	defer stop()
 	startup, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	pool, err := pgxpool.New(startup, cfg.DatabaseURL)
+	enabled := os.Getenv("OBSERVABILITY_ENABLED") == "true"
+	if enabled {
+		slog.SetDefault(diagnostics.Logger(os.Stdout, os.Getenv("RENDER_GIT_COMMIT"), os.Getenv("APP_ENV")))
+	}
+	poolCfg, err := poolConfig(cfg.DatabaseURL, enabled)
+	if err != nil {
+		return errors.New("invalid database configuration")
+	}
+	pool, err := pgxpool.NewWithConfig(startup, poolCfg)
 	if err != nil {
 		return errors.New("invalid database configuration")
 	}
@@ -72,7 +81,15 @@ func run() error {
 	})
 	closeMonitoring := app.EnableMonitoring(os.Getenv("BETTER_STACK_DSN"), os.Getenv("RENDER_GIT_COMMIT"))
 	defer closeMonitoring()
-	api := &http.Server{Addr: cfg.Address, Handler: middleware.ProxyHandler(app.Handler(), os.Getenv("PROXY_SECRET")), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
+	handler := middleware.ProxyHandler(app.Handler(), os.Getenv("PROXY_SECRET"))
+	if enabled {
+		handler = diagnostics.HTTP(handler, slog.Default())
+		poolCtx, cancelPool := context.WithCancel(ctx)
+		poolDone := make(chan struct{})
+		go func() { defer close(poolDone); diagnostics.LogPool(poolCtx, pool, slog.Default(), time.Minute) }()
+		defer func() { cancelPool(); <-poolDone }()
+	}
+	api := &http.Server{Addr: cfg.Address, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
 	done := make(chan error, 1)
 	go func() { done <- api.ListenAndServe() }()
 	slog.Info("API listening", "address", cfg.Address)
@@ -87,4 +104,15 @@ func run() error {
 	shutdown, close := context.WithTimeout(context.Background(), 10*time.Second)
 	defer close()
 	return api.Shutdown(shutdown)
+}
+
+func poolConfig(url string, enabled bool) (*pgxpool.Config, error) {
+	cfg, err := pgxpool.ParseConfig(url)
+	if err != nil {
+		return nil, err
+	}
+	if enabled {
+		cfg.ConnConfig.Tracer = diagnostics.PGTracer{}
+	}
+	return cfg, nil
 }

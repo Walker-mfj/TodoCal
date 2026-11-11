@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"focuscalendar/internal/diagnostics"
 	"net/http"
 	"net/url"
 	"path"
@@ -71,7 +72,10 @@ func (r *Reporter) Report(e *sentry.Event, source string) {
 	if len(e.Exception) == 0 {
 		return
 	}
-	b, _ := json.Marshal(e.Exception)
+	b, _ := json.Marshal(struct {
+		Exceptions             []sentry.Exception
+		Route, Category, Stage string
+	}{e.Exception, e.Tags["route"], e.Tags["error_category"], e.Tags["db_stage"]})
 	key := sha256.Sum256(append([]byte(source), b...))
 	now := time.Now()
 	r.mu.Lock()
@@ -134,6 +138,14 @@ func sanitize(e *sentry.Event, source, release string) *sentry.Event {
 		}
 	}
 	out := &sentry.Event{EventID: sentry.EventID(strings.ReplaceAll(uuid.NewString(), "-", "")), Timestamp: time.Now().UTC(), Level: sentry.LevelError, Platform: platform, Environment: "production", Release: safeSymbol(release), Tags: map[string]string{"service": source}}
+	if source == "api" {
+		for k, v := range diagnostics.FilterContext(e.Tags) {
+			out.Tags[k] = v
+		}
+		if out.Tags["route"] != "" {
+			out.Fingerprint = []string{"{{ default }}", out.Tags["route"], out.Tags["error_category"], out.Tags["db_stage"]}
+		}
+	}
 	for _, ex := range e.Exception {
 		if len(out.Exception) >= 3 {
 			break
@@ -165,17 +177,22 @@ func sanitize(e *sentry.Event, source, release string) *sentry.Event {
 	return out
 }
 
-func (r *Reporter) Capture(err error) {
+func (r *Reporter) Capture(err error) { r.CaptureContext(err, nil) }
+
+func (r *Reporter) CaptureContext(err error, fields map[string]string) {
 	if r == nil {
 		return
 	}
 	e := sentry.NewEvent()
 	e.SetException(err, 3)
+	e.Tags = diagnostics.FilterContext(fields)
 	r.Report(e, "api")
 }
-func (r *Reporter) Panic() {
+func (r *Reporter) Panic() { r.PanicContext(nil) }
+
+func (r *Reporter) PanicContext(fields map[string]string) {
 	if r == nil {
 		return
 	}
-	r.Report(&sentry.Event{Exception: []sentry.Exception{{Type: "panic", Stacktrace: sentry.NewStacktrace()}}}, "api")
+	r.Report(&sentry.Event{Tags: diagnostics.FilterContext(fields), Exception: []sentry.Exception{{Type: "panic", Stacktrace: sentry.NewStacktrace()}}}, "api")
 }

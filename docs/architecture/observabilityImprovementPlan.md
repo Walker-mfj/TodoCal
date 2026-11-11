@@ -1,6 +1,6 @@
 # TodoCal — Observability Improvement Plan
 
-> **Status:** Proposal (not implemented)
+> **Status:** Stage 1 implementation added, disabled by default and pending production verification. Stage 2 remains a proposal. See [implementation scope](observabilityImplementation.md) and [runbook](../../deploy/monitoring.md).
 >
 > **Scope:** Production observability for Cloudflare-hosted Next.js/edge proxy, Go API on Render, and Neon PostgreSQL. Implement in two incremental stages without changing product behavior.
 >
@@ -53,7 +53,7 @@ For every completed API request, log one bounded structured completion record (o
 | `error_category`, `operation` | Controlled vocabulary; only on failures |
 | `trace_id` | Optional Stage 2 correlation field, never mandatory for Stage 1 |
 
-**Ordering/invariants:** `Security` already creates a request ID outside `observe`, so reusing that value is preferable to generating a second ID. Ensure status is captured even on implicit 200 responses, panic recovery, and errors handled by `domainError`; preserve `http.Flusher`, `http.Hijacker`, `http.Pusher` and `Unwrap` semantics when wrapping a writer. Avoid double-counting a failure in the completion log and the error reporter. Health checks, readiness checks, job endpoints, and monitoring ingest need separate noise/sampling rules. If route templates cannot be determined reliably, emit a fixed `unknown` rather than raw user-supplied paths.
+**Ordering/invariants:** `Security` already creates a request ID outside `observe`, so reusing that value is preferable to generating a second ID. The completion observer must enclose `Security` and the authenticated proxy boundary, so early 403/415 rejections are recorded too. Generate the request ID at that outer boundary; `Security` reuses it. Rejected requests that never reach the router use `route=unknown`. Ensure status is captured even on implicit 200 responses, panic recovery, and errors handled by `domainError`; preserve `http.Flusher`, `http.Hijacker`, `http.Pusher` and `Unwrap` semantics when wrapping a writer. Avoid double-counting a failure in the completion log and the error reporter. Health checks, readiness checks, job endpoints, and monitoring ingest need separate noise/sampling rules. If route templates cannot be determined reliably, emit a fixed `unknown` rather than raw user-supplied paths.
 
 ### 3.2 Safe, stable error classification
 
@@ -131,7 +131,7 @@ browser or Cloudflare API proxy (optional)
 ```
 
 - **Go-first:** instrument the HTTP entry point and selected DB/service operations. Preserve the existing shared `pgxpool` and service-owned transactions; do not replace database access abstractions solely for tracing.
-- Propagation: carry validated W3C `traceparent` through the same-origin Cloudflare proxy. Treat incoming trace context as untrusted; reject malformed values and do not allow baggage or arbitrary headers to become log fields. A frontend span is not required to correlate Go and DB spans.
+- Propagation: carry validated W3C `traceparent` through the same-origin Cloudflare proxy. Treat incoming trace context as untrusted; an incoming `sampled=1` must never override server sampling or export budgets (do not blindly use parent-based sampling for remote parents). Reject malformed values and do not allow baggage or arbitrary headers to become log fields. A frontend span is not required to correlate Go and DB spans.
 - Add `trace_id` and `span_id` to structured logs only when a valid span is active. Place a trace reference (if supported) in allowlisted Better Stack error context to link Errors → Logs → Traces; **do not** change alert grouping to per-request IDs.
 - Span names are low-cardinality route/operation names; attributes must not include URL queries, SQL text/bindings, auth/session values or task content. Disable replay and automatic body/header capture.
 - Start with low head-based sampling and an explicit per-day/volume budget; include synthetic error-case verification. Do not assume head sampling can always retain every error trace. Consider error-biased or tail sampling only if evidence and provider support justify additional complexity.

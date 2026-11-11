@@ -37,3 +37,27 @@ To disable collection, remove `BETTER_STACK_DSN` on Render and rebuild frontend 
 ## Verification
 
 Run web tests/typecheck, Go race tests with the dedicated test database, static build, and `node --test deploy/cloudflare/worker.test.mjs`. Tests cover duplicate and burst dropping, durable concurrent quota, day rollover, privacy scrubbing, provider rejection without retry, invalid config, malformed/oversized intake, and panic response behavior. Send one synthetic event through the live endpoint and confirm it appears in Better Stack. Never trigger a business error or use real user data for a smoke test.
+
+## Stage 1 request and database diagnostics
+
+Set `OBSERVABILITY_ENABLED=true` on the API to enable JSON stdout request completion records and pgx acquire/query diagnostics. It defaults off; remove the flag or set it to `false` to restore existing logging. Set `APP_ENV=production` (also accepts `staging` or `development`); unknown environment/release metadata becomes `unknown`. `RENDER_GIT_COMMIT` must be a full lowercase Git SHA.
+
+The observer encloses the proxy and security middleware, so rejected 403/415 requests have the same server-generated ID in the response and completion log. Only registered method/route templates are logged; early rejections and unmatched routes use `unknown`. When adding a route, add its template to `internal/diagnostics/routes.go`; an omitted template safely falls back to `unknown`.
+
+Each business request emits one completion record. Successful `/healthz`, `/readyz`, `/internal/jobs`, and monitoring-ingest calls are omitted; their failures are retained. A panic after partial output records `response_complete=false` with the already-written status; status `0` means no final response status was written before an abort. `duration_ms` is wall time measured with the monotonic clock. No raw paths, query parameters, SQL, arguments, credentials, task text or error messages are included in these records.
+
+`db_acquire_ms` and `db_query_ms` are sums across that request's calls, not durations of a single SQL statement. Query timing includes consuming/closing result rows. `db_stage` identifies the first unexpected failed operation, and `db_context_already_done` indicates at least one DB call started with a canceled/expired context. Expected `pgx.ErrNoRows` does not set a failure category. Category changes are diagnostic only; API response status and domain errors are unchanged.
+
+A `db_pool_summary` record every 60 seconds provides pool sizes plus interval deltas for empty/canceled acquisitions and cumulative acquire duration. These are process-wide metrics, not per-request timings. The summary goroutine stops before pool shutdown.
+
+API error events allowlist `request_id`, `route`, `operation`, `error_category` and `db_stage`. The request ID is excluded from grouping and local deduplication; route/category/stage distinguish independent failures. Browser-supplied server diagnostic fields are discarded. Existing 1000/day shared send-attempt quota, queue bounds and rate suppression are unchanged.
+
+### Investigation
+
+1. Open an error alert and note its time window, release, route, category, DB stage and request ID.
+2. Search Render logs for that `request_id`. Check status, completion state, acquire/query totals and whether the DB context was already canceled.
+3. Compare surrounding `db_pool_summary` records. Empty/canceled acquire deltas suggest connection contention; they alone do not prove SQL slowness. Compare Render events and Neon metrics for the same window.
+4. Record the confirmed cause separately from hypotheses. A client cancellation is not by itself a database outage.
+5. Disable `OBSERVABILITY_ENABLED` if volume or overhead is unacceptable; the existing capped Errors reporter continues operating.
+
+This increment does not provision a Better Stack log source or export traces. Stage 2 needs independent exporter flags, bounded queues/volume budgets and server-controlled sampling that cannot be overridden by an incoming `traceparent` sampled bit. Use synthetic values for verification; do not intentionally fail a real user's task.

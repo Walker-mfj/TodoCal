@@ -41,7 +41,9 @@ func run() error {
 	defer cancel()
 	enabled := os.Getenv("OBSERVABILITY_ENABLED") == "true"
 	if enabled {
-		slog.SetDefault(diagnostics.Logger(os.Stdout, os.Getenv("RENDER_GIT_COMMIT"), os.Getenv("APP_ENV")))
+		out, closeExports := diagnostics.ConfigureExports(os.Getenv, os.Stdout)
+		defer closeExports()
+		slog.SetDefault(diagnostics.Logger(out, os.Getenv("RENDER_GIT_COMMIT"), os.Getenv("APP_ENV")))
 	}
 	poolCfg, err := poolConfig(cfg.DatabaseURL, enabled)
 	if err != nil {

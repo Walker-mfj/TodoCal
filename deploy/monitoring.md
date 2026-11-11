@@ -60,4 +60,27 @@ API error events allowlist `request_id`, `route`, `operation`, `error_category` 
 4. Record the confirmed cause separately from hypotheses. A client cancellation is not by itself a database outage.
 5. Disable `OBSERVABILITY_ENABLED` if volume or overhead is unacceptable; the existing capped Errors reporter continues operating.
 
-This increment does not provision a Better Stack log source or export traces. Stage 2 needs independent exporter flags, bounded queues/volume budgets and server-controlled sampling that cannot be overridden by an incoming `traceparent` sampled bit. Use synthetic values for verification; do not intentionally fail a real user's task.
+The Stage 1 flag alone does not provision a Better Stack log source or export traces. Stage 2 adds independent exporter flags, bounded queues/volume budgets and server-controlled sampling below. Use synthetic values for verification; do not intentionally fail a real user's task.
+
+## Stage 2 exporters (opt-in)
+
+Stage 2 adds a single direct Go → Better Stack log pipeline and the official OpenTelemetry OTLP/HTTP trace exporter. Do not also enable Render log forwarding for this service. Both exporters require Stage 1 `OBSERVABILITY_ENABLED=true` and are otherwise disabled independently.
+
+| Setting | Purpose |
+| --- | --- |
+| `OBSERVABILITY_LOG_EXPORT_ENABLED=true` | Enable sanitized asynchronous log export |
+| `BETTER_STACK_LOG_ENDPOINT` | Full HTTPS ingest URL of a separate Telemetry log source |
+| `BETTER_STACK_LOG_TOKEN` | That source's bearer token; not the Errors DSN |
+| `OBSERVABILITY_TRACE_EXPORT_ENABLED=true` | Enable OTLP/HTTP export |
+| `OTEL_TRACE_ENDPOINT` | Full HTTPS OTLP trace URL, including `/v1/traces` where required |
+| `OTEL_TRACE_TOKEN` | Trace endpoint bearer token |
+
+URLs with user credentials, query strings or fragments are rejected. Invalid settings disable the affected exporter; they do not prevent API startup. Store credentials only in Render secrets. No provider resources are provisioned automatically.
+
+Log export accepts only allowlisted request completions and pool summaries, samples successful completions at 1/100, and retains failures subject to a 10,000-record UTC-day send-attempt limit. Queue capacity is 64 records, record size at most 8 KiB, timeout 2 seconds, no retries or redirects. `telemetry_dropped_total` includes queue, budget, serialization and delivery failures. Shutdown cancels pending work and may discard buffered records. Stdout remains available during export outages.
+
+Tracing samples 5% of server requests, at most 1,000 sampled roots per UTC day per process, with up to 8 named DB spans per request on calendar/day details/period report/tasks list/auth-me operations. Spans contain route, status and sanitized error categories, never raw exceptions, SQL, parameters or headers. Query spans include row consumption. Queue capacity is 128 spans, batches at most 32, timeout 2 seconds, no retries, shutdown at most 3 seconds. Export failures increment `trace_export_errors_total` in local pool summaries; SDK queue overflow may also drop spans. Head sampling cannot retain every error.
+
+Incoming valid W3C traceparent is retained as a link to a new locally sampled root, not as the parent: this prevents both sampled-bit and caller-selected trace-ID sampling bypass. Baggage is not extracted. Go→DB parentage is preserved. The existing Cloudflare proxy already forwards trace headers; malformed values are ignored at Go ingress. Browser instrumentation remains optional and is not added here.
+
+These budgets are **per process and reset on restart**, not durable account-wide billing caps. Before enabling, configure provider retention/quota and account for instance count and restarts. Start with a synthetic failed request in a controlled environment, match its request ID across Render and the log source, then verify a sampled trace and parentage. Alert routing/thresholds should be configured after measuring traffic; existing Errors quota and alert integration remain unchanged. Disable either exporter flag independently to roll back.

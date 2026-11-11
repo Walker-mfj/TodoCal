@@ -4,6 +4,7 @@ package diagnostics
 
 import (
 	"context"
+	"go.opentelemetry.io/otel/trace"
 	"regexp"
 	"sync"
 	"time"
@@ -15,6 +16,7 @@ type state struct {
 	id, route, operation, category, stage string
 	acquire, query                        time.Duration
 	queries, acquires                     int
+	spans                                 int
 	contextDone                           bool
 }
 
@@ -73,7 +75,12 @@ func SafeContext(ctx context.Context) map[string]string {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return map[string]string{"request_id": s.id, "route": s.route, "operation": s.operation, "error_category": s.category, "db_stage": s.stage}
+	out := map[string]string{"request_id": s.id, "route": s.route, "operation": s.operation, "error_category": s.category, "db_stage": s.stage}
+	if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+		out["trace_id"] = sc.TraceID().String()
+		out["span_id"] = sc.SpanID().String()
+	}
+	return out
 }
 
 var requestIDPattern = regexp.MustCompile(`^[a-f0-9]{24}$`)
@@ -84,6 +91,14 @@ func FilterContext(in map[string]string) map[string]string {
 	out := map[string]string{}
 	for k, v := range in {
 		switch k {
+		case "trace_id":
+			if id, e := trace.TraceIDFromHex(v); e == nil && id.IsValid() {
+				out[k] = v
+			}
+		case "span_id":
+			if id, e := trace.SpanIDFromHex(v); e == nil && id.IsValid() {
+				out[k] = v
+			}
 		case "request_id":
 			if requestIDPattern.MatchString(v) {
 				out[k] = v

@@ -1,6 +1,6 @@
 # TodoCal — Observability Improvement Plan
 
-> **Status:** Stage 1 implementation added, disabled by default and pending production verification. Stage 2 remains a proposal. See [implementation scope](observabilityImplementation.md) and [runbook](../../deploy/monitoring.md).
+> **Status:** Stage 1 implementation added, disabled by default and pending production verification. Stage 2 exporters are implemented, disabled by default; provider provisioning and production verification remain pending. See [implementation scope](observabilityImplementation.md) and [runbook](../../deploy/monitoring.md).
 >
 > **Scope:** Production observability for Cloudflare-hosted Next.js/edge proxy, Go API on Render, and Neon PostgreSQL. Implement in two incremental stages without changing product behavior.
 >

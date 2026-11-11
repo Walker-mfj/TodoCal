@@ -3,6 +3,7 @@ package diagnostics
 import (
 	"context"
 	"errors"
+	"go.opentelemetry.io/otel/trace"
 	"log/slog"
 	"time"
 
@@ -15,13 +16,22 @@ type dbKey string
 type dbCall struct {
 	start       time.Time
 	contextDone bool
+	span        trace.Span
 }
 
 func beginDB(ctx context.Context, key dbKey) context.Context {
 	if !Active(ctx) {
 		return ctx
 	}
-	return context.WithValue(ctx, key, dbCall{time.Now(), ctx.Err() != nil})
+	var span trace.Span
+	s := from(ctx)
+	s.mu.Lock()
+	if tracingEnabled.Load() && s.operation != "api.request" && s.spans < 8 && trace.SpanContextFromContext(ctx).IsSampled() {
+		s.spans++
+		ctx, span = tracer.Start(ctx, s.operation+"."+string(key), trace.WithSpanKind(trace.SpanKindClient))
+	}
+	s.mu.Unlock()
+	return context.WithValue(ctx, key, dbCall{time.Now(), ctx.Err() != nil, span})
 }
 func endDB(ctx context.Context, key dbKey, err error) {
 	s := from(ctx)
@@ -32,6 +42,11 @@ func endDB(ctx context.Context, key dbKey, err error) {
 	if !ok {
 		return
 	}
+	category := ""
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		category = Category(err, string(key))
+	}
+	finishSpan(call.span, category)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if key == "pool_acquire" {
@@ -74,7 +89,7 @@ func LogPool(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger, inter
 			return
 		case now := <-ticker.C:
 			stat := pool.Stat()
-			logger.InfoContext(ctx, "database pool", "event", "db_pool_summary", "interval_ms", now.Sub(since).Milliseconds(), "acquired_conns", stat.AcquiredConns(), "idle_conns", stat.IdleConns(), "total_conns", stat.TotalConns(), "max_conns", stat.MaxConns(), "empty_acquire_delta", stat.EmptyAcquireCount()-prev.EmptyAcquireCount(), "canceled_acquire_delta", stat.CanceledAcquireCount()-prev.CanceledAcquireCount(), "acquire_duration_delta_ms", (stat.AcquireDuration() - prev.AcquireDuration()).Milliseconds())
+			logger.InfoContext(ctx, "database pool", "event", "db_pool_summary", "trace_export_errors_total", traceExportErrors.Load(), "interval_ms", now.Sub(since).Milliseconds(), "acquired_conns", stat.AcquiredConns(), "idle_conns", stat.IdleConns(), "total_conns", stat.TotalConns(), "max_conns", stat.MaxConns(), "empty_acquire_delta", stat.EmptyAcquireCount()-prev.EmptyAcquireCount(), "canceled_acquire_delta", stat.CanceledAcquireCount()-prev.CanceledAcquireCount(), "acquire_duration_delta_ms", (stat.AcquireDuration() - prev.AcquireDuration()).Milliseconds())
 			prev = stat
 			since = now
 		}

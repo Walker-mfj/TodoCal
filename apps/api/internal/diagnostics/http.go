@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/felixge/httpsnoop"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 // HTTP must be the outermost application handler, including proxy and security
@@ -22,6 +24,8 @@ func HTTP(next http.Handler, logger *slog.Logger) http.Handler {
 		id := hex.EncodeToString(token[:])
 		w.Header().Set("X-Request-ID", id)
 		r = r.WithContext(WithRequest(r.Context(), id))
+		ctx, span := startRequestTrace(r.Context(), propagation.HeaderCarrier(r.Header))
+		r = r.WithContext(ctx)
 		started := time.Now()
 		code := 0
 		complete := false
@@ -52,6 +56,18 @@ func HTTP(next http.Handler, logger *slog.Logger) http.Handler {
 			if complete && code == 0 {
 				code = 200
 			}
+			if span != nil {
+				span.SetName(s.route)
+				span.SetAttributes(attribute.String("http.route", s.route), attribute.Int("http.response.status_code", code))
+				category := s.category
+				if category == "" && (code >= 500 || !complete) {
+					category = "internal"
+				}
+				defer finishSpan(span, category)
+			}
+			if complete && code == 0 {
+				code = 200
+			}
 			// Healthy probes and ingest/job loops do not produce completion noise.
 			if complete && code < 400 && (s.route == "GET /healthz" || s.route == "GET /readyz" || s.route == "POST /internal/jobs" || s.route == "POST /api/v1/monitoring/errors") {
 				return
@@ -67,6 +83,9 @@ func HTTP(next http.Handler, logger *slog.Logger) http.Handler {
 				level = slog.LevelError
 			}
 			attrs := []any{"event", "http_request_completed", "request_id", id, "method", method, "route", s.route, "status_code", code, "duration_ms", float64(time.Since(started).Microseconds()) / 1000, "response_complete", complete}
+			if span != nil && span.SpanContext().IsValid() {
+				attrs = append(attrs, "trace_id", span.SpanContext().TraceID().String(), "span_id", span.SpanContext().SpanID().String())
+			}
 			if s.category != "" {
 				attrs = append(attrs, "error_category", s.category, "operation", s.operation, "db_stage", s.stage)
 			}

@@ -1,46 +1,11 @@
-import { test, expect, type Page } from "@playwright/test";
-import { randomUUID } from "node:crypto";
+import { test, expect } from "./fixtures";
 import { DateTime } from "luxon";
-
-async function setup(page: Page) {
-  await page.goto("/");
-  await page
-    .getByRole("button", { name: "Create an account", exact: true })
-    .click();
-  await page
-    .getByLabel("Email", { exact: true })
-    .fill(`ux-${randomUUID()}@example.com`);
-  await page
-    .getByLabel("Password", { exact: true })
-    .fill("Strong-ux-password-123");
-  await page
-    .getByRole("button", { name: "Create account", exact: true })
-    .click();
-  await expect(page.locator(".fc-timegrid-col.fc-day-today")).toBeVisible();
-  const session = await (await page.request.get("/api/v1/auth/me")).json();
-  const send = async (path: string, body: unknown, method = "POST") => {
-    const response = await page.request.fetch(`/api/v1${path}`, {
-      method,
-      data: body,
-      headers: {
-        Origin: new URL(page.url()).origin,
-        "X-CSRF-Token": session.csrfToken,
-        "Idempotency-Key": randomUUID(),
-      },
-    });
-    expect(response.ok(), await response.text()).toBeTruthy();
-    return response.json();
-  };
-  return {
-    send,
-    today: DateTime.now().setZone(session.settings.timezone).toISODate()!,
-  };
-}
 
 test("future completion preserves schedule and deleted task can be restored", async ({
   page,
+  auth,
 }) => {
-  const { send, today } = await setup(page);
+  const { send, today } = auth;
   const date = DateTime.fromISO(today).plus({ days: 2 }).toISODate()!;
   const task = await send("/tasks", {
     title: "Finish early",
@@ -78,48 +43,74 @@ test("future completion preserves schedule and deleted task can be restored", as
   expect(restored.status).toBe("complete");
 });
 
-test("historical creation remains editable and revises daily analytics", async ({
+test("historical task journey: create in Calendar, complete, edit and reconcile analytics", async ({
   page,
 }) => {
-  const { send, today } = await setup(page);
-  const date = DateTime.fromISO(today).minus({ days: 2 }).toISODate()!;
-  const task = await send("/tasks", {
-    title: "Historical task",
-    scheduledDate: date,
+  const { date, task } =
+    await test.step("Create in a past month without shifting layout", async () => {
+      await page.getByRole("button", { name: "Month", exact: true }).click();
+      await page.getByRole("button", { name: "Previous", exact: true }).click();
+      const before = await page.locator(".calendar-card").boundingBox();
+      await page
+        .locator(".fc-day-past .fc-daygrid-day-frame")
+        .first()
+        .click({ position: { x: 15, y: 50 } });
+      await expect(page.getByLabel("Task title")).toBeVisible();
+      const after = await page.locator(".calendar-card").boundingBox();
+      expect(after!.y).toBe(before!.y);
+      expect(after!.height).toBe(before!.height);
+      const date = await page.getByLabel("Scheduled date").inputValue();
+      await page.getByLabel("Task title").fill("Historical task");
+      await page
+        .getByRole("button", { name: "Create task", exact: true })
+        .click();
+      await expect(page.getByLabel("Task title")).toBeHidden();
+      await expect(
+        page.locator(".fc-event").filter({ hasText: "Historical task" }),
+      ).toBeVisible();
+
+      return {
+        date,
+        task: (await (await page.request.get("/api/v1/tasks")).json()).items[0],
+      };
+    });
+  await test.step("Complete and revise historical daily analytics", async () => {
+    await page.getByRole("button", { name: "Tasks", exact: true }).click();
+    await page.getByRole("button", { name: /^Historical task/ }).click();
+    await page
+      .getByRole("button", { name: "Mark complete", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "Delete task", exact: true }),
+    ).toHaveCount(0);
+    const day = await (
+      await page.request.get(`/api/v1/reports/days/${date}`)
+    ).json();
+    expect(day.planned).toBe(1);
+    expect(day.completed).toBe(1);
+    await page.getByRole("button", { name: /^Historical task/ }).click();
+    await page.getByRole("button", { name: "Edit task", exact: true }).click();
+    await page.getByLabel("Task title").fill("Historical task revised");
+    await page
+      .getByRole("button", { name: "Save changes", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: /^Historical task revised/ }),
+    ).toBeVisible();
+    const report = await (
+      await page.request.get(`/api/v1/reports/days/${date}`)
+    ).json();
+    expect(
+      report.entries.find((x: any) => x.task.id === task.id).task.title,
+    ).toBe("Historical task revised");
   });
-  await page.reload();
-  await page.getByRole("button", { name: "Tasks", exact: true }).click();
-  await page.getByRole("button", { name: /^Historical task/ }).click();
-  await page
-    .getByRole("button", { name: "Mark complete", exact: true })
-    .click();
-  await expect(
-    page.getByRole("button", { name: "Delete task", exact: true }),
-  ).toHaveCount(0);
-  const day = await (
-    await page.request.get(`/api/v1/reports/days/${date}`)
-  ).json();
-  expect(day.planned).toBe(1);
-  expect(day.completed).toBe(1);
-  await page.getByRole("button", { name: /^Historical task/ }).click();
-  await page.getByRole("button", { name: "Edit task", exact: true }).click();
-  await page.getByLabel("Task title").fill("Historical task revised");
-  await page.getByRole("button", { name: "Save changes", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: /^Historical task revised/ }),
-  ).toBeVisible();
-  const report = await (
-    await page.request.get(`/api/v1/reports/days/${date}`)
-  ).json();
-  expect(
-    report.entries.find((x: any) => x.task.id === task.id).task.title,
-  ).toBe("Historical task revised");
 });
 
 test("compact calendar quick focus supports keyboard, pause and competing tasks", async ({
   page,
+  auth,
 }) => {
-  const { send, today } = await setup(page);
+  const { send, today } = auth;
   const a = await send("/tasks", {
     title: "Read compact",
     scheduledDate: today,
@@ -186,5 +177,7 @@ test("compact calendar quick focus supports keyboard, pause and competing tasks"
   expect(saved.scheduledDate).toBe(today);
   expect(saved.startTime).toBe("09:00");
   expect(saved.status).toBe("incomplete");
-  await card.screenshot({ path: "test-results/compact-quick-focus.png" });
+  await card.screenshot({
+    path: test.info().outputPath("compact-quick-focus.png"),
+  });
 });

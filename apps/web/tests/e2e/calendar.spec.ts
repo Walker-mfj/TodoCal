@@ -1,43 +1,8 @@
-import { test, expect, type Page } from "@playwright/test";
-import { randomUUID } from "node:crypto";
-async function setup(page: Page) {
-  await page.setViewportSize({ width: 1440, height: 1600 });
-  await page.goto("/");
-  await page.getByRole("button", { name: "Create an account" }).click();
-  await page
-    .getByLabel("Email", { exact: true })
-    .fill(`drag-${randomUUID()}@example.com`);
-  await page
-    .getByLabel("Password", { exact: true })
-    .fill("Strong-calendar-password-123");
-  await page
-    .getByRole("button", { name: "Create account", exact: true })
-    .click();
-  await expect(page.locator(".fc-timegrid-col.fc-day-today")).toBeVisible();
-  const session = await (await page.request.get("/api/v1/auth/me")).json();
-  const date = await page.evaluate(() =>
-    new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Tokyo",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date()),
-  );
-  const send = async (path: string, body: unknown, method = "POST") => {
-    const response = await page.request.fetch(`/api/v1${path}`, {
-      method,
-      data: body,
-      headers: {
-        Origin: new URL(page.url()).origin,
-        "X-CSRF-Token": session.csrfToken,
-        "Idempotency-Key": randomUUID(),
-      },
-    });
-    expect(response.ok()).toBeTruthy();
-    return response.json();
-  };
-  return { date, send };
-}
+import { test, expect } from "./fixtures";
+import type { Page } from "@playwright/test";
+
+test.use({ viewport: { width: 1440, height: 1600 } });
+
 async function dragMinutes(page: Page, title: string, minutes: number) {
   const event = page.locator(".fc-timegrid-event").filter({ hasText: title });
   await event.hover(); // Wait for layout and initial calendar scrolling to settle.
@@ -65,8 +30,9 @@ async function dragMinutes(page: Page, title: string, minutes: number) {
 }
 test("calendar drag snaps, Undo restores, resize saves, and Month moves preserve time", async ({
   page,
+  auth,
 }) => {
-  const { date, send } = await setup(page);
+  const { today: date, send } = auth;
   const task = await send("/tasks", {
     title: "Move this task",
     scheduledDate: date,
@@ -148,8 +114,9 @@ test("calendar drag snaps, Undo restores, resize saves, and Month moves preserve
 });
 test("calendar external drop assigns 30 minutes, clear-time drop and uncertain retry preserve identity", async ({
   page,
+  auth,
 }) => {
-  const { date, send } = await setup(page);
+  const { today: date, send } = auth;
   const task = await send("/tasks", { title: "From unscheduled" });
   await page.reload();
   await page.locator(".unscheduled-section summary").click();
@@ -236,22 +203,88 @@ test("calendar external drop assigns 30 minutes, clear-time drop and uncertain r
   expect(current.endTime).toBeNull();
 });
 
-test("new scheduled tasks appear immediately without navigation or polling", async ({
+test("task creation journey: select, validate, preview, save and preserve calendar position", async ({
   page,
+  auth,
 }) => {
-  const { date } = await setup(page);
-  for (const repeat of [false, true]) {
+  const { today: date } = auth;
+  await test.step("Select a time range without page errors", async () => {
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    const column = page.locator(".fc-timegrid-col.fc-day-today");
+    const start = page
+      .locator('.fc-timegrid-slot[data-time="09:00:00"]')
+      .last();
+    await start.scrollIntoViewIfNeeded();
+    const col = (await column.boundingBox())!;
+    const from = (await start.boundingBox())!;
+    const to = (await page
+      .locator('.fc-timegrid-slot[data-time="10:00:00"]')
+      .last()
+      .boundingBox())!;
+    await page.mouse.move(col.x + col.width / 2, from.y + 4);
+    await page.mouse.down();
+    await page.mouse.move(col.x + col.width / 2, to.y + 4, { steps: 12 });
+    await expect(page.locator(".fc-event-mirror")).toBeVisible();
+    expect(errors).toEqual([]);
+    await page.mouse.up();
+    await expect(page.getByLabel("Task title")).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+  await test.step("Validate required title and focus", async () => {
+    await page
+      .getByRole("button", { name: "Create task", exact: true })
+      .click();
+    await expect(
+      page.getByRole("alert").filter({ hasText: "Task title is required." }),
+    ).toBeVisible();
+    await expect(page.getByLabel("Task title")).toBeFocused();
+    await page.screenshot({
+      path: test.info().outputPath("custom-validation.png"),
+    });
+  });
+  await test.step("Preview unsaved content and save immediately", async () => {
+    const longTitle = "Draft " + "x".repeat(294);
+    await page.getByLabel("Task title").pressSequentially(longTitle);
+    await expect(page.getByLabel("Task title")).toHaveValue(longTitle);
+    await expect(page.locator(".fc-event-draft")).toContainText(longTitle);
+    await page.getByLabel("Task title").fill("");
+    await page.getByLabel("Task title").pressSequentially("Draft appointment");
+    await expect(page.getByLabel("Task title")).toHaveValue(
+      "Draft appointment",
+    );
+    const preview = page.locator(".fc-event-draft");
+    await expect(preview).toContainText("Draft appointment");
+    await expect(preview).toContainText("Draft");
+    expect(
+      (await (await page.request.get("/api/v1/tasks")).json()).items,
+    ).toHaveLength(0);
+    await page.getByLabel("Start time", { exact: true }).fill("10:00");
+    await page.getByLabel("End time", { exact: true }).fill("11:00");
+    await expect(preview).toContainText("10:00");
+    await page
+      .getByRole("button", { name: "Create task", exact: true })
+      .click();
+    await expect(preview).toHaveCount(0);
+    await expect(
+      page.locator(".fc-event").filter({ hasText: "Draft appointment" }),
+    ).toHaveCount(1);
+    await expect(page.getByLabel("Task title")).toBeHidden();
+    await expect(
+      page.locator(".fc-event").filter({ hasText: "Draft appointment" }),
+    ).toBeVisible({ timeout: 3000 });
+  });
+  await test.step("Repeating task also appears immediately", async () => {
+    const title = "Immediate repeating task";
     await page
       .getByRole("button", { name: "New task", exact: true })
       .first()
       .click();
-    const title = repeat ? "Immediate repeating task" : "Immediate single task";
     await page.getByLabel("Task title").fill(title);
     await page.getByLabel("Scheduled date").fill(date);
-    if (repeat)
-      await page
-        .getByRole("combobox", { name: "Repeat", exact: true })
-        .selectOption("daily");
+    await page
+      .getByRole("combobox", { name: "Repeat", exact: true })
+      .selectOption("daily");
     await page
       .getByRole("button", { name: "Create task", exact: true })
       .click();
@@ -259,90 +292,48 @@ test("new scheduled tasks appear immediately without navigation or polling", asy
     await expect(
       page.locator(".fc-event").filter({ hasText: title }).first(),
     ).toBeVisible({ timeout: 3000 });
-  }
-});
-
-test("creating a task outside the visible week preserves the calendar date and scroll", async ({
-  page,
-}) => {
-  const { date } = await setup(page);
-  await page.setViewportSize({ width: 1440, height: 900 });
-  const heading = await page.locator(".fc-toolbar-title").textContent();
-  const scroll = () =>
-    page
-      .locator(".fc-scroller")
-      .evaluateAll((nodes) => Math.max(...nodes.map((n) => n.scrollTop)));
-  const before = await scroll();
-  const next = new Date(date + "T12:00:00Z");
-  next.setUTCDate(next.getUTCDate() + 14);
-  await page.getByPlaceholder("Search tasks…").fill("Something else");
-  await page
-    .getByRole("button", { name: "New task", exact: true })
-    .first()
-    .click();
-  await page.getByLabel("Task title").fill("Visible after save");
-  await page.getByLabel("Scheduled date").fill(next.toISOString().slice(0, 10));
-  await page.getByRole("button", { name: "Create task", exact: true }).click();
-  await expect(page.getByLabel("Task title")).toBeHidden();
-  await expect(page.locator(".fc-toolbar-title")).toHaveText(heading!);
-  expect(Math.abs((await scroll()) - before)).toBeLessThan(2);
-  await expect(
-    page.locator(".fc-event").filter({ hasText: "Visible after save" }),
-  ).toHaveCount(0);
-  expect(
-    (await (await page.request.get("/api/v1/tasks")).json()).items,
-  ).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({ title: "Visible after save" }),
-    ]),
-  );
-});
-
-test("task validation uses an inline message instead of browser tooltips", async ({
-  page,
-}) => {
-  await setup(page);
-  await page
-    .getByRole("button", { name: "New task", exact: true })
-    .first()
-    .click();
-  await page.getByRole("button", { name: "Create task", exact: true }).click();
-  await expect(
-    page.getByRole("alert").filter({ hasText: "Task title is required." }),
-  ).toBeVisible();
-  await expect(page.getByLabel("Task title")).toBeFocused();
-  await page.screenshot({ path: "test-results/custom-validation.png" });
-});
-
-test("selecting a new time range renders a taskless preview without crashing", async ({
-  page,
-}) => {
-  const errors: string[] = [];
-  page.on("pageerror", (error) => errors.push(error.message));
-  await setup(page);
-  const column = page.locator(".fc-timegrid-col.fc-day-today");
-  const start = page.locator('.fc-timegrid-slot[data-time="09:00:00"]').last();
-  await start.scrollIntoViewIfNeeded();
-  const col = (await column.boundingBox())!;
-  const from = (await start.boundingBox())!;
-  const to = (await page
-    .locator('.fc-timegrid-slot[data-time="10:00:00"]')
-    .last()
-    .boundingBox())!;
-  await page.mouse.move(col.x + col.width / 2, from.y + 4);
-  await page.mouse.down();
-  await page.mouse.move(col.x + col.width / 2, to.y + 4, { steps: 12 });
-  await expect(page.locator(".fc-event-mirror")).toBeVisible();
-  expect(errors).toEqual([]);
-  await page.mouse.up();
-  await expect(page.getByLabel("Task title")).toBeVisible();
-  expect(errors).toEqual([]);
+  });
+  await test.step("Off-week creation preserves date and scroll", async () => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const heading = await page.locator(".fc-toolbar-title").textContent();
+    const scroll = () =>
+      page
+        .locator(".fc-scroller")
+        .evaluateAll((nodes) => Math.max(...nodes.map((n) => n.scrollTop)));
+    const before = await scroll();
+    const next = new Date(date + "T12:00:00Z");
+    next.setUTCDate(next.getUTCDate() + 14);
+    await page.getByPlaceholder("Search tasks…").fill("Something else");
+    await page
+      .getByRole("button", { name: "New task", exact: true })
+      .first()
+      .click();
+    await page.getByLabel("Task title").fill("Visible after save");
+    await page
+      .getByLabel("Scheduled date")
+      .fill(next.toISOString().slice(0, 10));
+    await page
+      .getByRole("button", { name: "Create task", exact: true })
+      .click();
+    await expect(page.getByLabel("Task title")).toBeHidden();
+    await expect(page.locator(".fc-toolbar-title")).toHaveText(heading!);
+    expect(Math.abs((await scroll()) - before)).toBeLessThan(2);
+    await expect(
+      page.locator(".fc-event").filter({ hasText: "Visible after save" }),
+    ).toHaveCount(0);
+    expect(
+      (await (await page.request.get("/api/v1/tasks")).json()).items,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ title: "Visible after save" }),
+      ]),
+    );
+  });
 });
 
 test("calendar fits desktop and keeps its scroll when creating a draft; sidebar can collapse", async ({
   page,
 }) => {
-  await setup(page);
   await page.setViewportSize({ width: 1366, height: 768 });
   await expect(page.locator(".idle-panel")).toHaveCount(0);
   const fits = async () => {
@@ -388,13 +379,17 @@ test("calendar fits desktop and keeps its scroll when creating a draft; sidebar 
     .getByRole("button", { name: "Create task", exact: true })
     .boundingBox();
   expect(submit!.y + submit!.height).toBeLessThanOrEqual(768);
-  await page.screenshot({ path: "test-results/calendar-compact-editor.png" });
+  await page.screenshot({
+    path: test.info().outputPath("calendar-compact-editor.png"),
+  });
   await page.getByLabel("Task title").fill("Stay in place");
   await page.getByRole("button", { name: "Create task", exact: true }).click();
   await expect(page.getByLabel("Task title")).toBeHidden();
   expect(Math.abs((await readScroll()) - before)).toBeLessThan(2);
   await fits();
-  await page.screenshot({ path: "test-results/calendar-compact.png" });
+  await page.screenshot({
+    path: test.info().outputPath("calendar-compact.png"),
+  });
   const event = page.locator(".fc-event").filter({ hasText: "Stay in place" });
   await event.click();
   await page
@@ -402,13 +397,16 @@ test("calendar fits desktop and keeps its scroll when creating a draft; sidebar 
     .click();
   await expect(event).toHaveClass(/event-complete/);
   await expect(event.locator(".event-done")).toBeVisible();
-  await page.screenshot({ path: "test-results/calendar-completed.png" });
+  await page.screenshot({
+    path: test.info().outputPath("calendar-completed.png"),
+  });
 });
 
 test("draft drag and resize update the editor without creating a task", async ({
   page,
+  auth,
 }) => {
-  const { date } = await setup(page);
+  const { today: date } = auth;
   await page.getByRole("button", { name: "New task", exact: true }).click();
   await page.getByLabel("Task title").fill("Movable draft");
   await page.getByLabel("Scheduled date").fill(date);
@@ -452,8 +450,9 @@ test("draft drag and resize update the editor without creating a task", async ({
 
 test("repeating drag asks for scope; cancel, one and following preserve occurrence details", async ({
   page,
+  auth,
 }) => {
-  const { date, send } = await setup(page);
+  const { today: date, send } = auth;
   const tomorrow = new Date(date + "T12:00:00Z");
   tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
   const end = tomorrow.toISOString().slice(0, 10);
@@ -525,8 +524,9 @@ test("repeating drag asks for scope; cancel, one and following preserve occurren
 
 test("completed calendar titles retain their strike-through after CSS scoping", async ({
   page,
+  auth,
 }) => {
-  const { date, send } = await setup(page);
+  const { today: date, send } = auth;
   const task = await send("/tasks", {
     title: "Completed style regression",
     scheduledDate: date,

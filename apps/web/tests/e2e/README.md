@@ -141,3 +141,19 @@ npx playwright test --list
 ```
 
 Current main uses oxfmt/oxlint. Use `npm run format` for formatting instead of introducing another formatter configuration. Local checks from an older checkout do not certify these newer commands; CI must run the current toolchain.
+
+## Test database lifecycle
+
+Use `sh scripts/testE2e.sh` to run backend E2E tests. Each invocation creates its own `focus_web_test_<random hex>` database on the Compose Postgres instance and prints its name. Accounts and all other rows exist only for that run. Browser projects within the run share this database but use independent accounts; rate-limit counters are reset between projects.
+
+The runner registers cleanup before creating the database. On success, build/migration/readiness/test failure, SIGINT or SIGTERM, it stops and waits for Next.js and the Go API before dropping only the database successfully created by that invocation. It preserves the original failure exit code; a failed cleanup turns an otherwise successful run into a failure. It never runs `docker compose down`, removes volumes, or deletes development databases. Unique databases do not make concurrent runs in the same checkout safe: local ports and build/log paths are still shared.
+
+SIGKILL, host shutdown, or an unavailable Docker daemon can prevent cleanup. The printed database name identifies any leftover for manual investigation. Pre-existing `focus_web_test` databases from the old runner are not automatically deleted; first confirm no older runner is still using them. Direct `npx playwright test` against an existing server bypasses runner cleanup entirely.
+
+Run the lifecycle regression tests without Docker:
+
+```sh
+python3 scripts/testE2eRunner.py
+```
+
+These tests use fake Docker/build/server commands and check per-run isolation, stop-before-drop ordering, failure cleanup, signal exit status, failed creation ownership, and visible cleanup failures. CI runs them in the Web job; browser jobs exercise the real runner against Postgres.

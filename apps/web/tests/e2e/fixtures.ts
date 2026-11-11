@@ -10,13 +10,15 @@ export const test = base.extend<{
     send: (path: string, body: unknown, method?: string) => Promise<any>;
   };
 }>({
-  account: async ({}, use) => {
-    await use({
+  // Playwright requires a destructured fixture argument, even with no dependencies.
+  // eslint-disable-next-line no-empty-pattern
+  account: async ({}, provide) => {
+    await provide({
       email: `e2e-${randomUUID()}@example.com`,
       password: "Strong-e2e-password-123",
     });
   },
-  page: async ({ page, account }, use) => {
+  page: async ({ page, account }, provide) => {
     await base.step("Create isolated account", async () => {
       await page.goto("/");
       await page
@@ -29,13 +31,13 @@ export const test = base.extend<{
         .click();
       await expect(page.locator(".fc")).toBeVisible();
     });
-    await use(page);
+    await provide(page);
   },
-  auth: async ({ page }, use) => {
+  auth: async ({ page }, provide) => {
     const response = await page.request.get("/api/v1/auth/me");
     expect(response.ok()).toBeTruthy();
     const session = await response.json();
-    await use({
+    await provide({
       today: DateTime.now().setZone(session.settings.timezone).toISODate()!,
       send: async (path, body, method = "POST") => {
         const result = await page.request.fetch(`/api/v1${path}`, {

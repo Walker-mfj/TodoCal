@@ -26,6 +26,8 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
+      - name: Verify E2E runner lifecycle
+        run: python3 ../../scripts/testE2eRunner.py
       - run: npm ci
       - run: npm run format:check
       - run: npm run lint

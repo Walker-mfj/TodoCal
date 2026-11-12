@@ -41,16 +41,17 @@ func (b *dailyBudget) allow() bool {
 // logSender accepts only structured diagnostics, never arbitrary application
 // log messages. Limits are per process; provider quotas must cap the account.
 type logSender struct {
-	queue   chan []byte
-	cancel  context.CancelFunc
-	done    chan struct{}
-	budget  dailyBudget
-	dropped atomic.Uint64
-	sample  atomic.Uint64
+	queue         chan []byte
+	cancel        context.CancelFunc
+	done          chan struct{}
+	budget        dailyBudget
+	routineBudget dailyBudget
+	dropped       atomic.Uint64
+	sample        atomic.Uint64
 }
 
 func newLogSender(endpoint, token string) *logSender {
-	s := &logSender{queue: make(chan []byte, 64), done: make(chan struct{}), budget: dailyBudget{limit: 10000}}
+	s := &logSender{queue: make(chan []byte, 64), done: make(chan struct{}), budget: dailyBudget{limit: 10000}, routineBudget: dailyBudget{limit: 1000}}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 	client := &http.Client{Timeout: 2 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
@@ -92,10 +93,19 @@ func (s *logSender) Write(p []byte) (int, error) {
 	if len(fields) == 0 {
 		return len(p), nil
 	}
+	// Routine traffic may use at most 10% of the total daily budget.
+	// Sampling alone cannot protect the error budget against sustained traffic.
+	critical := fields["event"] == "scheduled_operation_failed" || fields["error_category"] != nil
 	if fields["event"] == "http_request_completed" {
-		if n, ok := fields["status_code"].(float64); ok && n < 400 && fields["response_complete"] != false && s.sample.Add(1)%100 != 0 {
+		n, _ := fields["status_code"].(float64)
+		critical = critical || n >= 500 || fields["response_complete"] == false
+		if !critical && s.sample.Add(1)%100 != 0 {
 			return len(p), nil
 		}
+	}
+	if !critical && !s.routineBudget.allow() {
+		s.dropped.Add(1)
+		return len(p), nil
 	}
 	fields["telemetry_dropped_total"] = s.dropped.Load()
 	b, e := json.Marshal(fields)
@@ -113,7 +123,7 @@ func (s *logSender) Write(p []byte) (int, error) {
 func (s *logSender) Close() { s.cancel(); <-s.done }
 func safeLog(in map[string]any) map[string]any {
 	event, _ := in["event"].(string)
-	if event != "http_request_completed" && event != "db_pool_summary" {
+	if event != "http_request_completed" && event != "db_pool_summary" && event != "scheduled_operation_failed" {
 		return nil
 	}
 	out := map[string]any{"event": event}

@@ -109,7 +109,7 @@ func FilterContext(in map[string]string) map[string]string {
 			}
 		case "operation":
 			switch v {
-			case "calendar.view", "day_details.view", "period_report.view", "tasks.list", "auth.me", "api.request":
+			case "calendar.view", "day_details.view", "period_report.view", "tasks.list", "auth.me", "api.request", "notifications.run", "focus.sweep", "jobs.query":
 				out[k] = v
 			}
 		case "error_category":

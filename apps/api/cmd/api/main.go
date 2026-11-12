@@ -73,11 +73,17 @@ func run() error {
 	notifications := services.NotificationWorker{Pool: pool, Now: time.Now, Sender: sender}
 	app.ConfigureJobs(os.Getenv("JOBS_SECRET"), func(jobCtx context.Context) (any, error) {
 		sweepCtx, cancelSweep := context.WithTimeout(jobCtx, 10*time.Second)
+		sweepStarted := time.Now()
 		accounts, sweepErr := sweeper.Sweep(sweepCtx, pool, time.Now)
 		cancelSweep()
+		diagnostics.JobFailure(jobCtx, slog.Default(), "focus.sweep", sweepStarted, sweepErr)
+		pushStarted := time.Now()
 		sent, pushErr := notifications.Run(jobCtx, 100)
+		diagnostics.JobFailure(jobCtx, slog.Default(), "notifications.run", pushStarted, pushErr)
 		var due int
+		queryStarted := time.Now()
 		backlogErr := pool.QueryRow(jobCtx, `SELECT count(*) FROM focus_sessions WHERE status='running' AND running_since + (target_seconds::double precision - accumulated_us::double precision / 1000000) * interval '1 second' <= CURRENT_TIMESTAMP`).Scan(&due)
+		diagnostics.JobFailure(jobCtx, slog.Default(), "jobs.query", queryStarted, backlogErr)
 		slog.Info("scheduled jobs", "accountsProcessed", accounts, "notificationsSent", sent, "expiredFocusRemaining", due)
 		return map[string]int{"accountsProcessed": accounts, "notificationsSent": sent, "expiredFocusRemaining": due}, errors.Join(sweepErr, pushErr, backlogErr)
 	})

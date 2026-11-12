@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"focuscalendar/internal/diagnostics"
 	"net/http"
 	"strings"
 )
@@ -12,7 +13,11 @@ func Security(next http.Handler, origin string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("X-Request-ID", randomToken(12))
+		id := diagnostics.RequestID(r.Context())
+		if id == "" {
+			id = randomToken(12)
+		}
+		w.Header().Set("X-Request-ID", id)
 		if r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS" {
 			if r.Header.Get("Origin") != origin {
 				fail(w, 403, "origin", "Request origin is not allowed")

@@ -46,3 +46,24 @@ func TestScheduledJobsRequireDedicatedSecret(t *testing.T) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 }
+
+type jobErrorWriter struct {
+	*httptest.ResponseRecorder
+	reported error
+}
+
+func (w *jobErrorWriter) ReportError(err error) { w.reported = err }
+
+func TestScheduledJobFailureReportsCause(t *testing.T) {
+	s := New(nil, "http://localhost:3000", false)
+	secret := strings.Repeat("j", 32)
+	cause := errors.New("sensitive database details")
+	s.ConfigureJobs(secret, func(context.Context) (any, error) { return nil, cause })
+	req := httptest.NewRequest("POST", "/internal/jobs", nil)
+	req.Header.Set("Authorization", "Bearer "+secret)
+	w := &jobErrorWriter{ResponseRecorder: httptest.NewRecorder()}
+	s.RunJobs(w, req)
+	if w.reported != cause || w.Code != 503 || strings.Contains(w.Body.String(), "sensitive") {
+		t.Fatalf("status=%d reported=%v body=%s", w.Code, w.reported, w.Body.String())
+	}
+}

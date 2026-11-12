@@ -32,6 +32,9 @@ func (s *Server) RunJobs(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	result, err := s.runJobs(ctx)
 	if err != nil {
+		if reporter, ok := w.(interface{ ReportError(error) }); ok {
+			reporter.ReportError(err)
+		}
 		fail(w, 503, "unavailable", "Scheduled job incomplete; retry on the next tick")
 		return
 	}

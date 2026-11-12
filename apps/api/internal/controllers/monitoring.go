@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"focuscalendar/internal/diagnostics"
 	"focuscalendar/internal/monitoring"
 	"focuscalendar/internal/services"
 
@@ -76,6 +77,7 @@ func (s *Server) IngestError(w http.ResponseWriter, r *http.Request) {
 type monitoredWriter struct {
 	http.ResponseWriter
 	reporter *monitoring.Reporter
+	ctx      context.Context
 	written  bool
 }
 
@@ -85,18 +87,25 @@ func (w *monitoredWriter) Write(b []byte) (int, error) {
 	return w.ResponseWriter.Write(b)
 }
 func (w *monitoredWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
-func (w *monitoredWriter) ReportError(err error)       { w.reporter.Capture(err) }
+func (w *monitoredWriter) ReportError(err error) {
+	diagnostics.RecordError(w.ctx, err)
+	w.reporter.CaptureContext(err, diagnostics.SafeContext(w.ctx))
+}
+func (w *monitoredWriter) DiagnosticsEnabled() bool { return diagnostics.Active(w.ctx) }
 
 func (s *Server) observe(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mw := &monitoredWriter{ResponseWriter: w, reporter: s.monitor}
+		mw := &monitoredWriter{ResponseWriter: w, reporter: s.monitor, ctx: r.Context()}
 		defer func() {
 			if v := recover(); v != nil {
 				if v == http.ErrAbortHandler {
 					panic(v)
 				}
-				slog.Error("request panic", "requestId", w.Header().Get("X-Request-ID"))
-				s.monitor.Panic()
+				if !diagnostics.Active(r.Context()) {
+					slog.Error("request panic", "requestId", w.Header().Get("X-Request-ID"))
+				}
+				diagnostics.RecordPanic(r.Context())
+				s.monitor.PanicContext(diagnostics.SafeContext(r.Context()))
 				if mw.written {
 					panic(http.ErrAbortHandler)
 				}

@@ -27,90 +27,102 @@ Render Free can spin down an idle API. With Cron removed, the scheduled request 
 ## 2. Proposed architecture — event-driven Go Timer
 
 ```text
-Browser mutation (Task / recurring series / Focus / preferences / subscriptions)
-       |
-       v
-Go service transaction -> PostgreSQL COMMIT
-       |                            |
-       | successful commit          | persistent source of truth
-       v                            v
-Scheduler wake signal -------> Re-query NextDue from Neon
+Task / recurrence / Focus / settings / subscription mutation
+    -> shared transaction boundary -> COMMIT -> coalesced wake signal
+                                               |
+                                               v
+                          Coordinator (single Go goroutine)
+                            - NextDue from PostgreSQL
+                            - one time.Timer
+                            - responsive to wake + worker completion
+                              |                  |
+                    due notification      maintenance deadline
+                              |                  |
+                              v                  v
+                     Dispatcher            Maintenance worker
+                   bounded batch/time      Focus settlement,
+                   existing outbox         recurrence, daily cleanup
+                              |                  |
+                          completion / progress signals
+                              \__________________/
                                       |
                                       v
-                          Reset ONE Go time.Timer
-                          for earliest due event
-                                      |
-                           Timer fires / new wake
-                                      |
-                                      v
-                       Settle Focus if needed;
-                       materialize recurrence;
-                       enqueue / dispatch due
-                       notifications + retry outbox
-                                      |
-                                      v
-                          Web Push provider
-                                      |
-                                      v
-                        Compute next due timestamp
+                          Coordinator recalculates NextDue
 ```
 
-The goal is **no fixed five-second database polling when nothing is happening**. PostgreSQL remains authoritative; the scheduler's in-memory timer is only a wake-up optimization. Focus/Break completion is a scheduling source, not merely a by-product of a 60-second sweep.
+**No five-second database polling while idle.** PostgreSQL remains authoritative; the coordinator's single in-memory timer is an optimization only. The coordinator must remain responsive to edits and newly due events **while** slow Web Push delivery or maintenance is in progress. A Focus/Break completion is a deadline source, not an incidental result of the old minute sweep.
 
-### Scheduler lifecycle and next-due calculation
+### Separation of responsibilities and lifecycle
 
-- Start a single scheduler coordinator after PostgreSQL is ready; do not launch it for migration-only commands. Tie its goroutine to the HTTP service context, cancel and wait on SIGTERM/shutdown.
-- On startup, subscribe to change signals **before** the initial state read; reconcile overdue Focus sessions, materialize the recurrence horizon, deliver already-due notifications/retries, then query the nearest future deadline. Recompute after each dispatch, error or relevant state change.
-- Implement a `NextDue(ctx)` query/service that considers **all relevant sources**, not just outbox entries:
-  - Upcoming Task start/lead/deadline candidates from `notification_candidates`, with active subscriptions and preferences, after materializing the necessary recurring horizon. Exclude already-enqueued terminal deliveries where appropriate to avoid immediately rescheduling the same event forever.
-  - Running Focus/Break's calculated completion timestamp, so a completion is settled at its deadline before dispatching the corresponding push; respect pause/resume/change events.
-  - Unfinished outbox retry timestamps (`next_attempt_at`) and any currently overdue dispatch backlog.
-  - Maintenance deadlines for recurrence materialization / horizon extension, reconciliation and daily cleanup; cap very distant waits by the next maintenance deadline.
-- `time.Timer` waits for the **earliest** of the next due event and maintenance deadlines. When it fires, query and process due records (in bounded batches), then calculate and set a new timer. Do not keep one goroutine or durable timer per Task.
-- Preserve `NotificationWorker.Run` for validation, outbox writes, quiet hours, retries, provider timeouts, subscription/session revocation, stable event identity and private payload handling. `time.Timer` itself does not queue notifications or persist delivery history.
-- Recover gracefully from temporary DB errors with bounded backoff and an earlier recovery timer; never spin continuously when no candidate can be successfully processed. Avoid heavy account-wide sweeps on every Task edit.
+- **Coordinator:** after database readiness (never on migration-only commands), register wake handlers, run startup recovery and load `NextDue`. Own the sole `time.Timer` and serialize timer resets. Select across timer expiration, coalesced schedule-change signals, dispatcher/maintenance completion, and `ctx.Done()`. It **never calls Web Push synchronously**. A scheduler coalesces repeated notifications while a worker is already busy; one outstanding work signal per worker is enough.
+- **Dispatcher:** one independent worker initially, with a bounded context deadline and **small batch**. Existing `NotificationWorker.Run(ctx, 100)` processes up to 100 items **sequentially**, allowing up to 5 seconds for each provider attempt (~500 seconds worst-case before database time), so it must **not** run unbounded on the coordinator goroutine. For the implementation, introduce a safe bounded dispatch pass (e.g. initial cap of 2–3 attempts plus an overall ~15–20 second deadline, adjustable after measuring). Preserve per-attempt timeout, outbox transactions, revalidation and exponential backoff. On completion, send a nonblocking progress/completion signal so the coordinator recalculates. Do not launch duplicate dispatcher goroutines if another pass is already active.
+- **Maintenance:** separate bounded work from notification delivery: settle expired Focus/Break sessions, materialize future recurring occurrences, perform daily retention cleanup and limited reconciliation. A slow full-account sweep must not block the coordinator or dispatch progress. Use bounded batches and context deadlines, and reschedule unfinished maintenance.
+- **Shutdown:** tie all workers to the API service context, stop accepting jobs, cancel/await bounded workers, then release database resources. Only one scheduler coordinator per API process; multiple-process ownership needs additional design.
+
+### NextDue: per-subscription candidate versus existing outbox
+
+**P1 invariant:** A notification candidate already present in `notification_outbox` must **never** be scheduled again from its original `candidate.due_at` — even when its outbox record is unfinished and waiting for retry. The unique delivery identity is **`(subscription_id, event_key)`**, not just `event_key`, so a completed delivery on device A must not suppress an undelivered event on device B.
+
+| Source | Eligibility | Timestamp used by scheduler |
+| --- | --- | --- |
+| Candidate with **no matching outbox row** for that device | Valid `notification_candidates` event, active subscription and auth session; `candidate.due_at >= subscription.created_at`; same bounded 24-hour lookback and other applicable enqueue filters; not expired by the proposed per-kind late-delivery policy | `candidate.due_at` (future) or **now** if already due and eligible |
+| Outbox row with `finished_at IS NULL` | Pending/retry record, including records needing revalidation or cancellation. Do **not** also schedule its candidate | `next_attempt_at` (or now if already due), subject to a dispatcher-in-flight guard |
+| Outbox row with `finished_at IS NOT NULL` | Terminal identity remains deduplicated until retention cleanup; no further scheduling for that device/event | **None** |
+
+`NextDue` must use the same subscription/session and event-eligibility rules as the existing enqueue path in `services.NotificationWorker.Run`, **except** that it considers future due times instead of requiring `candidate.due_at <= now`. In particular: retain `s.revoked_at IS NULL`, `a.revoked_at IS NULL`, the `due_at >= s.created_at` check, and a lower bound equivalent to the existing 24-hour candidate lookback. Use `NOT EXISTS (SELECT 1 FROM notification_outbox o WHERE o.subscription_id=s.id AND o.event_key=c.event_key)` for the unqueued candidate side. Do not accidentally filter out devices newly subscribed before their next eligible event.
+
+`notification_outbox` is **not** populated for every future reminder: `notification_candidates` is a view generated from existing Task/Focus state and materialized recurring occurrences. Therefore querying only `notification_outbox` misses future reminders. A `NextDue` implementation must also consider running Focus/Break calculated end times, outbox retries, and the next recurrence-horizon/maintenance/reconciliation deadlines.
+
+**No busy-spin while dispatching:** when the dispatcher has claimed a due batch or is still busy, the coordinator must not continually arm a zero-duration timer for that same backlog. Track `dispatchInFlight` plus a coalesced `dispatchRequested`/progress signal. Keep monitoring separate Focus and maintenance deadlines, and trigger one new dispatch on worker completion when due backlog remains. On DB/provider error use bounded backoff, not immediate re-arming of the same failing deadline. Preserve scheduled retries using `next_attempt_at` and their normal retry policy.
+
+### Event-driven timer control (illustrative pseudocode)
+
+```text
+startup:
+  install wake listener before initial state read
+  recover overdue Focus/recurrence/dispatch work with bounded workers
+  recompute NextDue from PostgreSQL
+
+coordinator:
+  select on nextDueTimer, scheduleChanged, dispatcherDone,
+            maintenanceDone, shutdown:
+    if scheduleChanged:
+      recompute earliest due timestamp and reset timer
+    if nextDueTimer fires:
+      signal dispatcher if notification work is due and !dispatchInFlight
+      signal maintenance if needed and !maintenanceInFlight
+      do not wait for slow worker calls
+    if dispatcherDone or maintenanceDone:
+      record progress, release in-flight flag, recompute NextDue
+    if shutdown:
+      cancel and await bounded workers; stop timer
+```
+
+Do not create a goroutine per Task or a new dispatcher per wake. A `time.Timer` itself stores no durable state. When there are no pending events, wait for schedule change or the next reconciliation/cleanup deadline; timer reset/cancel semantics must match the Go version in use. Avoid a missed-wake race between registering the listener and reading `NextDue`.
 
 ### Wake-up when a user edits Task or Focus
 
-After a **successful transaction commit**, every mutation that can change notification eligibility or timing must wake the scheduler: Task create/edit/delete/restore/complete/schedule, recurring-series edits/stops/restores, Focus start/pause/resume/extend/complete, notification preferences/timezone changes, device subscription/revocation, and relevant auth/session revocation. The service should not rely only on browser-driven changes; internal job writes must be covered as well.
+**Centralize post-commit notification** in a shared application transaction/unit-of-work boundary or a narrowly scoped scheduler-aware domain-event publisher. Do **not** require each HTTP handler to remember its own call to `NotifyScheduleChanged()`. Have service-level mutation paths publish a coalesced signal only **after successful commit**; register all relevant Task create/edit/delete/restore/complete/schedule, series edits/stops/restores, Focus start/pause/resume/extend/complete, notification preferences/timezone, push subscription/revocation and auth/session revocation. Non-browser or background mutations must also wake the coordinator.
 
-Single Go instance design: use a **buffered channel of capacity 1**, with a nonblocking send after commit. Multiple changes can coalesce into a single wake-up because the scheduler always re-queries the database; it does not trust event payloads. When a wake arrives, cancel/reset the pending timer and recalculate the next deadline. Avoid sending before commit: otherwise the scheduler can read the old schedule.
+For a single process, a buffered channel of capacity 1 with nonblocking send can coalesce repeated changes because `NextDue` always re-reads PostgreSQL. Do not notify before commit, when a query could see stale state. Handle signal-after-commit crash, multiple-process writes and signal loss through startup reload/reconciliation; cross-process `NOTIFY` may be preferable when multiple API processes actually exist. Add tests proving every relevant mutation emits a wake and rollback never emits one.
 
-Example **illustrative pseudocode only** (not code in this PR):
 
-```go
-for {
-    dueAt := loadNextDueFromPostgres(ctx) // includes focus, candidates, retries, maintenance
-    timer := time.NewTimer(max(0, time.Until(dueAt)))
-    select {
-    case <-timer.C:
-        processDueAndReconcile(ctx)
-    case <-scheduleChanged:
-        // Re-read database and replace the previously scheduled deadline.
-    case <-ctx.Done():
-        timer.Stop()
-        return
-    }
-    timer.Stop()
-}
-```
-
-Use safe timer draining/reset semantics for the Go version used. `dueAt` might not exist: in that case wait for a change signal or a bounded reconciliation deadline, not an unbounded timer. Keep one authoritative scheduler loop to serialize timer state. **Never require a full database query every five seconds.**
 
 ### Signal reliability, multi-process and recovery
 
-- A channel is **in-process and not durable**. A crash between DB commit and channel send is recovered on the next process startup; periodic reconciliation also recovers missed signals while a process remains alive. Keep a clear, modest reconciliation interval (e.g. every 15 minutes initially, to be measured), not five-second polling.
-- If multiple Go instances can write to the same database, an in-process channel does not wake other processes. Consider PostgreSQL `LISTEN/NOTIFY` using a dedicated connection; issuing `NOTIFY` **inside the data transaction** delivers it only after commit and avoids the commit-then-signal loss window. Listeners must reconnect and re-query after disconnect; `NOTIFY` is not a durable queue. If using an explicit single-instance assumption, document it and enforce ownership.
+- A channel is **in-process and not durable**. A crash between DB commit and channel send is recovered on process startup; periodic reconciliation also recovers missed signals while a process remains alive. **If reconciliation runs every 15 minutes, a lost wake may delay a newly earlier reminder by up to roughly 15 minutes plus processing time.** Choose and document this bound based on an explicit acceptable-lateness target and measured Neon query costs; 15 minutes is a candidate, not a guaranteed-safe default. Track wake loss/recovery metrics and test a dropped wake with an earlier inserted reminder.
+- If multiple Go instances can write to the same database, an in-process channel does not wake other processes. **Defer `LISTEN/NOTIFY` until multi-instance deployment is needed.** If adopted on Neon, the long-lived `LISTEN` session must use a **direct/unpooled Neon connection** (not its PgBouncer transaction-pooler endpoint); merely reserving a connection from a pooled endpoint is insufficient. Publishing `NOTIFY` in the same PostgreSQL write transaction provides post-commit notification semantics. Listeners must reconnect/re-subscribe, re-query after reconnect and reconcile missed signals; `NOTIFY` is not a durable queue. Do not assume direct listeners can remain connected through Neon suspend/restart.
 - Prevent race conditions between reading `NextDue` and registering for change signals: initialize listeners before loading state, retain at least one pending wake-up, and always re-query after wake. The DB remains the source of truth if any signal is coalesced/lost.
 - Under multi-instance execution, use explicit cross-process scheduler ownership/locking or a carefully tested concurrent-dispatch strategy; existing outbox row locks and unique keys do not eliminate every cross-process race. Do not promise exactly-once provider delivery.
 - Retain bounded reconciliation/catch-up for non-user events: recurrence horizon must advance over time, stale pending items must finish, and Focus sessions must still be settled after long downtime. The 24-hour reminder lookback can cause missed older push events; this is an explicit product constraint to review.
 
 ### Scheduling and delivery safety
 
-- A rescheduled or deleted Task must invalidate its old event, even if the old timer is about to fire. Always revalidate against current PostgreSQL state **before sending**. Handle subscription/session revocation and quiet hours in the existing worker.
+- A rescheduled or deleted Task must invalidate its old event, even if the old timer is about to fire. Always revalidate against current PostgreSQL state **immediately before attempting Web Push**. This reduces stale notifications but **cannot retract** a push already accepted by FCM/APNs/Mozilla, nor eliminate the narrow race between the last validation and provider acceptance. Handle subscription/session revocation and quiet hours in the existing worker.
 - Never attach user content, raw SQL, private push endpoints, credentials or unbounded event data to diagnostics. Bound timeouts, processed rows and retry attempts, so a slow provider cannot block all future deadlines.
 - Measure `due_at → dispatch_started_at → provider_accepted_at`, current/next scheduled deadline, timer resets, wake-up count, and reconciliation recovery, using safe aggregate logs; provider acceptance does not prove OS notification display.
-- Account for Render Free sleeping: no timer survives process shutdown, and Go cannot dispatch while the instance is asleep. On restart, rehydrate pending work from Neon and handle late events per the existing 24-hour cutoff.
+- **Late-delivery policy by notification type (proposal):** distinguish a maximum acceptable **send lateness** from both the existing 24-hour candidate lookback and the unrelated 30-day outbox retention. A Focus/Break completion that is several hours late should be **suppressed**, not announced upon reopening TodoCal. Define configurable windows by kind (`focus_complete`/`break_complete` shortest; `task_lead`/start/deadline based on product semantics) and establish exact minutes with UX acceptance tests. For example, consider a few minutes for Focus/Break rather than the current blanket 24-hour policy. Apply the same expiration decision consistently to candidate selection, NextDue and deliver/retry validation; mark expired queued records as terminal `canceled` (or an agreed existing terminal outcome), not endlessly retryable. This may require a future code/schema contract change; it is **not implemented** by this PR.
+- Account for Render Free sleeping: no timer survives process shutdown, and Go cannot dispatch while the instance is asleep. On restart, rehydrate pending work from Neon, suppress too-late event kinds under the proposed policy and avoid replaying a stale Focus/Break notification.
 
 ### Notification outbox retention and daily cleanup
 
@@ -119,10 +131,10 @@ Use safe timer draining/reset semantics for the Go version used. `dueAt` might n
 **Proposed cleanup policy (not implemented):**
 
 - **Retention:** Keep terminal outbox records for **30 days after `finished_at`** for diagnostics and deduplication. Confirm this window remains longer than the eligible notification-candidate lookback before changing either policy. Only delete rows with `finished_at IS NOT NULL`; do not delete live retries.
-- **Expired pending rows:** Existing send/revalidation logic rejects records whose `due_at` is more than 24 hours old; without further handling, those records can remain unfinished indefinitely. Add a separate, bounded step that marks clearly ineligible pending rows terminal (e.g., `outcome='stale'`, `finished_at=now()`) once they are outside the supported lookback and cannot be retried. Do not reclassify valid pending deliveries solely because `next_attempt_at` is in the future.
+- **Expired pending rows (current behavior vs optional optimization):** Existing `NotificationWorker.deliver()` selects due unfinished rows and checks `o.due_at >= now - 24 hours`; when too old, its `valid` condition is false and `finish("canceled")` sets `finished_at` as soon as the worker reaches that row. **There is no missing terminal-state transition in the normal delivery path**, and no new `stale` outcome is needed. An optional **bounded bulk finalization** can help drain a large expired backlog faster when ordinary per-row delivery is too slow; it must use the same eligibility and terminal behavior, and must not delete or cancel valid waiting retries.
 - **Execution:** Model cleanup as a **daily maintenance deadline in the same event-driven scheduler**, not as five-second polling or a separate Cloudflare Cron. Store the last successful cleanup timestamp/checkpoint durably in PostgreSQL. Include the next cleanup deadline in `NextDue`, run overdue cleanup at startup/wake, and update the checkpoint only after successful bounded work; use a short continuation timer for any backlog. Guard against overlapping runs if multiple instances are enabled. A separate Cloudflare Cron Trigger is **not** required.
 - **Resource bounds:** Delete in batches of **500–1,000 rows** per DB transaction, limit batches/runtime per pass, and reschedule remaining backlog without blocking notification dispatch. Consider a partial index on `(finished_at, id) WHERE finished_at IS NOT NULL` only when actual query/DB metrics justify it. PostgreSQL may reuse freed space after deletion; file size need not shrink immediately.
-- **Privacy and diagnostics:** Emit only safe aggregate metrics such as rows marked stale, rows deleted, duration, and failures; no private endpoints, event keys, subscription IDs, credentials or payload data. Review retention and data minimization requirements before production rollout.
+- **Privacy and diagnostics:** Emit only safe aggregate metrics such as expired pending rows finalized (if bulk optimization is used), rows deleted, duration, and failures; no private endpoints, event keys, subscription IDs, credentials or payload data. Review retention and data minimization requirements before production rollout.
 
 Example **design-only** batch query for the terminal-row retention step:
 
@@ -159,13 +171,14 @@ Do not promise a zero-downtime or no-duplicate cutover without verifying the act
 | Area | Required checks |
 | --- | --- |
 | API process lifecycle | Scheduler starts once on API startup, not during migrations; stops on context cancellation and shutdown; resumes from DB after restart |
-| Focus / Break | Overdue Focus/Break completion settles without a browser read, including boundaries across midnight; notification latency is measured independently of the sweep interval |
+| Focus / Break | Overdue Focus/Break completion settles without a browser read, including boundaries across midnight; notification latency is measured independently of sweep; several-hours-late Focus/Break pushes are suppressed per documented per-kind lateness policy |
 | Recurrence | Upcoming occurrences and early recurring deadlines are materialized, including DST edge cases and account keyset progress |
-| Notification correctness | Task reschedule/delete, preference changes, quiet hours, subscription/session revocation, multiple devices and retry/backoff remain correct |
-| Outbox retention / cleanup | Terminal records kept for 30 days, expired pending records safely finalized, daily Go cleanup runs on startup if missed, bounded batched deletion, no active retries deleted, tests for idempotency/restarts/multiple instances |
-| Safety / duplicate sends | Verify multi-worker overlaps, outbox locking, stable event identities, cancellation after user changes, and privacy-safe logs |
+| Notification correctness / next due | Separate unqueued candidate `due_at` from unfinished outbox `next_attempt_at`, keyed by `subscription_id + event_key`; preserve subscription creation, lookback, auth and preference filters; test retry waiting at 10:01 after failed 10:00 send, plus two-device delivery independence |
+| Dispatcher isolation | Coordinator remains responsive to an earlier new deadline while provider sends are slow; enforce a small batch and overall deadline, only one dispatcher at a time, completion wake and no busy-spin on in-flight backlog |
+| Outbox retention / cleanup | Terminal records kept for 30 days; verify existing old-pending `deliver() → canceled` path and optional bulk-finalization equivalence; daily Go cleanup on startup if missed, bounded batched deletion, no active retries deleted |
+| Safety / duplicate sends | Verify multi-worker overlaps, outbox locking, stable event identities, cancellation after user changes, no busy-spin and privacy-safe logs; document that a push already accepted by the provider cannot be retracted |
 | Event-driven scheduling | Verify earliest due selection across task/lead/deadline/recurrence, Focus/Break completion, outbox retries and maintenance; timer reset on every relevant post-commit mutation; signal coalescing, edit races, cancellation, and no idle five-second DB polling |
-| Signal resilience | Verify commit-before-signal ordering, dropped signal recovery, startup LISTEN-before-load ordering (if used), reconnection, and cross-process behavior / ownership |
+| Signal resilience | Shared after-commit wake publisher covers relevant service mutations/rollback; lost-signal reconciliation latency is measured and justified by acceptable lateness; if multi-instance `LISTEN/NOTIFY` is used, require direct/unpooled Neon listener, reconnection and cross-process ownership |
 | Load / reliability | Measure NextDue query cost and timer resets on Neon Free; monitor notification queue age, failed sends and long sweeps; test process crash/restart and Render sleep/wake |
 | Deployment | No remaining Cloudflare Cron trigger, Worker scheduled handler, `/internal/jobs` exposure, `JOBS_SECRET` dependency, or stale tests/docs after cutover |
 | CI | Go vet, Go lint, unit/integration tests, Worker tests, relevant Playwright E2E and a controlled live Web Push smoke test |

@@ -54,9 +54,9 @@ Task / recurrence / Focus / settings / subscription mutation
 
 ### Separation of responsibilities and lifecycle
 
-- **Coordinator:** after database readiness (never on migration-only commands), register wake handlers, run startup recovery and load `NextDue`. Own the sole `time.Timer` and serialize timer resets. Select across timer expiration, coalesced schedule-change signals, dispatcher/maintenance completion, and `ctx.Done()`. It **never calls Web Push synchronously**. A scheduler coalesces repeated notifications while a worker is already busy; one outstanding work signal per worker is enough.
+- **Coordinator:** after database readiness (never on migration-only commands), register wake handlers, run startup recovery and load `NextDue`. Own the sole `time.Timer` and serialize timer resets. Select across timer expiration, coalesced schedule-change signals, dispatcher/maintenance completion, and `ctx.Done()`. It **never calls Web Push synchronously**. **After assigning work, immediately update in-flight/queued state, recompute `NextDue` over still-actionable deadlines, and rearm the timer before selecting again**; never wait for worker completion to schedule an independent Focus or maintenance deadline. Coalesce repeated requests while a worker is busy.
 - **Dispatcher:** one independent worker initially, with a bounded context deadline and **small batch**. Existing `NotificationWorker.Run(ctx, 100)` processes up to 100 items **sequentially**, allowing up to 5 seconds for each provider attempt (~500 seconds worst-case before database time), so it must **not** run unbounded on the coordinator goroutine. For the implementation, introduce a safe bounded dispatch pass (e.g. initial cap of 2–3 attempts plus an overall ~15–20 second deadline, adjustable after measuring). Preserve per-attempt timeout, outbox transactions, revalidation and exponential backoff. On completion, send a nonblocking progress/completion signal so the coordinator recalculates. Do not launch duplicate dispatcher goroutines if another pass is already active.
-- **Maintenance:** separate bounded work from notification delivery: settle expired Focus/Break sessions, materialize future recurring occurrences, perform daily retention cleanup and limited reconciliation. A slow full-account sweep must not block the coordinator or dispatch progress. Use bounded batches and context deadlines, and reschedule unfinished maintenance.
+- **Maintenance:** separate bounded work from notification delivery: settle expired Focus/Break sessions, materialize future recurring occurrences, perform daily retention cleanup and limited reconciliation. **Prioritize due Focus/Break settlement (P0), then recurrence needed to enable imminent notifications (P1), then horizon/reconciliation (P2), then outbox cleanup (P3).** Background work must be small, bounded and cooperative: after each batch check whether higher-priority Focus has become due; cancel/yield lower-priority work when practical. A long cleanup transaction must not monopolize maintenance. If a single maintenance execution lane cannot meet the Focus latency target, give Focus a dedicated high-priority execution lane within the maintenance subsystem. Even while maintenance is busy, the coordinator tracks newly due Focus deadlines; those due signals must not be suppressed as though the existing cleanup batch already handles them.
 - **Shutdown:** tie all workers to the API service context, stop accepting jobs, cancel/await bounded workers, then release database resources. Only one scheduler coordinator per API process; multiple-process ownership needs additional design.
 
 ### NextDue: per-subscription candidate versus existing outbox
@@ -73,30 +73,45 @@ Task / recurrence / Focus / settings / subscription mutation
 
 `notification_outbox` is **not** populated for every future reminder: `notification_candidates` is a view generated from existing Task/Focus state and materialized recurring occurrences. Therefore querying only `notification_outbox` misses future reminders. A `NextDue` implementation must also consider running Focus/Break calculated end times, outbox retries, and the next recurrence-horizon/maintenance/reconciliation deadlines.
 
-**No busy-spin while dispatching:** when the dispatcher has claimed a due batch or is still busy, the coordinator must not continually arm a zero-duration timer for that same backlog. Track `dispatchInFlight` plus a coalesced `dispatchRequested`/progress signal. Keep monitoring separate Focus and maintenance deadlines, and trigger one new dispatch on worker completion when due backlog remains. On DB/provider error use bounded backoff, not immediate re-arming of the same failing deadline. Preserve scheduled retries using `next_attempt_at` and their normal retry policy.
+**No busy-spin while dispatching or maintaining:** when a worker has claimed a due batch or is still busy, the coordinator must not continually arm a zero-duration timer for that **same claimed/blocked work**. Track `dispatchInFlight`, `maintenanceInFlight`, and coalesced pending-work/priority flags. After handoff, temporarily omit that worker's **currently unserviceable** source from the immediate `NextDue` calculation (or use a bounded retry time), **but preserve unrelated still-actionable deadlines**, especially a later Focus end while the dispatcher sends push. If maintenance is busy with cleanup and a new Focus becomes due, retain its deadline and notify/preempt the low-priority maintenance batch; if high-priority work is now queued but cannot be accepted, mark it pending once rather than spinning on an already-past timestamp. Re-enable the blocked source as soon as that worker completes and recompute immediately. On DB/provider errors use bounded backoff, not immediate re-arming of the same failing deadline. Preserve scheduled retries using `next_attempt_at` and their normal retry policy.
 
 ### Event-driven timer control (illustrative pseudocode)
 
 ```text
 startup:
   install wake listener before initial state read
-  recover overdue Focus/recurrence/dispatch work with bounded workers
-  recompute NextDue from PostgreSQL
+  start bounded recovery for overdue Focus/recurrence/dispatch work
+  compute NextDue across actionable sources, arm timer
 
 coordinator:
   select on nextDueTimer, scheduleChanged, dispatcherDone,
             maintenanceDone, shutdown:
-    if scheduleChanged:
-      recompute earliest due timestamp and reset timer
     if nextDueTimer fires:
-      signal dispatcher if notification work is due and !dispatchInFlight
-      signal maintenance if needed and !maintenanceInFlight
-      do not wait for slow worker calls
+      if dispatch due and dispatcher idle:
+        mark dispatchInFlight; hand off bounded dispatch batch
+      if maintenance due and maintenance idle:
+        mark maintenanceInFlight; hand off highest-priority maintenance job
+      if urgent Focus due but maintenance busy with cleanup:
+        mark FocusPriorityPending; request cleanup yield/preemption
+      # REQUIRED: do not wait for workers; recompute and rearm timer now,
+      # excluding only the claimed or currently blocked source, not other deadlines
+    if scheduleChanged:
+      recompute NextDue and rearm timer immediately
+      # Preserve imminent Focus deadlines even with other workers in flight
     if dispatcherDone or maintenanceDone:
-      record progress, release in-flight flag, recompute NextDue
+      clear relevant in-flight flag; retain remaining backlog/priority flags
+      recompute NextDue (re-enable that source) and rearm timer immediately
     if shutdown:
-      cancel and await bounded workers; stop timer
+      cancel/await bounded workers, stop timer
+
+example:
+  10:00:00 dispatcher starts a 15-second Web Push send
+  10:00:00 coordinator rearms timer for Focus end at 10:00:02
+  10:00:02 Focus deadline wakes coordinator despite busy dispatcher
+  10:00:15 dispatcherDone wakes coordinator for remaining outbox work
 ```
+
+**Invariant:** every event that changes in-flight state or actionable deadlines must leave the coordinator with a correctly armed next timer (or an intentional wait for wake/reconciliation). **Never arm a zero-duration timer for an already-claimed backlog.** Recompute after handoff **and** after worker completion, not only on completion. Apply the same rule to dispatcher and maintenance work. If a busy low-priority maintenance job prevents immediate Focus settlement, its remaining batch must be bounded or preempted; a timer that fires alone does not make an occupied worker execute faster.
 
 Do not create a goroutine per Task or a new dispatcher per wake. A `time.Timer` itself stores no durable state. When there are no pending events, wait for schedule change or the next reconciliation/cleanup deadline; timer reset/cancel semantics must match the Go version in use. Avoid a missed-wake race between registering the listener and reading `NextDue`.
 
@@ -110,7 +125,7 @@ For a single process, a buffered channel of capacity 1 with nonblocking send can
 
 ### Signal reliability, multi-process and recovery
 
-- A channel is **in-process and not durable**. A crash between DB commit and channel send is recovered on process startup; periodic reconciliation also recovers missed signals while a process remains alive. **If reconciliation runs every 15 minutes, a lost wake may delay a newly earlier reminder by up to roughly 15 minutes plus processing time.** Choose and document this bound based on an explicit acceptable-lateness target and measured Neon query costs; 15 minutes is a candidate, not a guaranteed-safe default. Track wake loss/recovery metrics and test a dropped wake with an earlier inserted reminder.
+- A channel is **in-process and not durable**. A crash between DB commit and channel send is recovered on process startup; periodic reconciliation also recovers missed signals while a process remains alive. **Initial reconciliation interval: 2 minutes while Go is running.** A lost wake may delay discovery by up to roughly **2 minutes plus query/processing/backlog time**, so this interval stays below the shortest proposed 5-minute send-lateness window. The interval is a safety net, **not** a guarantee that delivery is always within 5 minutes; test backlogs, Neon timeouts and restart scenarios. Compared with querying every 5 seconds, a 2-minute idle interval issues about 24 times fewer scheduled checks, before event-driven reads. Tune only after measuring query cost, missed-wake recovery and actual acceptable lateness.
 - If multiple Go instances can write to the same database, an in-process channel does not wake other processes. **Defer `LISTEN/NOTIFY` until multi-instance deployment is needed.** If adopted on Neon, the long-lived `LISTEN` session must use a **direct/unpooled Neon connection** (not its PgBouncer transaction-pooler endpoint); merely reserving a connection from a pooled endpoint is insufficient. Publishing `NOTIFY` in the same PostgreSQL write transaction provides post-commit notification semantics. Listeners must reconnect/re-subscribe, re-query after reconnect and reconcile missed signals; `NOTIFY` is not a durable queue. Do not assume direct listeners can remain connected through Neon suspend/restart.
 - Prevent race conditions between reading `NextDue` and registering for change signals: initialize listeners before loading state, retain at least one pending wake-up, and always re-query after wake. The DB remains the source of truth if any signal is coalesced/lost.
 - Under multi-instance execution, use explicit cross-process scheduler ownership/locking or a carefully tested concurrent-dispatch strategy; existing outbox row locks and unique keys do not eliminate every cross-process race. Do not promise exactly-once provider delivery.
@@ -121,7 +136,20 @@ For a single process, a buffered channel of capacity 1 with nonblocking send can
 - A rescheduled or deleted Task must invalidate its old event, even if the old timer is about to fire. Always revalidate against current PostgreSQL state **immediately before attempting Web Push**. This reduces stale notifications but **cannot retract** a push already accepted by FCM/APNs/Mozilla, nor eliminate the narrow race between the last validation and provider acceptance. Handle subscription/session revocation and quiet hours in the existing worker.
 - Never attach user content, raw SQL, private push endpoints, credentials or unbounded event data to diagnostics. Bound timeouts, processed rows and retry attempts, so a slow provider cannot block all future deadlines.
 - Measure `due_at → dispatch_started_at → provider_accepted_at`, current/next scheduled deadline, timer resets, wake-up count, and reconciliation recovery, using safe aggregate logs; provider acceptance does not prove OS notification display.
-- **Late-delivery policy by notification type (proposal):** distinguish a maximum acceptable **send lateness** from both the existing 24-hour candidate lookback and the unrelated 30-day outbox retention. A Focus/Break completion that is several hours late should be **suppressed**, not announced upon reopening TodoCal. Define configurable windows by kind (`focus_complete`/`break_complete` shortest; `task_lead`/start/deadline based on product semantics) and establish exact minutes with UX acceptance tests. For example, consider a few minutes for Focus/Break rather than the current blanket 24-hour policy. Apply the same expiration decision consistently to candidate selection, NextDue and deliver/retry validation; mark expired queued records as terminal `canceled` (or an agreed existing terminal outcome), not endlessly retryable. This may require a future code/schema contract change; it is **not implemented** by this PR.
+- **Late-delivery policy by notification type (proposed initial defaults):** the acceptance cutoff is measured from the event's `due_at` to **starting a provider send attempt**, not from provider acceptance to OS display. It is distinct from the existing **24-hour candidate lookback** and **30-day terminal-outbox retention**. Initial send-lateness windows, subject to UX tests:
+
+  | Notification kind | Maximum send lateness after `due_at` |
+  | --- | --- |
+  | `focus_complete` | **5 minutes** |
+  | `break_complete` | **5 minutes** |
+  | `task_lead` | **5 minutes**, but **never at/after Task start time** |
+  | `task_start` | **10 minutes** |
+  | `deadline` | **15 minutes** |
+
+  If `now > due_at + window` (or a lead reminder has reached Task start), suppress the **new** send attempt and finish any queued record with the existing `canceled` terminal outcome; do not retry beyond its cutoff. Existing `deliver()` still has only the 24-hour validity rule; enforcing these per-kind windows requires future coordinated changes to candidate selection, `NextDue`, and dispatch/retry revalidation. It is **not implemented** by this documentation PR. Provider acceptance does not prove when the OS displays a notification. For example, an expired Focus completion must not be sent hours after Go wakes from Render sleep.
+
+- **Reconciliation versus lateness:** use **2 minutes** initially for the in-process safety scan; it must remain materially shorter than the **5-minute shortest window** to leave time for query/dispatch. Normal timer/wake dispatch does not wait two minutes. In particular, a **15-minute** reconciliation is unacceptable with a **5-minute** Focus/Break cutoff: losing a wake could turn a delayed reminder into an intentionally dropped one. Observe `reconciliation_delay`, `send_lateness`, and `suppressed_expired_count` separately; if backlog or database errors regularly exceed the margin, reduce the interval or revise the product window based on measured requirements.
+
 - Account for Render Free sleeping: no timer survives process shutdown, and Go cannot dispatch while the instance is asleep. On restart, rehydrate pending work from Neon, suppress too-late event kinds under the proposed policy and avoid replaying a stale Focus/Break notification.
 
 ### Notification outbox retention and daily cleanup
@@ -171,14 +199,14 @@ Do not promise a zero-downtime or no-duplicate cutover without verifying the act
 | Area | Required checks |
 | --- | --- |
 | API process lifecycle | Scheduler starts once on API startup, not during migrations; stops on context cancellation and shutdown; resumes from DB after restart |
-| Focus / Break | Overdue Focus/Break completion settles without a browser read, including boundaries across midnight; notification latency is measured independently of sweep; several-hours-late Focus/Break pushes are suppressed per documented per-kind lateness policy |
+| Focus / Break priority | Focus/Break deadlines wake the coordinator while Dispatcher is busy; Focus settlement has P0 priority over recurrence/cleanup backlogs, with bounded/preemptible background maintenance and cross-midnight recovery; late Focus/Break sends beyond 5 minutes are suppressed |
 | Recurrence | Upcoming occurrences and early recurring deadlines are materialized, including DST edge cases and account keyset progress |
-| Notification correctness / next due | Separate unqueued candidate `due_at` from unfinished outbox `next_attempt_at`, keyed by `subscription_id + event_key`; preserve subscription creation, lookback, auth and preference filters; test retry waiting at 10:01 after failed 10:00 send, plus two-device delivery independence |
-| Dispatcher isolation | Coordinator remains responsive to an earlier new deadline while provider sends are slow; enforce a small batch and overall deadline, only one dispatcher at a time, completion wake and no busy-spin on in-flight backlog |
+| Notification correctness / next due | Separate unqueued candidate `due_at` from unfinished outbox `next_attempt_at`, keyed by `subscription_id + event_key`; preserve subscription creation, lookback, auth and preference filters; enforce per-kind late windows (5/5/5/10/15 minutes); test retry waiting at 10:01 after failed 10:00 send, plus two-device delivery independence |
+| Dispatcher / maintenance isolation | Coordinator **recomputes/rearms immediately after dispatch or maintenance handoff** and again on worker completion; a 10:00:02 Focus fires despite a 10:00:00–10:00:15 Web Push send, with no busy-spin on claimed work; small batches, bounded timeouts and high-priority maintenance yield |
 | Outbox retention / cleanup | Terminal records kept for 30 days; verify existing old-pending `deliver() → canceled` path and optional bulk-finalization equivalence; daily Go cleanup on startup if missed, bounded batched deletion, no active retries deleted |
 | Safety / duplicate sends | Verify multi-worker overlaps, outbox locking, stable event identities, cancellation after user changes, no busy-spin and privacy-safe logs; document that a push already accepted by the provider cannot be retracted |
 | Event-driven scheduling | Verify earliest due selection across task/lead/deadline/recurrence, Focus/Break completion, outbox retries and maintenance; timer reset on every relevant post-commit mutation; signal coalescing, edit races, cancellation, and no idle five-second DB polling |
-| Signal resilience | Shared after-commit wake publisher covers relevant service mutations/rollback; lost-signal reconciliation latency is measured and justified by acceptable lateness; if multi-instance `LISTEN/NOTIFY` is used, require direct/unpooled Neon listener, reconnection and cross-process ownership |
+| Signal resilience / fixed policy | Shared after-commit wake publisher covers relevant service mutations/rollback; **2-minute reconciliation** catches missing signals while Go is awake, shorter than the **5-minute shortest send-lateness window**; test missed wake at 10:00, recovery by ~10:02, and suppression after cutoff; if multi-instance `LISTEN/NOTIFY` is used, require direct/unpooled Neon listener, reconnection and cross-process ownership |
 | Load / reliability | Measure NextDue query cost and timer resets on Neon Free; monitor notification queue age, failed sends and long sweeps; test process crash/restart and Render sleep/wake |
 | Deployment | No remaining Cloudflare Cron trigger, Worker scheduled handler, `/internal/jobs` exposure, `JOBS_SECRET` dependency, or stale tests/docs after cutover |
 | CI | Go vet, Go lint, unit/integration tests, Worker tests, relevant Playwright E2E and a controlled live Web Push smoke test |

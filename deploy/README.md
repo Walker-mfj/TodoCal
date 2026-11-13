@@ -42,6 +42,14 @@ The proxy preserves cookies, Origin, CSRF and idempotency headers, overwrites tr
 
 Local Next.js development is unchanged. Only `STATIC_EXPORT=true` enables static output. The toolchain pins a patched undici version via an override; remove it when upstream includes the fix. No toolchain dependencies run in the deployed Worker.
 
+## Cloudflare Worker observability
+
+Worker `todocal` enables persisted Workers Logs at 100% head sampling and automatic Workers Traces at 5% head sampling through `deploy/cloudflare/wrangler.jsonc`. This is separate from Render API `OBSERVABILITY_ENABLED` and Better Stack ingestion. No external telemetry destination, token, or API code change is required.
+
+After the frontend Worker is deployed, check Cloudflare Dashboard > Workers & Pages > todocal > Observability > Logs / Traces. Trigger a harmless API request and inspect its invocation and sampled outbound fetch span to Render; because traces are sampled, repeat requests may be needed. For live debugging, run `npx wrangler tail todocal --format pretty` from `deploy/cloudflare`. Invocation logs and traces are not a complete application-level audit, and sampled traces may omit any particular request. Do not include cookies, Authorization headers, proxy secrets, query parameters, request bodies, or user data in future `console.log` messages.
+
+Workers Logs and Traces use Cloudflare Observability account-level ingestion and retention limits. Cloudflare's unified usage-based pricing begins December 1, 2026; verify available usage and billing limits before raising sampling. Lower `observability.logs.head_sampling_rate` or `observability.traces.head_sampling_rate` if needed. This PR only changes deployment configuration; it does not activate the settings in production until `wrangler deploy` runs.
+
 ## Verification
 
 Run `make typecheck test-web test-go`, `node --test deploy/cloudflare/worker.test.mjs`, the Docker build, and Cloudflare dry run. On this machine the PostgreSQL Compose project is `to-do-list`; use `COMPOSE_PROJECT_NAME=to-do-list make test-e2e` to avoid a port collision. Browser tests use a dedicated test database.

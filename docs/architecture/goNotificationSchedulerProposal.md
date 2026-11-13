@@ -2,7 +2,7 @@
 
 > **Status:** Proposal only — not implemented. This document records a possible future change. This PR must not modify runtime code, Cloudflare triggers, Render configuration, migrations, or secrets.
 >
-> **Decision scope:** Replace Cloudflare's per-minute scheduled request with an in-process Go scheduler **only while the Go API is running**. Notification delivery is explicitly best-effort during Render Free sleep/downtime.
+> **Decision scope:** Replace Cloudflare's per-minute scheduled request with an **event-driven, in-process Go scheduler** using one `time.Timer` for the next due event, explicit wake-up on schedule changes, and periodic reconciliation (not database polling every five seconds). It runs **only while the Go API is running**; notification delivery is best-effort during Render Free sleep/downtime.
 
 ## 1. Current behavior (baseline)
 
@@ -20,52 +20,97 @@ A separate `apps/api/cmd/worker` exists for one-off or persistent periodic sweep
 
 ### What the change does and does not solve
 
-A minute-based Cron introduces up to approximately one minute of scheduling delay before work begins, plus processing and Web Push delivery delay. Replacing it with Go timers or shorter DB polling can reduce this delay **while the Go process is awake**. It does **not** guarantee real-time OS notifications; push services, browsers and networks introduce additional delay.
+A minute-based Cron introduces up to approximately one minute of scheduling delay before work begins, plus processing and Web Push delivery delay. Replacing it with a **next-due `time.Timer` and event-triggered rescheduling** can reduce scheduler wait time **while the Go process is awake** without repeated five-second database queries. It does **not** guarantee real-time OS notifications; push services, browsers and networks introduce additional delay.
 
 Render Free can spin down an idle API. With Cron removed, the scheduled request no longer provides periodic inbound traffic. An in-process Go scheduler stops when the process sleeps and only recovers after an external request wakes it again. This trade-off is acceptable **only** if the product explicitly requires notifications while Go is running, not while Go is asleep.
 
-## 2. Proposed architecture
+## 2. Proposed architecture — event-driven Go Timer
 
 ```text
-TodoCal mutations / time advancing
-                |
-                v
-     Neon PostgreSQL (source of truth)
-       - Tasks / recurrence / Focus
-       - notification_candidates
-       - notification_outbox / retries
-                ^
-                |
-      Go process background scheduler
-       - startup catch-up
-       - Focus settlement + recurrence materialization
-       - due-candidate dispatch + retry
-                |
-                v
-       Existing Web Push sender
-                |
-                v
-       FCM / Mozilla / Apple
+Browser mutation (Task / recurring series / Focus / preferences / subscriptions)
+       |
+       v
+Go service transaction -> PostgreSQL COMMIT
+       |                            |
+       | successful commit          | persistent source of truth
+       v                            v
+Scheduler wake signal -------> Re-query NextDue from Neon
+                                      |
+                                      v
+                          Reset ONE Go time.Timer
+                          for earliest due event
+                                      |
+                           Timer fires / new wake
+                                      |
+                                      v
+                       Settle Focus if needed;
+                       materialize recurrence;
+                       enqueue / dispatch due
+                       notifications + retry outbox
+                                      |
+                                      v
+                          Web Push provider
+                                      |
+                                      v
+                        Compute next due timestamp
 ```
 
-### Scheduler lifecycle
+The goal is **no fixed five-second database polling when nothing is happening**. PostgreSQL remains authoritative; the scheduler's in-memory timer is only a wake-up optimization. Focus/Break completion is a scheduling source, not merely a by-product of a 60-second sweep.
 
-- Start **one scheduler per API process** after PostgreSQL is ready; tie its lifecycle to the server context and terminate cleanly on SIGTERM and shutdown. Never launch it during migration-only commands.
-- Use Go standard-library goroutines plus `time.Timer`/`time.Ticker` and `context.Context` for scheduling primitives; Go has no built-in durable job scheduler. Implement job selection, retry, concurrency safety and restart recovery explicitly in TodoCal.
-- At startup, reconcile expired Focus sessions and materialize reminder horizons, then dispatch due work and pending outbox retries. Always read persisted DB state; do not depend on timers that survived process restart.
-- Keep Focus settlement / recurrence materialization separate from notification delivery; failures in one should not indefinitely starve the other. Bound each pass by context deadlines and batch sizes, retaining existing per-account timeouts and keyset cursor behavior.
-- **Candidate design for review:** notification dispatch every ~5 seconds *while Go is active*, plus a periodic Focus/recurrence sweep. The sweep must **not** remain the limiting factor for Focus/Break completion: consider a nearest-Focus-end timer/query or more frequent targeted settlement before dispatch. Without this, Focus completion pushes can still be delayed by the sweep interval.
-- A more efficient alternative is to query the nearest `due_at` / retry timestamp and use a `time.Timer`; changes to tasks, preferences, focus, recurrence and subscriptions would need a reliable wake-up signal **plus** periodic reconciliation, otherwise earlier newly scheduled events may be missed. Do not create one long-lived goroutine per reminder.
-- Preserve existing `NotificationWorker.Run`, idempotent event keys, locking, provider timeouts, quiet-hour handling, retry/backoff, session/subscription revocation and generic notification payloads. Do not log raw SQL, task content, private push endpoints or credentials.
-- Leave HTTP request paths and cookie/CSRF handling unchanged. `PROXY_SECRET` remains necessary for `/api/*` through Cloudflare.
+### Scheduler lifecycle and next-due calculation
 
-### Correctness and concurrency
+- Start a single scheduler coordinator after PostgreSQL is ready; do not launch it for migration-only commands. Tie its goroutine to the HTTP service context, cancel and wait on SIGTERM/shutdown.
+- On startup, subscribe to change signals **before** the initial state read; reconcile overdue Focus sessions, materialize the recurrence horizon, deliver already-due notifications/retries, then query the nearest future deadline. Recompute after each dispatch, error or relevant state change.
+- Implement a `NextDue(ctx)` query/service that considers **all relevant sources**, not just outbox entries:
+  - Upcoming Task start/lead/deadline candidates from `notification_candidates`, with active subscriptions and preferences, after materializing the necessary recurring horizon. Exclude already-enqueued terminal deliveries where appropriate to avoid immediately rescheduling the same event forever.
+  - Running Focus/Break's calculated completion timestamp, so a completion is settled at its deadline before dispatching the corresponding push; respect pause/resume/change events.
+  - Unfinished outbox retry timestamps (`next_attempt_at`) and any currently overdue dispatch backlog.
+  - Maintenance deadlines for recurrence materialization / horizon extension, reconciliation and daily cleanup; cap very distant waits by the next maintenance deadline.
+- `time.Timer` waits for the **earliest** of the next due event and maintenance deadlines. When it fires, query and process due records (in bounded batches), then calculate and set a new timer. Do not keep one goroutine or durable timer per Task.
+- Preserve `NotificationWorker.Run` for validation, outbox writes, quiet hours, retries, provider timeouts, subscription/session revocation, stable event identity and private payload handling. `time.Timer` itself does not queue notifications or persist delivery history.
+- Recover gracefully from temporary DB errors with bounded backoff and an earlier recovery timer; never spin continuously when no candidate can be successfully processed. Avoid heavy account-wide sweeps on every Task edit.
 
-- Treat Neon as authoritative. Revalidate schedule and subscription immediately before each push attempt. A rescheduled or deleted Task should not cause delivery of a stale event.
-- A Go timer is only an optimization, **not durable state**. Process restarts must re-read overdue candidates and unfinished outbox rows.
-- Multiple API instances or a standalone `cmd/worker` can produce duplicate sweeps/delivery pressure. Document a single-process assumption initially; if multi-instance deployments are supported, use explicit cross-process coordination (e.g., PostgreSQL advisory lock for scheduler ownership) and retain existing outbox row locks. Do not claim exactly-once push delivery.
-- Ensure cancellation is prompt and avoid an unbounded goroutine or query backlog. Measure DB connections, query rate and CPU overhead from a proposed five-second polling interval (up to 12 scheduler checks/minute while active).
-- The existing 24-hour lookback can drop older unsent candidates after long downtime; document this as a product trade-off or design a bounded, explicit catch-up policy before implementation.
+### Wake-up when a user edits Task or Focus
+
+After a **successful transaction commit**, every mutation that can change notification eligibility or timing must wake the scheduler: Task create/edit/delete/restore/complete/schedule, recurring-series edits/stops/restores, Focus start/pause/resume/extend/complete, notification preferences/timezone changes, device subscription/revocation, and relevant auth/session revocation. The service should not rely only on browser-driven changes; internal job writes must be covered as well.
+
+Single Go instance design: use a **buffered channel of capacity 1**, with a nonblocking send after commit. Multiple changes can coalesce into a single wake-up because the scheduler always re-queries the database; it does not trust event payloads. When a wake arrives, cancel/reset the pending timer and recalculate the next deadline. Avoid sending before commit: otherwise the scheduler can read the old schedule.
+
+Example **illustrative pseudocode only** (not code in this PR):
+
+```go
+for {
+    dueAt := loadNextDueFromPostgres(ctx) // includes focus, candidates, retries, maintenance
+    timer := time.NewTimer(max(0, time.Until(dueAt)))
+    select {
+    case <-timer.C:
+        processDueAndReconcile(ctx)
+    case <-scheduleChanged:
+        // Re-read database and replace the previously scheduled deadline.
+    case <-ctx.Done():
+        timer.Stop()
+        return
+    }
+    timer.Stop()
+}
+```
+
+Use safe timer draining/reset semantics for the Go version used. `dueAt` might not exist: in that case wait for a change signal or a bounded reconciliation deadline, not an unbounded timer. Keep one authoritative scheduler loop to serialize timer state. **Never require a full database query every five seconds.**
+
+### Signal reliability, multi-process and recovery
+
+- A channel is **in-process and not durable**. A crash between DB commit and channel send is recovered on the next process startup; periodic reconciliation also recovers missed signals while a process remains alive. Keep a clear, modest reconciliation interval (e.g. every 15 minutes initially, to be measured), not five-second polling.
+- If multiple Go instances can write to the same database, an in-process channel does not wake other processes. Consider PostgreSQL `LISTEN/NOTIFY` using a dedicated connection; issuing `NOTIFY` **inside the data transaction** delivers it only after commit and avoids the commit-then-signal loss window. Listeners must reconnect and re-query after disconnect; `NOTIFY` is not a durable queue. If using an explicit single-instance assumption, document it and enforce ownership.
+- Prevent race conditions between reading `NextDue` and registering for change signals: initialize listeners before loading state, retain at least one pending wake-up, and always re-query after wake. The DB remains the source of truth if any signal is coalesced/lost.
+- Under multi-instance execution, use explicit cross-process scheduler ownership/locking or a carefully tested concurrent-dispatch strategy; existing outbox row locks and unique keys do not eliminate every cross-process race. Do not promise exactly-once provider delivery.
+- Retain bounded reconciliation/catch-up for non-user events: recurrence horizon must advance over time, stale pending items must finish, and Focus sessions must still be settled after long downtime. The 24-hour reminder lookback can cause missed older push events; this is an explicit product constraint to review.
+
+### Scheduling and delivery safety
+
+- A rescheduled or deleted Task must invalidate its old event, even if the old timer is about to fire. Always revalidate against current PostgreSQL state **before sending**. Handle subscription/session revocation and quiet hours in the existing worker.
+- Never attach user content, raw SQL, private push endpoints, credentials or unbounded event data to diagnostics. Bound timeouts, processed rows and retry attempts, so a slow provider cannot block all future deadlines.
+- Measure `due_at → dispatch_started_at → provider_accepted_at`, current/next scheduled deadline, timer resets, wake-up count, and reconciliation recovery, using safe aggregate logs; provider acceptance does not prove OS notification display.
+- Account for Render Free sleeping: no timer survives process shutdown, and Go cannot dispatch while the instance is asleep. On restart, rehydrate pending work from Neon and handle late events per the existing 24-hour cutoff.
 
 ### Notification outbox retention and daily cleanup
 
@@ -75,7 +120,7 @@ TodoCal mutations / time advancing
 
 - **Retention:** Keep terminal outbox records for **30 days after `finished_at`** for diagnostics and deduplication. Confirm this window remains longer than the eligible notification-candidate lookback before changing either policy. Only delete rows with `finished_at IS NOT NULL`; do not delete live retries.
 - **Expired pending rows:** Existing send/revalidation logic rejects records whose `due_at` is more than 24 hours old; without further handling, those records can remain unfinished indefinitely. Add a separate, bounded step that marks clearly ineligible pending rows terminal (e.g., `outcome='stale'`, `finished_at=now()`) once they are outside the supported lookback and cannot be retried. Do not reclassify valid pending deliveries solely because `next_attempt_at` is in the future.
-- **Execution:** The Go scheduler should invoke cleanup **approximately once per UTC day while the process is running**, using its existing scheduler loop or a dedicated `time.Ticker`/`time.Timer`. A **separate Cloudflare Cron Trigger is not required**. On API startup/wake, perform missed cleanup when due. A plain in-memory 24-hour ticker alone is insufficient if Render frequently restarts; persist a last-successful-cleanup checkpoint or equivalent durable due state, and guard against overlapping runs if multiple instances are enabled.
+- **Execution:** Model cleanup as a **daily maintenance deadline in the same event-driven scheduler**, not as five-second polling or a separate Cloudflare Cron. Store the last successful cleanup timestamp/checkpoint durably in PostgreSQL. Include the next cleanup deadline in `NextDue`, run overdue cleanup at startup/wake, and update the checkpoint only after successful bounded work; use a short continuation timer for any backlog. Guard against overlapping runs if multiple instances are enabled. A separate Cloudflare Cron Trigger is **not** required.
 - **Resource bounds:** Delete in batches of **500–1,000 rows** per DB transaction, limit batches/runtime per pass, and reschedule remaining backlog without blocking notification dispatch. Consider a partial index on `(finished_at, id) WHERE finished_at IS NOT NULL` only when actual query/DB metrics justify it. PostgreSQL may reuse freed space after deletion; file size need not shrink immediately.
 - **Privacy and diagnostics:** Emit only safe aggregate metrics such as rows marked stale, rows deleted, duration, and failures; no private endpoints, event keys, subscription IDs, credentials or payload data. Review retention and data minimization requirements before production rollout.
 
@@ -119,7 +164,9 @@ Do not promise a zero-downtime or no-duplicate cutover without verifying the act
 | Notification correctness | Task reschedule/delete, preference changes, quiet hours, subscription/session revocation, multiple devices and retry/backoff remain correct |
 | Outbox retention / cleanup | Terminal records kept for 30 days, expired pending records safely finalized, daily Go cleanup runs on startup if missed, bounded batched deletion, no active retries deleted, tests for idempotency/restarts/multiple instances |
 | Safety / duplicate sends | Verify multi-worker overlaps, outbox locking, stable event identities, cancellation after user changes, and privacy-safe logs |
-| Load / reliability | Verify five-second DB checks are acceptable for Neon Free; monitor queue age, failed sends and long sweeps; test process crash/restart and a sleeping Render service |
+| Event-driven scheduling | Verify earliest due selection across task/lead/deadline/recurrence, Focus/Break completion, outbox retries and maintenance; timer reset on every relevant post-commit mutation; signal coalescing, edit races, cancellation, and no idle five-second DB polling |
+| Signal resilience | Verify commit-before-signal ordering, dropped signal recovery, startup LISTEN-before-load ordering (if used), reconnection, and cross-process behavior / ownership |
+| Load / reliability | Measure NextDue query cost and timer resets on Neon Free; monitor notification queue age, failed sends and long sweeps; test process crash/restart and Render sleep/wake |
 | Deployment | No remaining Cloudflare Cron trigger, Worker scheduled handler, `/internal/jobs` exposure, `JOBS_SECRET` dependency, or stale tests/docs after cutover |
 | CI | Go vet, Go lint, unit/integration tests, Worker tests, relevant Playwright E2E and a controlled live Web Push smoke test |
 
@@ -128,10 +175,10 @@ Do not promise a zero-downtime or no-duplicate cutover without verifying the act
 | Approach | Main advantage | Main limitation |
 | --- | --- | --- |
 | Keep Cloudflare Cron (baseline) | Already deployed and provides periodic external wake-ups | ~1-minute check cadence; continued cron traffic |
-| Go scheduler in API (proposed) | Reuses Go + PostgreSQL; no Cloudflare scheduler state; quicker checks while Go is running | Stops during Render Free sleep; adds periodic database load |
+| Event-driven Go Timer in API (proposed) | Reuses Go + PostgreSQL, wakes on schedule changes and actual deadlines, avoids idle five-second polling | Must instrument all schedule mutations, handle signals/races/recovery; stops during Render Free sleep |
 | Go scheduler in always-on worker | Minimal cross-platform state; no web request dependency | Requires persistent compute; additional hosting cost |
 | Cloudflare Durable Objects Alarms / Workflows | Platform scheduling can trigger without a permanently running Go process | New cross-platform state/reconciliation; if Go still dispatches, Render cold start remains |
 
-**Recommendation:** Document and evaluate the Go in-process scheduler if "notifications while Go is running" is the actual requirement. Prefer measuring current send latency and Focus-specific delays before adopting a fixed five-second interval. If notifications must reach closed browsers while Render is sleeping, do **not** replace Cron with Go alone; select an always-on worker or platform-backed scheduling/dispatch instead.
+**Recommendation:** Prefer the event-driven `time.Timer` scheduler with wake-up on committed schedule edits and a slower reconciliation safety net if "notifications while Go is running" is the actual requirement. Measure current send latency, Focus-specific delays and `NextDue` query cost before implementation. If notifications must reach closed browsers while Render is sleeping, do **not** replace Cron with Go alone; select an always-on worker or platform-backed scheduling/dispatch instead.
 
 **This document is a proposal; the existing Cloudflare Cron and `JOBS_SECRET` remain active and unchanged until a separate implementation PR is reviewed and deployed.**

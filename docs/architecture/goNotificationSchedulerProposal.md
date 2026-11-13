@@ -51,6 +51,7 @@ TodoCal mutations / time advancing
 ### Scheduler lifecycle
 
 - Start **one scheduler per API process** after PostgreSQL is ready; tie its lifecycle to the server context and terminate cleanly on SIGTERM and shutdown. Never launch it during migration-only commands.
+- Use Go standard-library goroutines plus `time.Timer`/`time.Ticker` and `context.Context` for scheduling primitives; Go has no built-in durable job scheduler. Implement job selection, retry, concurrency safety and restart recovery explicitly in TodoCal.
 - At startup, reconcile expired Focus sessions and materialize reminder horizons, then dispatch due work and pending outbox retries. Always read persisted DB state; do not depend on timers that survived process restart.
 - Keep Focus settlement / recurrence materialization separate from notification delivery; failures in one should not indefinitely starve the other. Bound each pass by context deadlines and batch sizes, retaining existing per-account timeouts and keyset cursor behavior.
 - **Candidate design for review:** notification dispatch every ~5 seconds *while Go is active*, plus a periodic Focus/recurrence sweep. The sweep must **not** remain the limiting factor for Focus/Break completion: consider a nearest-Focus-end timer/query or more frequent targeted settlement before dispatch. Without this, Focus completion pushes can still be delayed by the sweep interval.
@@ -65,6 +66,36 @@ TodoCal mutations / time advancing
 - Multiple API instances or a standalone `cmd/worker` can produce duplicate sweeps/delivery pressure. Document a single-process assumption initially; if multi-instance deployments are supported, use explicit cross-process coordination (e.g., PostgreSQL advisory lock for scheduler ownership) and retain existing outbox row locks. Do not claim exactly-once push delivery.
 - Ensure cancellation is prompt and avoid an unbounded goroutine or query backlog. Measure DB connections, query rate and CPU overhead from a proposed five-second polling interval (up to 12 scheduler checks/minute while active).
 - The existing 24-hour lookback can drop older unsent candidates after long downtime; document this as a product trade-off or design a bounded, explicit catch-up policy before implementation.
+
+### Notification outbox retention and daily cleanup
+
+**Current state:** `services.NotificationWorker` sets `finished_at` and a terminal `outcome` (`sent`, `canceled`, `quiet_hours`, `expired`, or `failed`). Completed records are excluded from delivery by the `finished_at IS NULL` filter, but are not periodically removed. The outbox's `UNIQUE(subscription_id, event_key)` also protects against re-queuing the same event while its record exists. Deleting a subscription can cascade to its outbox rows, but that is **not** a general retention mechanism.
+
+**Proposed cleanup policy (not implemented):**
+
+- **Retention:** Keep terminal outbox records for **30 days after `finished_at`** for diagnostics and deduplication. Confirm this window remains longer than the eligible notification-candidate lookback before changing either policy. Only delete rows with `finished_at IS NOT NULL`; do not delete live retries.
+- **Expired pending rows:** Existing send/revalidation logic rejects records whose `due_at` is more than 24 hours old; without further handling, those records can remain unfinished indefinitely. Add a separate, bounded step that marks clearly ineligible pending rows terminal (e.g., `outcome='stale'`, `finished_at=now()`) once they are outside the supported lookback and cannot be retried. Do not reclassify valid pending deliveries solely because `next_attempt_at` is in the future.
+- **Execution:** The Go scheduler should invoke cleanup **approximately once per UTC day while the process is running**, using its existing scheduler loop or a dedicated `time.Ticker`/`time.Timer`. A **separate Cloudflare Cron Trigger is not required**. On API startup/wake, perform missed cleanup when due. A plain in-memory 24-hour ticker alone is insufficient if Render frequently restarts; persist a last-successful-cleanup checkpoint or equivalent durable due state, and guard against overlapping runs if multiple instances are enabled.
+- **Resource bounds:** Delete in batches of **500–1,000 rows** per DB transaction, limit batches/runtime per pass, and reschedule remaining backlog without blocking notification dispatch. Consider a partial index on `(finished_at, id) WHERE finished_at IS NOT NULL` only when actual query/DB metrics justify it. PostgreSQL may reuse freed space after deletion; file size need not shrink immediately.
+- **Privacy and diagnostics:** Emit only safe aggregate metrics such as rows marked stale, rows deleted, duration, and failures; no private endpoints, event keys, subscription IDs, credentials or payload data. Review retention and data minimization requirements before production rollout.
+
+Example **design-only** batch query for the terminal-row retention step:
+
+```sql
+WITH expired AS (
+    SELECT id
+    FROM notification_outbox
+    WHERE finished_at IS NOT NULL
+      AND finished_at < NOW() - INTERVAL '30 days'
+    ORDER BY finished_at, id
+    LIMIT 500
+)
+DELETE FROM notification_outbox AS o
+USING expired AS e
+WHERE o.id = e.id;
+```
+
+Cleanup removes **PostgreSQL delivery records**, not already displayed OS/browser notifications. It must not remove the delivery outbox before retries or deduplication are no longer needed.
 
 ## 3. Migration and Cron cleanup — future implementation only
 
@@ -86,6 +117,7 @@ Do not promise a zero-downtime or no-duplicate cutover without verifying the act
 | Focus / Break | Overdue Focus/Break completion settles without a browser read, including boundaries across midnight; notification latency is measured independently of the sweep interval |
 | Recurrence | Upcoming occurrences and early recurring deadlines are materialized, including DST edge cases and account keyset progress |
 | Notification correctness | Task reschedule/delete, preference changes, quiet hours, subscription/session revocation, multiple devices and retry/backoff remain correct |
+| Outbox retention / cleanup | Terminal records kept for 30 days, expired pending records safely finalized, daily Go cleanup runs on startup if missed, bounded batched deletion, no active retries deleted, tests for idempotency/restarts/multiple instances |
 | Safety / duplicate sends | Verify multi-worker overlaps, outbox locking, stable event identities, cancellation after user changes, and privacy-safe logs |
 | Load / reliability | Verify five-second DB checks are acceptable for Neon Free; monitor queue age, failed sends and long sweeps; test process crash/restart and a sleeping Render service |
 | Deployment | No remaining Cloudflare Cron trigger, Worker scheduled handler, `/internal/jobs` exposure, `JOBS_SECRET` dependency, or stale tests/docs after cutover |

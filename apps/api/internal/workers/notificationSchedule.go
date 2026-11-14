@@ -12,11 +12,14 @@ import (
 )
 
 // NotificationSchedule implements bounded DB operations for the coordinator.
-// Its instance is immutable; each lane can run independently.
+// Each account lane owns its cursor and must run at most once concurrently,
+// as guaranteed by Scheduler. Different lanes and Next can run independently.
 type NotificationSchedule struct {
 	Pool          *pgxpool.Pool
 	Now           func() time.Time
 	Notifications services.NotificationWorker
+	focusTurn     accountTurn
+	horizonTurn   accountTurn
 }
 
 const focusDueExpression = `running_since + (target_seconds::double precision - accumulated_us::double precision/1000000) * interval '1 second'`
@@ -57,54 +60,59 @@ func (s *NotificationSchedule) Run(ctx context.Context, job Job) error {
 }
 
 func (s *NotificationSchedule) settleFocus(ctx context.Context) error {
-	var user string
-	err := s.Pool.QueryRow(ctx, `SELECT user_id FROM focus_sessions WHERE status='running'
- AND `+focusDueExpression+` <= $1 ORDER BY running_since,user_id LIMIT 1`, s.Now()).Scan(&user)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	// The account lock serializes with pause/resume/edit. Revalidate in SettleFocus.
-	// Do not run historical planning/recurrence settlement on this urgent lane.
-	return database.WithTx(ctx, s.Pool, user, func(tx pgx.Tx, _ string) error {
-		return services.SettleFocus(ctx, tx, user, s.Now())
+	return s.focusTurn.run(ctx, func(ctx context.Context, after string) (string, error) {
+		var user string
+		err := s.Pool.QueryRow(ctx, `SELECT user_id FROM focus_sessions WHERE status='running'
+ AND `+focusDueExpression+` <= $1
+ AND ($2::uuid IS NULL OR user_id > $2::uuid) ORDER BY user_id LIMIT 1`, s.Now(), accountCursor(after)).Scan(&user)
+		return user, err
+	}, func(ctx context.Context, user string) error {
+		// The account lock serializes with pause/resume/edit. Revalidate in SettleFocus.
+		// Do not run historical planning/recurrence settlement on this urgent lane.
+		return database.WithTx(ctx, s.Pool, user, func(tx pgx.Tx, _ string) error {
+			return services.SettleFocus(ctx, tx, user, s.Now())
+		})
 	})
 }
 
 func (s *NotificationSchedule) extendHorizon(ctx context.Context) error {
-	var user string
-	err := s.Pool.QueryRow(ctx, `SELECT user_id FROM notification_horizons WHERE next_run_at <= $1 ORDER BY next_run_at,user_id LIMIT 1`, s.Now()).Scan(&user)
-	if errors.Is(err, pgx.ErrNoRows) {
+	return s.horizonTurn.run(ctx, func(ctx context.Context, after string) (string, error) {
+		var user string
+		err := s.Pool.QueryRow(ctx, `SELECT user_id FROM notification_horizons WHERE next_run_at <= $1
+ AND ($2::uuid IS NULL OR user_id > $2::uuid) ORDER BY user_id LIMIT 1`, s.Now(), accountCursor(after)).Scan(&user)
+		return user, err
+	}, func(ctx context.Context, user string) error {
+		// Lock settings BEFORE the queue row: mutations take the same order and their
+		// invalidation trigger cannot be overwritten by a concurrent materialization.
+		return database.WithTx(ctx, s.Pool, user, func(tx pgx.Tx, zone string) error {
+			var due time.Time
+			if err := tx.QueryRow(ctx, "SELECT next_run_at FROM notification_horizons WHERE user_id=$1 FOR UPDATE", user).Scan(&due); err != nil {
+				return err
+			}
+			now := s.Now()
+			if due.After(now) {
+				return nil
+			}
+			if err := services.MaterializeReminderHorizon(ctx, tx, user, zone, now); err != nil {
+				return err
+			}
+			loc, err := time.LoadLocation(zone)
+			if err != nil {
+				return err
+			}
+			local := now.In(loc)
+			next := time.Date(local.Year(), local.Month(), local.Day()+1, 0, 0, 0, 0, loc)
+			_, err = tx.Exec(ctx, "UPDATE notification_horizons SET next_run_at=$2 WHERE user_id=$1", user, next)
+			return err
+		})
+	})
+}
+
+func accountCursor(after string) any {
+	if after == "" {
 		return nil
 	}
-	if err != nil {
-		return err
-	}
-	// Lock settings BEFORE the queue row: mutations take the same order and their
-	// invalidation trigger cannot be overwritten by a concurrent materialization.
-	return database.WithTx(ctx, s.Pool, user, func(tx pgx.Tx, zone string) error {
-		var due time.Time
-		if err := tx.QueryRow(ctx, "SELECT next_run_at FROM notification_horizons WHERE user_id=$1 FOR UPDATE", user).Scan(&due); err != nil {
-			return err
-		}
-		now := s.Now()
-		if due.After(now) {
-			return nil
-		}
-		if err := services.MaterializeReminderHorizon(ctx, tx, user, zone, now); err != nil {
-			return err
-		}
-		loc, err := time.LoadLocation(zone)
-		if err != nil {
-			return err
-		}
-		local := now.In(loc)
-		next := time.Date(local.Year(), local.Month(), local.Day()+1, 0, 0, 0, 0, loc)
-		_, err = tx.Exec(ctx, "UPDATE notification_horizons SET next_run_at=$2 WHERE user_id=$1", user, next)
-		return err
-	})
+	return after
 }
 
 func (s *NotificationSchedule) cleanup(ctx context.Context) error {

@@ -79,6 +79,10 @@ and cross-instance wake delivery. An idle/sleeping Render instance cannot send.
 - Normal deadlines and committed edits run immediately; provider retries use
   durable `next_attempt_at`. Query/work failures use exponential backoff with
   jitter (initially 1 second, capped base 60 seconds).
+- Focus and horizon lanes rotate through due accounts in stable user-ID order.
+  Each lane advances its own cursor before attempting work, including on errors
+  or timeouts, so a failing account cannot monopolize selection. Its unfinished
+  DB work remains eligible on the next wrap; restarting resets only the cursor.
 - Reconciliation reloads deadlines every **15 minutes** as a final safety net.
   It does not scan every account. Recurrence edits invalidate an indexed durable
   per-account horizon deadline; horizon work handles one account per pass and

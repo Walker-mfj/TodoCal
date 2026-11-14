@@ -75,7 +75,7 @@ func TestNotificationAccountTimeoutFairness(t *testing.T) {
 				var done bool
 				query := "SELECT status='completed' FROM focus_sessions WHERE user_id=$1"
 				if job == Horizon {
-					query = "SELECT next_run_at>$2 FROM notification_horizons WHERE user_id=$1"
+					query = "SELECT next_run_at IS NULL OR next_run_at>$2 FROM notification_horizons WHERE user_id=$1"
 				}
 				args := []any{user}
 				if job == Horizon {

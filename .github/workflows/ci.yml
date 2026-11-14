@@ -64,6 +64,14 @@ jobs:
         with:
           go-version-file: apps/api/go.mod
       - run: make test-integration
+      - name: Measure scheduler deadline query
+        run: bash scripts/benchmarkScheduler.sh | tee scheduler-query-plans.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scheduler-query-plans
+          path: scheduler-query-plans.txt
+          if-no-files-found: ignore
 
   api-lint:
     name: API lint (golangci-lint)

@@ -14,8 +14,12 @@ func InsertSeries(ctx context.Context, db DBTX, userID string, seriesID string, 
 	return db.Exec(ctx, `INSERT INTO recurrence_series(user_id,id,template,group_id,start_date,cadence,interval_days,end_date,deadline_offset,deadline_time,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, userID, seriesID, template, groupID, startDate, cadence, intervalDays, endDate, deadlineOffset, deadlineTime, now)
 }
 
-func ListMaterializableSeries(ctx context.Context, db DBTX, userID string, from string, to string) ([]models.Series, error) {
-	rows, err := db.Query(ctx, `SELECT id::text,template,group_id::text,start_date::text,cadence,interval_days,end_date::text,stopped_after::text,deadline_offset,deadline_time,created_at,schedule_offset_days FROM recurrence_series WHERE user_id=$1 AND start_date+schedule_offset_days<$3::date AND (end_date IS NULL OR end_date+schedule_offset_days>=$2::date) AND (stopped_after IS NULL OR stopped_after>=$2::date)`, userID, from, to)
+func ListMaterializableSeries(ctx context.Context, db DBTX, userID string, from string, to string, selected ...string) ([]models.Series, error) {
+	var series any
+	if len(selected) > 0 && selected[0] != "" {
+		series = selected[0]
+	}
+	rows, err := db.Query(ctx, `SELECT id::text,template,group_id::text,start_date::text,cadence,interval_days,end_date::text,stopped_after::text,deadline_offset,deadline_time,created_at,schedule_offset_days FROM recurrence_series WHERE user_id=$1 AND ($4::uuid IS NULL OR id=$4::uuid) AND start_date+schedule_offset_days<$3::date AND (end_date IS NULL OR end_date+schedule_offset_days>=$2::date) AND (stopped_after IS NULL OR stopped_after>=$2::date)`, userID, from, to, series)
 	if err != nil {
 		return nil, err
 	}

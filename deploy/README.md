@@ -65,9 +65,9 @@ For release verification, use a dedicated account and explicitly opt in on two d
 
 ## Embedded notification scheduler (staged rollout)
 
-`NOTIFICATION_SCHEDULER_ENABLED` defaults to `false`. Apply migration 000019
+`NOTIFICATION_SCHEDULER_ENABLED` defaults to `false`. Apply migrations through 000020
 before enabling it. With the flag enabled, the API owns one next-deadline timer,
-receives coalesced wakes after successful application commits, and uses separate
+receives coalesced wakes after committed schedule changes, and uses separate
 bounded lanes for Focus settlement, Web Push delivery, recurrence horizons and
 outbox cleanup. Missing VAPID disables delivery only; Focus still settles.
 
@@ -85,8 +85,8 @@ and cross-instance wake delivery. An idle/sleeping Render instance cannot send.
   DB work remains eligible on the next wrap; restarting resets only the cursor.
 - Reconciliation reloads deadlines every **15 minutes** as a final safety net.
   It does not scan every account. Recurrence edits invalidate an indexed durable
-  per-account horizon deadline; horizon work handles one account per pass and
-  reschedules at that account's next local midnight.
+  per-account horizon deadline; horizon work commits one series per pass and
+  reschedules eligible accounts at their next local midnight after the final page.
 - Scheduler send cutoffs: Focus/Break/lead 5 minutes, task start 10 minutes,
   deadline 15 minutes. Lead reminders never start sending at/after task start.
   Retries beyond cutoff are canceled. A truly missed wake may be discovered too
@@ -109,9 +109,54 @@ Rollout sequence:
 
 Before step 4, rollback is setting the flag false and restarting the API; the
 existing Cron resumes dispatch under the legacy 24-hour policy. Do not roll back
-migration 000019 while a scheduler-enabled binary is running. This change does
+migrations 000019/000020 while a scheduler-enabled binary is running. This change does
 not alter live flags, Cron triggers or secrets.
 
 Run `make test-integration` for the separate `focus_scheduler_test` database as
 well as existing integration suites. Never point test URLs at development or
 production data.
+
+### Scheduler review follow-up: progress and query cost
+
+Migration 000020 marks schedule changes with a transaction-local dirty flag.
+The application publishes only after a dirty transaction commits. Read-only GETs
+and planning cursor writes do not wake the coordinator; GETs that materialize
+occurrences or settle Focus do. The flag rolls back with the mutation.
+
+Horizon commits one recurring series (at most eight local dates) with a durable
+`after_series` cursor per attempt. Retries/restarts retain completed batches;
+mutations reset the cursor under the same account lock. The cycle timestamp is
+pinned until its final page, so midnight cannot move the target while paging.
+Accounts without eligible recurring task/deadline reminders have a NULL deadline;
+preference, timezone and recurrence edits reactivate them when needed. Focus
+settlement and on-demand calendar recurrence remain independent of this filter.
+A single bounded batch can still time out during database unavailability; it is
+retried without repeating previously committed series.
+
+`NextDue` uses an EXISTS device check to avoid multiplying candidates by device
+count. Its outbox lookup already has the unique `(subscription_id,event_key)`
+index; retries use `notification_pending`. Migration 000020 adds an exact UTC
+Focus deadline expression index, a completed-Focus time index and a partial
+Task deadline index. These are not a substitute for measuring the global view.
+
+Run the opt-in benchmark against a **dedicated disposable** database ending in
+`_scheduler_bench_test` (it truncates users and dependent data). It tests 1k, 10k,
+100k tasks with 100 accounts and 1/5 devices per account, prints EXPLAIN ANALYZE
+BUFFERS for the production query and reports warm query latency:
+
+```sh
+cd apps/api
+SCHEDULER_BENCHMARK_DATABASE_URL='postgres://.../focus_scheduler_bench_test' \
+  go test ./internal/services -run '^$' -bench '^BenchmarkNotificationNextDue$' \
+  -benchtime=10x -count=1 -v
+```
+
+CI runs `bash scripts/benchmarkScheduler.sh` after integration tests and uploads
+`scheduler-query-plans` with the EXPLAIN output and timings.
+
+The benchmark and database integration cases have not yet been executed in the
+restricted editing environment. Do not treat the two-second deadline-query
+budget as validated at 100k tasks until these results are recorded on PostgreSQL.
+If that budget is exceeded, evaluate a mutation-maintained deadline table using
+these plans before enabling the scheduler at that scale. Reconciliation remains
+a 15-minute recovery mechanism, not the notification timing path.

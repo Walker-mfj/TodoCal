@@ -168,14 +168,14 @@ func TestNotificationSchedulerDatabase(t *testing.T) {
 	if err = backend.Run(ctx, Horizon); err != nil {
 		t.Fatal(err)
 	}
-	var horizon time.Time
-	if err = pool.QueryRow(ctx, "SELECT next_run_at FROM notification_horizons WHERE user_id=$1", principal.ID).Scan(&horizon); err != nil || !horizon.After(now) {
+	var horizon *time.Time
+	if err = pool.QueryRow(ctx, "SELECT next_run_at FROM notification_horizons WHERE user_id=$1", principal.ID).Scan(&horizon); err != nil || horizon != nil {
 		t.Fatalf("horizon %v %v", horizon, err)
 	}
 	exec("UPDATE notification_horizons SET next_run_at=CURRENT_TIMESTAMP+interval '2 days' WHERE user_id=$1", principal.ID)
 	exec("UPDATE settings SET timezone='Asia/Tokyo' WHERE user_id=$1", principal.ID)
 	var invalidated bool
-	if err = pool.QueryRow(ctx, "SELECT next_run_at<=CURRENT_TIMESTAMP FROM notification_horizons WHERE user_id=$1", principal.ID).Scan(&invalidated); err != nil || !invalidated {
+	if err = pool.QueryRow(ctx, "SELECT next_run_at IS NULL FROM notification_horizons WHERE user_id=$1", principal.ID).Scan(&invalidated); err != nil || !invalidated {
 		t.Fatalf("invalidated horizon %v %v", horizon, err)
 	}
 

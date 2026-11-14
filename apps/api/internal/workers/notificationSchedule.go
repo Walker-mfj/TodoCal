@@ -22,7 +22,7 @@ type NotificationSchedule struct {
 	horizonTurn   accountTurn
 }
 
-const focusDueExpression = `running_since + (target_seconds::double precision - accumulated_us::double precision/1000000) * interval '1 second'`
+const focusDueExpression = `((running_since AT TIME ZONE 'UTC') + (target_seconds::double precision - accumulated_us::double precision/1000000) * interval '1 second') AT TIME ZONE 'UTC'`
 
 func (s *NotificationSchedule) Next(ctx context.Context) (Deadlines, error) {
 	var out Deadlines
@@ -85,24 +85,54 @@ func (s *NotificationSchedule) extendHorizon(ctx context.Context) error {
 		// Lock settings BEFORE the queue row: mutations take the same order and their
 		// invalidation trigger cannot be overwritten by a concurrent materialization.
 		return database.WithTx(ctx, s.Pool, user, func(tx pgx.Tx, zone string) error {
-			var due time.Time
-			if err := tx.QueryRow(ctx, "SELECT next_run_at FROM notification_horizons WHERE user_id=$1 FOR UPDATE", user).Scan(&due); err != nil {
+			var due, cycle *time.Time
+			var after *string
+			if err := tx.QueryRow(ctx, "SELECT next_run_at,after_series::text,cycle_at FROM notification_horizons WHERE user_id=$1 FOR UPDATE", user).Scan(&due, &after, &cycle); err != nil {
 				return err
 			}
 			now := s.Now()
-			if due.After(now) {
+			if due == nil || due.After(now) {
 				return nil
 			}
-			if err := services.MaterializeReminderHorizon(ctx, tx, user, zone, now); err != nil {
+			var needed bool
+			if err := tx.QueryRow(ctx, "SELECT notification_horizon_needed($1,$2)", user, now).Scan(&needed); err != nil {
+				return err
+			}
+			if !needed {
+				_, err := tx.Exec(ctx, "UPDATE notification_horizons SET next_run_at=NULL,after_series=NULL,cycle_at=NULL WHERE user_id=$1", user)
+				return err
+			}
+			if cycle == nil {
+				cycle = &now
+			}
+			var series string
+			err := tx.QueryRow(ctx, `SELECT r.id::text FROM recurrence_series r
+ JOIN notification_preferences p ON p.user_id=r.user_id
+ WHERE r.user_id=$1 AND ($2::uuid IS NULL OR r.id>$2::uuid)
+ AND ((p.task_start AND r.template->>'startTime' IS NOT NULL) OR (p.deadline AND r.deadline_offset IS NOT NULL))
+ AND (r.end_date IS NULL OR r.end_date+r.schedule_offset_days >= ($3::timestamptz AT TIME ZONE $4)::date)
+ AND (r.stopped_after IS NULL OR r.stopped_after >= ($3::timestamptz AT TIME ZONE $4)::date)
+ AND (r.original_cutoff IS NULL OR r.original_cutoff+r.schedule_offset_days > ($3::timestamptz AT TIME ZONE $4)::date)
+ ORDER BY r.id LIMIT 1`, user, after, *cycle, zone).Scan(&series)
+			if err == nil {
+				if err = services.MaterializeSeriesReminderHorizon(ctx, tx, user, zone, series, *cycle); err != nil {
+					return err
+				}
+				// Commit both occurrences and cursor together. Keep the account due
+				// until an empty page completes this cycle; restart resumes here.
+				_, err = tx.Exec(ctx, "UPDATE notification_horizons SET after_series=$2,cycle_at=$3 WHERE user_id=$1", user, series, *cycle)
+				return err
+			}
+			if !errors.Is(err, pgx.ErrNoRows) {
 				return err
 			}
 			loc, err := time.LoadLocation(zone)
 			if err != nil {
 				return err
 			}
-			local := now.In(loc)
+			local := cycle.In(loc)
 			next := time.Date(local.Year(), local.Month(), local.Day()+1, 0, 0, 0, 0, loc)
-			_, err = tx.Exec(ctx, "UPDATE notification_horizons SET next_run_at=$2 WHERE user_id=$1", user, next)
+			_, err = tx.Exec(ctx, "UPDATE notification_horizons SET next_run_at=$2,after_series=NULL,cycle_at=NULL WHERE user_id=$1", user, next)
 			return err
 		})
 	})

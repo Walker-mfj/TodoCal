@@ -21,11 +21,19 @@ func PublishScheduleWake(ctx context.Context) {
 }
 
 // Commit is the shared post-commit boundary for domain and auth transactions.
-// Even read endpoints can settle Focus or materialize tasks inside WithTx.
+// Database row triggers mark only actual schedule changes, including lazy GET writes.
 func Commit(ctx context.Context, tx pgx.Tx) error {
+	dirty := false
+	if wake, ok := ctx.Value(scheduleWakeKey{}).(func()); ok && wake != nil {
+		if err := tx.QueryRow(ctx, "SELECT COALESCE(current_setting('todocal.schedule_dirty', true), '') = 'on'").Scan(&dirty); err != nil {
+			return err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	PublishScheduleWake(ctx)
+	if dirty {
+		PublishScheduleWake(ctx)
+	}
 	return nil
 }

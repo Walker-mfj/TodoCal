@@ -23,5 +23,5 @@ func WithTx(ctx context.Context, pool *pgxpool.Pool, userID string, fn func(pgx.
 	if err = fn(tx, zone); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	return Commit(ctx, tx)
 }

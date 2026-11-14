@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"focuscalendar/internal/database"
 	"focuscalendar/internal/middleware"
 	"focuscalendar/internal/monitoring"
 	"focuscalendar/internal/router"
@@ -22,23 +23,33 @@ import (
 )
 
 type Server struct {
-	jobsSecret  string
-	runJobs     func(context.Context) (any, error)
-	jobsMu      sync.Mutex
-	monitor     *monitoring.Reporter
-	ingestLimit ingestLimiter
-	pool        *pgxpool.Pool
-	origin      string
-	secure      bool
-	now         func() time.Time
+	jobsSecret   string
+	runJobs      func(context.Context) (any, error)
+	jobsMu       sync.Mutex
+	monitor      *monitoring.Reporter
+	ingestLimit  ingestLimiter
+	pool         *pgxpool.Pool
+	origin       string
+	secure       bool
+	now          func() time.Time
+	scheduleWake func()
 }
 
 func New(p *pgxpool.Pool, origin string, secure bool) *Server {
 	return &Server{pool: p, origin: strings.TrimRight(origin, "/"), secure: secure, now: time.Now}
 }
 func (s *Server) Handler() http.Handler {
-	return middleware.Security(s.observe(router.New(s)), s.origin)
+	handler := middleware.Security(s.observe(router.New(s)), s.origin)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.scheduleWake != nil {
+			r = r.WithContext(database.WithScheduleWake(r.Context(), s.scheduleWake))
+		}
+		handler.ServeHTTP(w, r)
+	})
 }
+
+// ConfigureScheduleWake is called once before serving HTTP requests.
+func (s *Server) ConfigureScheduleWake(wake func()) { s.scheduleWake = wake }
 func (s *Server) Health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }

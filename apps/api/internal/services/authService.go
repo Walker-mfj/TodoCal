@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"focuscalendar/internal/database"
 	"net/mail"
 	"strings"
 	"time"
@@ -119,7 +120,7 @@ func (s *Auth) Register(ctx context.Context, in Credentials, ip string) (Session
 	}
 	token, csrf, refresh, e := s.createSession(ctx, tx, u.ID, in.BrowserID)
 	if e == nil {
-		e = tx.Commit(ctx)
+		e = database.Commit(ctx, tx)
 	}
 	if e != nil {
 		return SessionResult{}, e
@@ -162,7 +163,7 @@ func (s *Auth) Login(ctx context.Context, in Credentials, ip string) (SessionRes
 	}
 	token, csrf, refresh, e := s.createSession(ctx, tx, u.ID, in.BrowserID)
 	if e == nil {
-		e = tx.Commit(ctx)
+		e = database.Commit(ctx, tx)
 	}
 	if e != nil {
 		return SessionResult{}, e
@@ -205,7 +206,7 @@ func (s *Auth) Password(ctx context.Context, p Principal, in PasswordInput, ip s
 		_, e = repository.RevokeOtherSessions(ctx, tx, s.Now(), p.ID, p.SessionID)
 	}
 	if e == nil {
-		e = tx.Commit(ctx)
+		e = database.Commit(ctx, tx)
 	}
 	if e != nil {
 		return e
@@ -230,5 +231,8 @@ func (s *Auth) Me(ctx context.Context, p Principal) (any, error) {
 }
 func (s *Auth) Logout(ctx context.Context, p Principal) error {
 	_, e := repository.RevokeSession(ctx, s.Pool, s.Now(), p.SessionID, p.ID)
+	if e == nil {
+		database.PublishScheduleWake(ctx)
+	}
 	return e
 }

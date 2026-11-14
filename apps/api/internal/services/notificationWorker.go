@@ -18,6 +18,9 @@ type NotificationWorker struct {
 	Pool   *pgxpool.Pool
 	Now    func() time.Time
 	Sender PushSender
+	// Enabled only for the embedded scheduler; legacy Cron retains its policy
+	// until the staged cutover is explicitly enabled.
+	EnforceLateness bool
 }
 
 // Run queues only currently valid schedules and revalidates immediately before each
@@ -32,19 +35,24 @@ func (w NotificationWorker) Run(ctx context.Context, limit int) (int, error) {
 		limit = 100
 	}
 	now := w.Now()
+	window := ""
+	if w.EnforceLateness {
+		window = notificationCandidateWindow
+	}
 	_, e := w.Pool.Exec(ctx, `INSERT INTO notification_outbox(id,subscription_id,event_key,due_at,kind,next_attempt_at)
  SELECT gen_random_uuid(),s.id,c.event_key,c.due_at,c.kind,$1 FROM notification_candidates c
  JOIN push_subscriptions s ON s.user_id=c.user_id JOIN auth_sessions a ON a.id=s.session_id
+ JOIN notification_preferences p ON p.user_id=c.user_id
  WHERE s.revoked_at IS NULL AND a.revoked_at IS NULL
  AND c.due_at>=$1::timestamptz-interval '24 hours' AND c.due_at<=$1 AND c.due_at>=s.created_at
  AND NOT EXISTS(SELECT 1 FROM notification_outbox o WHERE o.subscription_id=s.id AND o.event_key=c.event_key)
- ORDER BY c.due_at,s.id LIMIT $2 ON CONFLICT DO NOTHING`, now, limit)
+ `+window+` ORDER BY c.due_at,s.id LIMIT $2 ON CONFLICT DO NOTHING`, now, limit)
 	if e != nil {
 		return 0, e
 	}
 	count := 0
 	for i := 0; i < limit; i++ {
-		sent, found, err := w.deliver(ctx, now)
+		sent, found, err := w.deliver(ctx, w.Now())
 		if err != nil {
 			return count, err
 		}
@@ -67,16 +75,17 @@ func (w NotificationWorker) deliver(ctx context.Context, now time.Time) (bool, b
 	var input models.PushInput
 	var due time.Time
 	var attempts int
+	var leadMinutes int
 	var valid bool
 	var quiet NotificationPreferences
 	e = tx.QueryRow(ctx, `SELECT o.id,s.id,o.kind,o.event_key,o.due_at,o.attempts,s.endpoint,s.p256dh,s.auth,st.timezone,
- COALESCE(p.quiet_start,''),COALESCE(p.quiet_end,''),
+ COALESCE(p.quiet_start,''),COALESCE(p.quiet_end,''),COALESCE(p.lead_minutes,0),
  s.revoked_at IS NULL AND a.revoked_at IS NULL AND o.due_at>=$1::timestamptz-interval '24 hours'
  AND EXISTS(SELECT 1 FROM notification_candidates c WHERE c.user_id=s.user_id AND c.event_key=o.event_key AND c.due_at=o.due_at)
  FROM notification_outbox o JOIN push_subscriptions s ON s.id=o.subscription_id JOIN auth_sessions a ON a.id=s.session_id
  JOIN settings st ON st.user_id=s.user_id LEFT JOIN notification_preferences p ON p.user_id=s.user_id
  WHERE o.finished_at IS NULL AND o.next_attempt_at<=$1 ORDER BY o.next_attempt_at,o.id
- LIMIT 1 FOR UPDATE OF o,s,a SKIP LOCKED`, now).Scan(&id, &subID, &kind, &eventKey, &due, &attempts, &input.Endpoint, &input.Keys.P256dh, &input.Keys.Auth, &zone, &quiet.QuietStart, &quiet.QuietEnd, &valid)
+ LIMIT 1 FOR UPDATE OF o,s,a SKIP LOCKED`, now).Scan(&id, &subID, &kind, &eventKey, &due, &attempts, &input.Endpoint, &input.Keys.P256dh, &input.Keys.Auth, &zone, &quiet.QuietStart, &quiet.QuietEnd, &leadMinutes, &valid)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return false, false, nil
 	}
@@ -90,7 +99,10 @@ func (w NotificationWorker) deliver(ctx context.Context, now time.Time) (bool, b
 		}
 		return outcome == "sent", true, err
 	}
-	if !valid {
+	// Refresh after acquiring locks: a slow DB must not use the batch's old clock
+	// to start a send beyond its cutoff or during newly entered quiet hours.
+	now = w.Now()
+	if !valid || (w.EnforceLateness && !notificationCanSend(kind, due, leadMinutes, now)) {
 		return finish("canceled")
 	}
 	if quiet.IsQuiet(now, zone) || quiet.IsQuiet(due, zone) {
@@ -132,7 +144,11 @@ func (w NotificationWorker) deliver(ctx context.Context, now time.Time) (bool, b
 		return finish("failed")
 	}
 	delay := time.Minute * time.Duration(1<<uint(attempts-1))
-	_, e = tx.Exec(ctx, "UPDATE notification_outbox SET attempts=$2,next_attempt_at=$3,outcome='retry' WHERE id=$1", id, attempts, now.Add(delay))
+	next := w.Now().Add(delay)
+	if w.EnforceLateness && !notificationCanSend(kind, due, leadMinutes, next) {
+		return finish("canceled")
+	}
+	_, e = tx.Exec(ctx, "UPDATE notification_outbox SET attempts=$2,next_attempt_at=$3,outcome='retry' WHERE id=$1", id, attempts, next)
 	if e == nil {
 		e = tx.Commit(ctx)
 	}

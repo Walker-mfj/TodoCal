@@ -62,3 +62,52 @@ Configure the following before deploying the cron-enabled Worker:
 The endpoint uses a 20-second execution budget, excludes concurrent in-process runs, and reports counts without private payloads. Database transactions and unique outbox identities guard repeated runs; external delivery is at least once across a crash. Monitor scheduled-handler failures and API job errors, queue age and expired timers. Free-host cold starts may exceed one minute; this is not an exact-time delivery service. A standalone `cmd/worker` remains available for a persistent process.
 
 For release verification, use a dedicated account and explicitly opt in on two devices. Check closed-tab Focus completion, deadline/start reminders, quiet hours, logout/revocation and one offline device. Confirm clicks navigate without starting a timer. Keep credentials and endpoints out of logs and test reports. No production secrets or live service settings are changed by the implementation PR.
+
+## Embedded notification scheduler (staged rollout)
+
+`NOTIFICATION_SCHEDULER_ENABLED` defaults to `false`. Apply migration 000019
+before enabling it. With the flag enabled, the API owns one next-deadline timer,
+receives coalesced wakes after successful application commits, and uses separate
+bounded lanes for Focus settlement, Web Push delivery, recurrence horizons and
+outbox cleanup. Missing VAPID disables delivery only; Focus still settles.
+
+The scheduler currently assumes **one Go API instance** and no separate
+`cmd/worker` process. It is not a cross-process leader-election implementation.
+Do not enable it for overlapping API replicas without adding shared ownership
+and cross-instance wake delivery. An idle/sleeping Render instance cannot send.
+
+- Normal deadlines and committed edits run immediately; provider retries use
+  durable `next_attempt_at`. Query/work failures use exponential backoff with
+  jitter (initially 1 second, capped base 60 seconds).
+- Reconciliation reloads deadlines every **15 minutes** as a final safety net.
+  It does not scan every account. Recurrence edits invalidate an indexed durable
+  per-account horizon deadline; horizon work handles one account per pass and
+  reschedules at that account's next local midnight.
+- Scheduler send cutoffs: Focus/Break/lead 5 minutes, task start 10 minutes,
+  deadline 15 minutes. Lead reminders never start sending at/after task start.
+  Retries beyond cutoff are canceled. A truly missed wake may be discovered too
+  late by reconciliation and intentionally suppressed; Focus state still settles.
+- Terminal outbox records are retained for 30 days. Cleanup deletes up to 500
+  per transaction and persists the next run/checkpoint; a full batch continues
+  after one second. Pending deliveries are never deleted by retention cleanup.
+
+Rollout sequence:
+
+1. Deploy migrations/backend with the flag false; verify tests and readiness.
+2. Enable the flag on the single API instance. While enabled, authenticated
+   `/internal/jobs` calls return a no-op response, so the existing Cron cannot
+   concurrently dispatch. Keep `JOBS_SECRET` until the rollout is verified.
+3. Verify real push timing, edits, Focus pause/resume, retries and restart with
+   dedicated test accounts. Watch sanitized scheduler error logs and outbox age.
+4. In a follow-up release after verification, remove the Cloudflare Cron trigger,
+   scheduled handler, jobs route/tests and `JOBS_SECRET`. Removing Cron changes
+   Render idle/sleep behavior; verify that product trade-off explicitly.
+
+Before step 4, rollback is setting the flag false and restarting the API; the
+existing Cron resumes dispatch under the legacy 24-hour policy. Do not roll back
+migration 000019 while a scheduler-enabled binary is running. This change does
+not alter live flags, Cron triggers or secrets.
+
+Run `make test-integration` for the separate `focus_scheduler_test` database as
+well as existing integration suites. Never point test URLs at development or
+production data.

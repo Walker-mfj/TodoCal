@@ -9,4 +9,4 @@ if ! docker compose exec -T postgres psql -U focus -d postgres -tAc "SELECT 1 FR
 fi
 cd apps/api
 SCHEDULER_BENCHMARK_DATABASE_URL="postgres://focus:focus_local_only@$pg_address/focus_scheduler_bench_test?sslmode=disable" \
-  go test ./internal/services -run '^$' -bench '^BenchmarkNotificationNextDue$' -benchtime=10x -count=1 -v
+  go test ./internal/services -run '^$' -bench '^BenchmarkNotificationSchedule$' -benchtime=10x -count=1 -v

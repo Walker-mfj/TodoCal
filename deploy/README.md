@@ -65,7 +65,7 @@ For release verification, use a dedicated account and explicitly opt in on two d
 
 ## Embedded notification scheduler (staged rollout)
 
-`NOTIFICATION_SCHEDULER_ENABLED` defaults to `false`. Apply migrations through 000020
+`NOTIFICATION_SCHEDULER_ENABLED` defaults to `false`. Apply migrations through 000021
 before enabling it. With the flag enabled, the API owns one next-deadline timer,
 receives coalesced wakes after committed schedule changes, and uses separate
 bounded lanes for Focus settlement, Web Push delivery, recurrence horizons and
@@ -109,7 +109,7 @@ Rollout sequence:
 
 Before step 4, rollback is setting the flag false and restarting the API; the
 existing Cron resumes dispatch under the legacy 24-hour policy. Do not roll back
-migrations 000019/000020 while a scheduler-enabled binary is running. This change does
+migrations 000019–000021 while a scheduler-enabled binary is running. This change does
 not alter live flags, Cron triggers or secrets.
 
 Run `make test-integration` for the separate `focus_scheduler_test` database as
@@ -121,7 +121,10 @@ production data.
 Migration 000020 marks schedule changes with a transaction-local dirty flag.
 The application publishes only after a dirty transaction commits. Read-only GETs
 and planning cursor writes do not wake the coordinator; GETs that materialize
-occurrences or settle Focus do. The flag rolls back with the mutation.
+occurrences or settle Focus do. The flag rolls back with the mutation. Migration 000021 narrows task UPDATE
+wakes to identity, scheduled date/start, deadline, status and deletion changes.
+Title, description, priority, end time and revision-only edits do not change the
+candidate schedule or generic push payload and do not publish a wake.
 
 Horizon commits one recurring series (at most eight local dates) with a durable
 `after_series` cursor per attempt. Retries/restarts retain completed batches;
@@ -141,18 +144,30 @@ Task deadline index. These are not a substitute for measuring the global view.
 
 Run the opt-in benchmark against a **dedicated disposable** database ending in
 `_scheduler_bench_test` (it truncates users and dependent data). It tests 1k, 10k,
-100k tasks with 100 accounts and 1/5 devices per account, prints EXPLAIN ANALYZE
-BUFFERS for the production query and reports warm query latency:
+100k tasks with 100/1k/10k accounts and 1/5 devices per account. Each account has
+a running Focus session, completed Focus history and a Horizon deadline; cleanup
+is also scheduled. It calls the full `NotificationSchedule.Next()` under the
+same two-second timeout used by the coordinator, captures its actual SQL for
+EXPLAIN ANALYZE BUFFERS, and reports the first call plus mean/max warm latency.
+Separate candidate and full-Next measurements help isolate query cost:
 
 ```sh
 cd apps/api
 SCHEDULER_BENCHMARK_DATABASE_URL='postgres://.../focus_scheduler_bench_test' \
-  go test ./internal/services -run '^$' -bench '^BenchmarkNotificationNextDue$' \
+  go test ./internal/services -run '^$' -bench '^BenchmarkNotificationSchedule$' \
   -benchtime=10x -count=1 -v
 ```
 
 CI runs `bash scripts/benchmarkScheduler.sh` after integration tests and uploads
 `scheduler-query-plans` with the EXPLAIN output and timings.
+
+The integration suite also exercises one series with 100k historical occurrences
+and 100k recurrence exceptions, including a negative deadline offset. Its first
+Horizon batch must commit all eight new occurrences and its cursor within two
+seconds; a fresh backend must finish the cycle on the next bounded call. This
+checks large history, not arbitrary database slowness or lock contention. No
+further Horizon architecture change is justified without measurements showing
+that a bounded series exceeds the budget.
 
 The benchmark and database integration cases have not yet been executed in the
 restricted editing environment. Do not treat the two-second deadline-query

@@ -11,6 +11,7 @@ import (
 	"focuscalendar/internal/database"
 	"focuscalendar/internal/services"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -188,5 +189,89 @@ func TestHorizonDurableProgressAndDormancy(t *testing.T) {
 	var n int
 	if e := pool.QueryRow(ctx, `SELECT count(*) FROM tasks WHERE user_id=$1 AND scheduled_date=($2::timestamptz::date+10)`, user, now).Scan(&n); e != nil || n != 1 {
 		t.Fatalf("negative-offset deadline missing: %d %v", n, e)
+	}
+}
+
+func TestTaskScheduleDirtyFields(t *testing.T) {
+	pool, exec, user := progressDB(t)
+	now := time.Now().UTC()
+	task := uuid.NewString()
+	exec(`INSERT INTO tasks(user_id,id,title,scheduled_date,start_time,end_time,created_at,updated_at)
+ VALUES($1,$2,'before',$3::timestamptz::date,'12:00','13:00',$3,$3)`, user, task, now)
+	calls := 0
+	ctx := database.WithScheduleWake(context.Background(), func() { calls++ })
+	update := func(set string) {
+		t.Helper()
+		err := database.WithTx(ctx, pool, user, func(tx pgx.Tx, _ string) error {
+			_, err := tx.Exec(ctx, "UPDATE tasks SET "+set+" WHERE user_id=$1 AND id=$2", user, task)
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	update("title='after',description='edited',priority='high',revision=revision+1,updated_at=CURRENT_TIMESTAMP")
+	update("end_time='14:00'")
+	if calls != 0 {
+		t.Fatal("presentation-only changes woke scheduler")
+	}
+	for i, set := range []string{"scheduled_date=scheduled_date+1", "start_time='12:30'", "deadline=CURRENT_TIMESTAMP+interval '1 day'", "status='complete'", "deleted_at=CURRENT_TIMESTAMP", "deleted_at=NULL"} {
+		update(set)
+		if calls != i+1 {
+			t.Fatalf("schedule change %q missing wake", set)
+		}
+	}
+	update("start_time=start_time,deadline=deadline,status=status,revision=revision+1")
+	if calls != 6 {
+		t.Fatal("no-op schedule update woke scheduler")
+	}
+}
+
+func TestHorizonSingleLargeSeries(t *testing.T) {
+	pool, exec, user := progressDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	series := uuid.NewString()
+	exec(progressSeriesSQL, user, series, now)
+	exec(`UPDATE recurrence_series SET start_date=$3::timestamptz::date-200000,deadline_offset=-10,deadline_time='09:00'
+ WHERE user_id=$1 AND id=$2`, user, series, now)
+	exec("INSERT INTO notification_preferences(user_id,task_start,deadline) VALUES($1,true,true)", user)
+	exec(`INSERT INTO tasks(user_id,id,title,series_id,original_occurrence_date,scheduled_date,created_at,updated_at)
+ SELECT $1,md5('history'||g)::uuid,'history',$2,$3::timestamptz::date-g,$3::timestamptz::date-g,$3,$3
+ FROM generate_series(1,100000) g`, user, series, now)
+	exec(`INSERT INTO recurrence_exceptions(user_id,series_id,original_occurrence_date,reason,created_at)
+ SELECT $1,$2,$3::timestamptz::date-100000-g,'invalid_local_time',$3 FROM generate_series(1,100000) g`, user, series, now)
+	exec("ANALYZE tasks")
+	exec("ANALYZE recurrence_exceptions")
+	exec("ANALYZE recurrence_series")
+	exec("UPDATE notification_horizons SET next_run_at=$1 WHERE user_id=$2", now, user)
+	backend := &NotificationSchedule{Pool: pool, Now: func() time.Time { return now }}
+	attempt, cancel := context.WithTimeout(ctx, 2*time.Second)
+	started := time.Now()
+	err := backend.Run(attempt, Horizon)
+	elapsed := time.Since(started)
+	cancel()
+	t.Logf("one series, 100k occurrences + 100k exceptions: %s", elapsed)
+	if err != nil {
+		t.Fatalf("bounded series exceeded budget or failed: %v", err)
+	}
+	var after string
+	if err = pool.QueryRow(ctx, "SELECT after_series::text FROM notification_horizons WHERE user_id=$1", user).Scan(&after); err != nil || after != series {
+		t.Fatalf("progress not committed: %s %v", after, err)
+	}
+	var count int
+	if err = pool.QueryRow(ctx, "SELECT count(*) FROM tasks WHERE user_id=$1 AND scheduled_date >= $2::timestamptz::date", user, now).Scan(&count); err != nil || count != 8 {
+		t.Fatalf("bounded horizon created %d occurrences: %v", count, err)
+	}
+	// A fresh backend must finish the page without redoing the large history.
+	attempt, cancel = context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	backend = &NotificationSchedule{Pool: pool, Now: func() time.Time { return now }}
+	if err = backend.Run(attempt, Horizon); err != nil {
+		t.Fatal(err)
+	}
+	var due time.Time
+	if err = pool.QueryRow(ctx, "SELECT next_run_at FROM notification_horizons WHERE user_id=$1", user).Scan(&due); err != nil || !due.After(now) {
+		t.Fatalf("cycle did not finish: %v %v", due, err)
 	}
 }

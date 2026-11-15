@@ -17,7 +17,7 @@ func TestWorkerSettlesFocusWithoutClientRead(t *testing.T) {
 	logicalEnd := now.Add(10 * time.Minute)
 	now = now.Add(3 * time.Hour)
 	for i := 0; i < 2; i++ {
-		if _, err := workers.Sweep(context.Background(), p, s.now); err != nil {
+		if err := (&workers.NotificationSchedule{Pool: p, Now: s.now}).Run(context.Background(), workers.Focus); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -50,7 +50,7 @@ func TestWorkerLeavesPausedFocusUntouched(t *testing.T) {
 	now = now.Add(20 * time.Second)
 	object(t, command(s, "POST", "/api/v1/focus/"+a["id"].(string)+"/pause", map[string]any{"expectedRevision": 1}, c, csrf, uuid.NewString()), 200)
 	now = now.Add(time.Hour)
-	if _, err := workers.Sweep(context.Background(), p, s.now); err != nil {
+	if err := (&workers.NotificationSchedule{Pool: p, Now: s.now}).Run(context.Background(), workers.Focus); err != nil {
 		t.Fatal(err)
 	}
 	var status string
@@ -67,9 +67,10 @@ func TestWorkerMaterializesReminderHorizonWithoutCalendarRead(t *testing.T) {
 	s, pool := testServer(t)
 	s.now = func() time.Time { return atDate("2030-10-19") }
 	cookie, csrf := register(t, s, "worker-horizon@example.com")
-	created := series(t, s, cookie, csrf, "daily", 1, nil)
+	object(t, command(s, "PUT", "/api/v1/notifications/preferences", map[string]any{"expectedRevision": 1, "taskStart": true, "leadMinutes": 5}, cookie, csrf, uuid.NewString()), 200)
+	created := object(t, command(s, "POST", "/api/v1/series", map[string]any{"task": map[string]any{"title": "Reminder", "scheduledDate": "2030-10-19", "startTime": "13:00", "endTime": "14:00"}, "cadence": "daily"}, cookie, csrf, uuid.NewString()), 201)
 	for i := 0; i < 2; i++ {
-		if _, err := workers.Sweep(context.Background(), pool, s.now); err != nil {
+		if err := (&workers.NotificationSchedule{Pool: pool, Now: s.now}).Run(context.Background(), workers.Horizon); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -91,7 +92,7 @@ func TestWorkerMaterializesEarlyRecurringDeadline(t *testing.T) {
 	s.now = func() time.Time { return atDate("2030-10-21") }
 	// A delayed run still materializes yesterday's due deadline even though
 	// its scheduled occurrence is nine days away.
-	if _, err := workers.Sweep(context.Background(), pool, s.now); err != nil {
+	if err := (&workers.NotificationSchedule{Pool: pool, Now: s.now}).Run(context.Background(), workers.Horizon); err != nil {
 		t.Fatal(err)
 	}
 	var count int

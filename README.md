@@ -52,15 +52,13 @@ Task/group/settings writes also require an `Idempotency-Key` (16–128 character
 
 Ended days are finalized before domain reads/mutations. Catch-up uses at most 31 calendar days per transaction and a persisted watermark; the user command runs only after all necessary batches finish. A zone change first settles the old zone; forward jumps seal crossed dates at change time, and backward jumps preserve snapshots until an explicit task adjustment. Future DST gaps are skipped with an explicit calendar warning and no missed-task penalty. An overlap resolves to the earlier instant; unfinalized future gap predictions are reevaluated after zone changes.
 
-Run the worker in another terminal:
-
-```sh
-make worker-dev       # one sweep per minute
-make worker-once      # one sweep, useful for local smoke checks
-make build-worker     # .local/focus-worker
-```
-
-The periodic worker retains its account cursor between bounded sweeps and limits individual account attempts to two seconds. Blocked accounts are retried after the cursor wraps, without preventing later accounts from being processed. The API uses the same lock/catch-up code and remains correct when the worker is stopped. Very large single-account batches may require query tuning; production load testing is not part of this milestone.
+The API runs the embedded notification scheduler automatically. Run `make api-dev`
+after migrations; no separate worker or Cron is needed. Focus settlement,
+notification delivery, recurring reminder horizons and retention cleanup have
+independent bounded lanes. Domain reads/mutations retain historical planning
+catch-up. Reconciliation runs every 15 minutes as a final recovery mechanism.
+See [deployment instructions](deploy/README.md) for the single-instance runtime
+requirement and removal of the old Cloudflare schedule.
 
 ```sh
 make lint-go           # installs the pinned linter locally on first run

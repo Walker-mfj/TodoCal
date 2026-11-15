@@ -8,7 +8,6 @@ var routes = map[string]struct{}{
 	"PUT /api/v1/notifications/preferences":             {},
 	"POST /api/v1/notifications/subscriptions":          {},
 	"DELETE /api/v1/notifications/subscriptions/{id}":   {},
-	"POST /internal/jobs":                               {},
 	"POST /api/v1/monitoring/errors":                    {},
 	"POST /api/v1/auth/register":                        {},
 	"POST /api/v1/auth/login":                           {},

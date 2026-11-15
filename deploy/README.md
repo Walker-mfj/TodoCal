@@ -1,6 +1,6 @@
 # TodoCal free deployment
 
-Next.js static assets run on Cloudflare Workers. A small Worker forwards `/api/*` to Render Free, with PostgreSQL on Neon Free. A Cloudflare scheduled handler invokes bounded API jobs; API catch-up remains active. Cold starts are expected.
+Next.js static assets run on Cloudflare Workers. A small Worker forwards `/api/*` to Render Free, with PostgreSQL on Neon Free. The Go API runs the notification scheduler; API planning catch-up remains active. Cold starts are expected.
 
 ## Configuration
 
@@ -56,73 +56,61 @@ Run `make typecheck test-web test-go`, `node --test deploy/cloudflare/worker.tes
 
 On the live URL verify registration/login, session reload, create/edit task, calendar, timer, logout, cache headers, direct API rejection and cold-start recovery. Use a dedicated test account. Do not import local user data without a specific request. Keep backups outside Git and test restoration into a separate database.
 
-## Scheduled jobs and Web Push
+## Embedded notification scheduler and Web Push
 
-This implementation adds a Cloudflare cron trigger every minute. Its `scheduled` handler calls Render `POST /internal/jobs`; the API settles expired timers, materializes upcoming recurrence, and delivers bounded notification batches. API catch-up remains a fallback. Deployment of this configuration and real Web Push delivery have not been verified by local tests.
+The Go API starts the notification scheduler automatically. There is no enable
+flag, legacy jobs HTTP endpoint, minute sweeper, or standalone worker process.
+Apply migrations through 000021 before starting the API (the Render startup
+script already migrates before serving).
 
-Configure the following before deploying the cron-enabled Worker:
+Configure the following **Render** environment variables for Web Push:
 
-- Set a separate random `JOBS_SECRET` of at least 32 characters in **both** Render and Cloudflare Worker secrets. Do not reuse `PROXY_SECRET`. The job endpoint requires this bearer credential plus the configured Origin and JSON content type; it does not accept user sessions as authorization.
-- Set `APP_ORIGIN` in Cloudflare to the same exact HTTPS application origin configured in Render. Keep `API_ORIGIN` pointing to the Render API. Missing job configuration makes scheduled runs fail visibly; normal app requests remain independent.
-- To enable push, set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` in Render. Generate a matching P-256 VAPID pair using a trusted Web Push tool; use an operator contact `mailto:` or HTTPS subject. Store the private key only as a provider secret. Omit all three to leave Web Push disabled while timer settlement continues. A partial or invalid configuration fails API startup.
-- Deploy additive database migrations/backend first, verify `/readyz`, then publish the frontend/cron Worker. Do not rotate VAPID keys casually: existing browser subscriptions are bound to the old public key and need re-enrollment.
+- `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` (a `mailto:` or HTTPS
+  contact). Keep private keys in provider settings.
+- Keep `DATABASE_URL`, `APP_ORIGIN`, `PROXY_SECRET` and existing session settings.
+  Cloudflare still needs `API_ORIGIN` and `PROXY_SECRET` for the API proxy.
 
-The endpoint uses a 20-second execution budget, excludes concurrent in-process runs, and reports counts without private payloads. Database transactions and unique outbox identities guard repeated runs; external delivery is at least once across a crash. Monitor scheduled-handler failures and API job errors, queue age and expired timers. Free-host cold starts may exceed one minute; this is not an exact-time delivery service. A standalone `cmd/worker` remains available for a persistent process.
+Missing VAPID configuration disables delivery only; Focus settlement continues.
+The API owns one next-deadline timer with independent bounded lanes for Focus,
+Web Push delivery, recurrence horizons and terminal-outbox cleanup. Relevant
+committed changes wake the coordinator. Known failures and provider retries use
+explicit retry timers; reconciliation every **15 minutes** is only a final backup.
+Horizon commits one series and a durable cursor per batch. Historical planning
+catch-up remains at the API domain transaction boundary.
 
-For release verification, use a dedicated account and explicitly opt in on two devices. Check closed-tab Focus completion, deadline/start reminders, quiet hours, logout/revocation and one offline device. Confirm clicks navigate without starting a timer. Keep credentials and endpoints out of logs and test reports. No production secrets or live service settings are changed by the implementation PR.
+The scheduler assumes **one API instance**, without overlapping replicas or any
+old standalone worker. It does not implement cross-process leader election.
+Timers run only while the API process is running. Removing Cron also removes its
+periodic requests to Render: on a sleeping free instance, reminders cannot be
+sent until the API wakes. Choose an always-running instance if closed-tab,
+idle-time delivery is required.
 
-## Embedded notification scheduler (staged rollout)
+### Deploy the Cron removal
 
-`NOTIFICATION_SCHEDULER_ENABLED` defaults to `false`. Apply migrations through 000021
-before enabling it. With the flag enabled, the API owns one next-deadline timer,
-receives coalesced wakes after committed schedule changes, and uses separate
-bounded lanes for Focus settlement, Web Push delivery, recurrence horizons and
-outbox cleanup. Missing VAPID disables delivery only; Focus still settles.
+1. Deploy the API release and verify startup, readiness and a test Focus reminder.
+   The scheduler now runs regardless of any obsolete enable-flag environment value.
+2. Deploy the Cloudflare Worker from this release. `triggers.crons` is explicitly
+   `[]`: Wrangler removes existing Cron Triggers on deploy. Do not omit this key,
+   because omission preserves previously deployed triggers. The Worker has no
+   scheduled handler and remains the frontend/static asset server and API proxy.
+3. Confirm the Worker has no Cron Triggers, then remove obsolete `JOBS_SECRET`
+   secrets from Render and Cloudflare, `NOTIFICATION_SCHEDULER_ENABLED` from
+   Render, and the Cron-only `APP_ORIGIN` from Cloudflare if present. Keep
+   **Render** `APP_ORIGIN`. Stop any separately deployed legacy worker process.
 
-The scheduler currently assumes **one Go API instance** and no separate
-`cmd/worker` process. It is not a cross-process leader-election implementation.
-Do not enable it for overlapping API replicas without adding shared ownership
-and cross-instance wake delivery. An idle/sleeping Render instance cannot send.
+This PR changes source/configuration only; it does not deploy or delete live
+secrets. API and Worker deployment are independent. During cutover, an old Cron
+request reaching the new API receives 404 and cannot dispatch notifications.
 
-- Normal deadlines and committed edits run immediately; provider retries use
-  durable `next_attempt_at`. Query/work failures use exponential backoff with
-  jitter (initially 1 second, capped base 60 seconds).
-- Focus and horizon lanes rotate through due accounts in stable user-ID order.
-  Each lane advances its own cursor before attempting work, including on errors
-  or timeouts, so a failing account cannot monopolize selection. Its unfinished
-  DB work remains eligible on the next wrap; restarting resets only the cursor.
-- Reconciliation reloads deadlines every **15 minutes** as a final safety net.
-  It does not scan every account. Recurrence edits invalidate an indexed durable
-  per-account horizon deadline; horizon work commits one series per pass and
-  reschedules eligible accounts at their next local midnight after the final page.
-- Scheduler send cutoffs: Focus/Break/lead 5 minutes, task start 10 minutes,
-  deadline 15 minutes. Lead reminders never start sending at/after task start.
-  Retries beyond cutoff are canceled. A truly missed wake may be discovered too
-  late by reconciliation and intentionally suppressed; Focus state still settles.
-- Terminal outbox records are retained for 30 days. Cleanup deletes up to 500
-  per transaction and persists the next run/checkpoint; a full batch continues
-  after one second. Pending deliveries are never deleted by retention cleanup.
+Verify with dedicated test accounts: closed-tab Focus completion, pause/resume,
+start/deadline edits, recurring reminders, retry and restart, quiet hours and
+subscription revocation. Keep terminal-outbox retention at 30 days; pending
+retries are never removed by cleanup. Existing lateness cutoffs remain: Focus,
+break and lead 5 minutes, task start 10 minutes, deadline 15 minutes; lead stops
+at task start. No database migrations or timeout changes are needed for cleanup.
 
-Rollout sequence:
-
-1. Deploy migrations/backend with the flag false; verify tests and readiness.
-2. Enable the flag on the single API instance. While enabled, authenticated
-   `/internal/jobs` calls return a no-op response, so the existing Cron cannot
-   concurrently dispatch. Keep `JOBS_SECRET` until the rollout is verified.
-3. Verify real push timing, edits, Focus pause/resume, retries and restart with
-   dedicated test accounts. Watch sanitized scheduler error logs and outbox age.
-4. In a follow-up release after verification, remove the Cloudflare Cron trigger,
-   scheduled handler, jobs route/tests and `JOBS_SECRET`. Removing Cron changes
-   Render idle/sleep behavior; verify that product trade-off explicitly.
-
-Before step 4, rollback is setting the flag false and restarting the API; the
-existing Cron resumes dispatch under the legacy 24-hour policy. Do not roll back
-migrations 000019–000021 while a scheduler-enabled binary is running. This change does
-not alter live flags, Cron triggers or secrets.
-
-Run `make test-integration` for the separate `focus_scheduler_test` database as
-well as existing integration suites. Never point test URLs at development or
-production data.
+Run `make test-integration` for isolated PostgreSQL suites and
+`node --test deploy/cloudflare/worker.test.mjs` for the proxy/empty-Cron contract.
 
 ### Scheduler review follow-up: progress and query cost
 
@@ -181,5 +169,5 @@ The benchmark and database integration cases have not yet been executed in the
 restricted editing environment. Do not treat the two-second deadline-query
 budget as validated at 100k tasks until these results are recorded on PostgreSQL.
 If that budget is exceeded, evaluate a mutation-maintained deadline table using
-these plans before enabling the scheduler at that scale. Reconciliation remains
+these plans before expanding deployment to that scale. Reconciliation remains
 a 15-minute recovery mechanism, not the notification timing path.

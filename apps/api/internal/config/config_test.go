@@ -2,29 +2,6 @@ package config
 
 import "testing"
 
-func TestNotificationSchedulerFlag(t *testing.T) {
-	for _, value := range []string{"", "false", "true", "typo"} {
-		cfg, err := Load(func(k string) string {
-			if k == "DATABASE_URL" {
-				return "postgres://localhost/focus"
-			}
-			if k == "NOTIFICATION_SCHEDULER_ENABLED" {
-				return value
-			}
-			return ""
-		})
-		if value == "typo" {
-			if err == nil {
-				t.Fatal("accepted invalid flag")
-			}
-			continue
-		}
-		if err != nil || cfg.NotificationScheduler != (value == "true") {
-			t.Fatalf("flag %q: %+v %v", value, cfg, err)
-		}
-	}
-}
-
 func TestConfigRejectsUnsafeOrIncompleteDeployment(t *testing.T) {
 	for _, env := range []map[string]string{
 		{},

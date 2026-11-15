@@ -69,7 +69,7 @@ func HTTP(next http.Handler, logger *slog.Logger) http.Handler {
 				code = 200
 			}
 			// Healthy probes and ingest/job loops do not produce completion noise.
-			if complete && code < 400 && (s.route == "GET /healthz" || s.route == "GET /readyz" || s.route == "POST /internal/jobs" || s.route == "POST /api/v1/monitoring/errors") {
+			if complete && code < 400 && (s.route == "GET /healthz" || s.route == "GET /readyz" || s.route == "POST /api/v1/monitoring/errors") {
 				return
 			}
 			method := r.Method

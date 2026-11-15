@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"focuscalendar/internal/database"
 	"github.com/jackc/pgx/v5"
 	"time"
 )
@@ -49,7 +50,7 @@ func (s *Auth) Refresh(ctx context.Context, token string) (SessionResult, error)
 	if consumed != nil && !consumed.Add(30*time.Second).After(now) {
 		_, err = tx.Exec(ctx, "UPDATE auth_sessions SET revoked_at=$2 WHERE id=$1", id, now)
 		if err == nil {
-			err = tx.Commit(ctx)
+			err = database.Commit(ctx, tx)
 		}
 		if err != nil {
 			return SessionResult{}, err
@@ -65,7 +66,7 @@ func (s *Auth) Refresh(ctx context.Context, token string) (SessionResult, error)
 		if err := readRefreshResponse(token, id, response, &out); err != nil {
 			return SessionResult{}, err
 		}
-		return out, tx.Commit(ctx)
+		return out, database.Commit(ctx, tx)
 	}
 	if consumed != nil {
 		return retry()
@@ -104,7 +105,7 @@ func (s *Auth) Refresh(ctx context.Context, token string) (SessionResult, error)
 		_, err = tx.Exec(ctx, `UPDATE auth_sessions SET token_hash=$2,csrf_hash=$3,expires_at=$4,refresh_expires_at=$5 WHERE id=$1`, id, tokenHash(out.Token), tokenHash(out.CSRF), now.Add(time.Hour), now.Add(30*24*time.Hour))
 	}
 	if err == nil {
-		err = tx.Commit(ctx)
+		err = database.Commit(ctx, tx)
 	}
 	return out, err
 }

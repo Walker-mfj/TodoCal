@@ -12,6 +12,12 @@ import (
 )
 
 func Materialize(ctx context.Context, tx pgx.Tx, user, zone, from, to string, now time.Time, explicitSeries ...string) error {
+	return materializeSelected(ctx, tx, user, zone, from, to, now, "", explicitSeries...)
+}
+
+// selected restricts the scheduler batch; explicitSeries retains the separate
+// user-command permission to materialize against a finalized snapshot.
+func materializeSelected(ctx context.Context, tx pgx.Tx, user, zone, from, to string, now time.Time, selected string, explicitSeries ...string) error {
 	explicit := ""
 	if len(explicitSeries) > 0 {
 		explicit = explicitSeries[0]
@@ -29,7 +35,7 @@ func Materialize(ctx context.Context, tx pgx.Tx, user, zone, from, to string, no
 	if e != nil {
 		return e
 	}
-	all, e := repository.ListMaterializableSeries(ctx, tx, user, from, to)
+	all, e := repository.ListMaterializableSeries(ctx, tx, user, from, to, selected)
 	if e != nil {
 		return e
 	}

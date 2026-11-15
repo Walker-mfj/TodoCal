@@ -70,3 +70,116 @@ Configure the following before deploying the cron-enabled Worker:
 The endpoint uses a 20-second execution budget, excludes concurrent in-process runs, and reports counts without private payloads. Database transactions and unique outbox identities guard repeated runs; external delivery is at least once across a crash. Monitor scheduled-handler failures and API job errors, queue age and expired timers. Free-host cold starts may exceed one minute; this is not an exact-time delivery service. A standalone `cmd/worker` remains available for a persistent process.
 
 For release verification, use a dedicated account and explicitly opt in on two devices. Check closed-tab Focus completion, deadline/start reminders, quiet hours, logout/revocation and one offline device. Confirm clicks navigate without starting a timer. Keep credentials and endpoints out of logs and test reports. No production secrets or live service settings are changed by the implementation PR.
+
+## Embedded notification scheduler (staged rollout)
+
+`NOTIFICATION_SCHEDULER_ENABLED` defaults to `false`. Apply migrations through 000021
+before enabling it. With the flag enabled, the API owns one next-deadline timer,
+receives coalesced wakes after committed schedule changes, and uses separate
+bounded lanes for Focus settlement, Web Push delivery, recurrence horizons and
+outbox cleanup. Missing VAPID disables delivery only; Focus still settles.
+
+The scheduler currently assumes **one Go API instance** and no separate
+`cmd/worker` process. It is not a cross-process leader-election implementation.
+Do not enable it for overlapping API replicas without adding shared ownership
+and cross-instance wake delivery. An idle/sleeping Render instance cannot send.
+
+- Normal deadlines and committed edits run immediately; provider retries use
+  durable `next_attempt_at`. Query/work failures use exponential backoff with
+  jitter (initially 1 second, capped base 60 seconds).
+- Focus and horizon lanes rotate through due accounts in stable user-ID order.
+  Each lane advances its own cursor before attempting work, including on errors
+  or timeouts, so a failing account cannot monopolize selection. Its unfinished
+  DB work remains eligible on the next wrap; restarting resets only the cursor.
+- Reconciliation reloads deadlines every **15 minutes** as a final safety net.
+  It does not scan every account. Recurrence edits invalidate an indexed durable
+  per-account horizon deadline; horizon work commits one series per pass and
+  reschedules eligible accounts at their next local midnight after the final page.
+- Scheduler send cutoffs: Focus/Break/lead 5 minutes, task start 10 minutes,
+  deadline 15 minutes. Lead reminders never start sending at/after task start.
+  Retries beyond cutoff are canceled. A truly missed wake may be discovered too
+  late by reconciliation and intentionally suppressed; Focus state still settles.
+- Terminal outbox records are retained for 30 days. Cleanup deletes up to 500
+  per transaction and persists the next run/checkpoint; a full batch continues
+  after one second. Pending deliveries are never deleted by retention cleanup.
+
+Rollout sequence:
+
+1. Deploy migrations/backend with the flag false; verify tests and readiness.
+2. Enable the flag on the single API instance. While enabled, authenticated
+   `/internal/jobs` calls return a no-op response, so the existing Cron cannot
+   concurrently dispatch. Keep `JOBS_SECRET` until the rollout is verified.
+3. Verify real push timing, edits, Focus pause/resume, retries and restart with
+   dedicated test accounts. Watch sanitized scheduler error logs and outbox age.
+4. In a follow-up release after verification, remove the Cloudflare Cron trigger,
+   scheduled handler, jobs route/tests and `JOBS_SECRET`. Removing Cron changes
+   Render idle/sleep behavior; verify that product trade-off explicitly.
+
+Before step 4, rollback is setting the flag false and restarting the API; the
+existing Cron resumes dispatch under the legacy 24-hour policy. Do not roll back
+migrations 000019–000021 while a scheduler-enabled binary is running. This change does
+not alter live flags, Cron triggers or secrets.
+
+Run `make test-integration` for the separate `focus_scheduler_test` database as
+well as existing integration suites. Never point test URLs at development or
+production data.
+
+### Scheduler review follow-up: progress and query cost
+
+Migration 000020 marks schedule changes with a transaction-local dirty flag.
+The application publishes only after a dirty transaction commits. Read-only GETs
+and planning cursor writes do not wake the coordinator; GETs that materialize
+occurrences or settle Focus do. The flag rolls back with the mutation. Migration 000021 narrows task UPDATE
+wakes to identity, scheduled date/start, deadline, status and deletion changes.
+Title, description, priority, end time and revision-only edits do not change the
+candidate schedule or generic push payload and do not publish a wake.
+
+Horizon commits one recurring series (at most eight local dates) with a durable
+`after_series` cursor per attempt. Retries/restarts retain completed batches;
+mutations reset the cursor under the same account lock. The cycle timestamp is
+pinned until its final page, so midnight cannot move the target while paging.
+Accounts without eligible recurring task/deadline reminders have a NULL deadline;
+preference, timezone and recurrence edits reactivate them when needed. Focus
+settlement and on-demand calendar recurrence remain independent of this filter.
+A single bounded batch can still time out during database unavailability; it is
+retried without repeating previously committed series.
+
+`NextDue` uses an EXISTS device check to avoid multiplying candidates by device
+count. Its outbox lookup already has the unique `(subscription_id,event_key)`
+index; retries use `notification_pending`. Migration 000020 adds an exact UTC
+Focus deadline expression index, a completed-Focus time index and a partial
+Task deadline index. These are not a substitute for measuring the global view.
+
+Run the opt-in benchmark against a **dedicated disposable** database ending in
+`_scheduler_bench_test` (it truncates users and dependent data). It tests 1k, 10k,
+100k tasks with 100/1k/10k accounts and 1/5 devices per account. Each account has
+a running Focus session, completed Focus history and a Horizon deadline; cleanup
+is also scheduled. It calls the full `NotificationSchedule.Next()` under the
+same two-second timeout used by the coordinator, captures its actual SQL for
+EXPLAIN ANALYZE BUFFERS, and reports the first call plus mean/max warm latency.
+Separate candidate and full-Next measurements help isolate query cost:
+
+```sh
+cd apps/api
+SCHEDULER_BENCHMARK_DATABASE_URL='postgres://.../focus_scheduler_bench_test' \
+  go test ./internal/services -run '^$' -bench '^BenchmarkNotificationSchedule$' \
+  -benchtime=10x -count=1 -v
+```
+
+CI runs `bash scripts/benchmarkScheduler.sh` after integration tests and uploads
+`scheduler-query-plans` with the EXPLAIN output and timings.
+
+The integration suite also exercises one series with 100k historical occurrences
+and 100k recurrence exceptions, including a negative deadline offset. Its first
+Horizon batch must commit all eight new occurrences and its cursor within two
+seconds; a fresh backend must finish the cycle on the next bounded call. This
+checks large history, not arbitrary database slowness or lock contention. No
+further Horizon architecture change is justified without measurements showing
+that a bounded series exceeds the budget.
+
+The benchmark and database integration cases have not yet been executed in the
+restricted editing environment. Do not treat the two-second deadline-query
+budget as validated at 100k tasks until these results are recorded on PostgreSQL.
+If that budget is exceeded, evaluate a mutation-maintained deadline table using
+these plans before enabling the scheduler at that scale. Reconciliation remains
+a 15-minute recovery mechanism, not the notification timing path.

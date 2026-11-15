@@ -10,6 +10,7 @@ import (
 type Config struct {
 	DatabaseURL, Origin, Address string
 	Secure                       bool
+	NotificationScheduler        bool
 }
 
 func Load(getenv func(string) string) (Config, error) {
@@ -32,6 +33,12 @@ func Load(getenv func(string) string) (Config, error) {
 		return c, errors.New("non-local APP_ORIGIN requires HTTPS")
 	}
 	c.Secure = u.Scheme == "https"
+	if v := getenv("NOTIFICATION_SCHEDULER_ENABLED"); v != "" {
+		c.NotificationScheduler, err = strconv.ParseBool(v)
+		if err != nil {
+			return c, errors.New("NOTIFICATION_SCHEDULER_ENABLED must be true or false")
+		}
+	}
 	if v := getenv("COOKIE_SECURE"); v != "" {
 		c.Secure, err = strconv.ParseBool(v)
 		if err != nil {

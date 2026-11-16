@@ -276,7 +276,6 @@ make lint-go
 make test-go
 make test-integration
 make build-api
-make build-worker
 
 # Read-only FE quality gates using the selected tools
 (cd apps/web && npm run format:check)  # oxfmt --check

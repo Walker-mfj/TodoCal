@@ -1,6 +1,6 @@
 # 16 — Implementation Backlog & Verification
 
-> **Status: Implemented in one PR; local verification is recorded below.** The original review findings are retained as baseline context. Production scheduler configuration and real-device Web Push delivery remain release checks; they are not claimed by local tests.
+> **Status: Implemented; historical verification is recorded below.** The scheduler and legacy Cron cleanup were completed in PRs #32 and #35. The original review findings are retained as baseline context. Production scheduler configuration and real-device Web Push delivery remain release checks; they are not claimed by local tests.
 
 ## Scope decision — 2026-11-01
 
@@ -103,9 +103,9 @@ See [recurrence current implementation](06-recurrence.md) and [acceptance scenar
 
 ## GAP-06 — Durable Focus completion and deployment
 
-**Baseline before implementation:** `apps/api/internal/services/focusService.go` settles expired running sessions on relevant Focus reads/commands. The current planning sweeper (`apps/api/internal/workers/sweeper.go`) runs planning `WithTx`, not proactive Focus completion. The live free deployment (`render.yaml` and `deploy/README.md`) has a web API but **no separate always-on worker**.
+**Baseline before implementation:** `apps/api/internal/services/focusService.go` settles expired running sessions on relevant Focus reads/commands. The former planning sweeper ran planning `WithTx`, not proactive Focus completion. It has since been removed; current scheduling and deployment limits are documented in [scheduler architecture](../architecture/notificationScheduler.md).
 
-**Implemented change:** make expired Focus session reconciliation idempotent and runnable by a scheduled job outside user browser tabs. Preserve the logical completion timestamp (target reach), one Pomodoro, closed focus intervals and dependent analytics/cache consistency. Pick a real scheduler compatible with the chosen hosting plan; **Render Free process sleeping cannot guarantee minute-accurate cron inside the API**. Design for late or repeated job delivery and monitor backlog.
+**Implemented change:** make expired Focus session reconciliation idempotent and runnable by a scheduled job outside user browser tabs. Preserve the logical completion timestamp (target reach), one Pomodoro, closed focus intervals and dependent analytics/cache consistency. The embedded Go scheduler is implemented and starts with the API; **a sleeping Render Free process cannot run its timers**. Design for late or repeated job delivery and monitor backlog.
 
 **Acceptance:** a fully closed browser does not block eventual server settlement; duplicate sweeps cannot double-count; offline/paused sessions and mid-night boundaries remain correct; report totals agree after catch-up.
 
@@ -179,7 +179,7 @@ The numbering below follows the original structure-refactor report: 16 Chrome fa
 
 All 17 original findings have a disposition; none remains C. Additional defects discovered while completing the journeys (modal Tab traversal, timer names/mode semantics, WebKit quick-Focus pointer retargeting) were fixed separately. Finite theme transitions are awaited before axe contrast measurement. Later Firefox failures were test synchronization issues: the full keyboard journey needed a 90-second budget, and Month creation needed to await removal of the draft before asserting exactly one saved event. No blind retries or disabled axe rules were introduced.
 
-The completed pre-review browser run was 46/46 per engine (138 total), also green in PR CI at `9e64bcb`. That evidence is separate from verification of subsequent review fixes. Real-device Web Push remains a release check: verify the deployed cron → Render job → VAPID provider → closed-browser/device notification and click destination. Unit/integration tests and service-worker mocks do not establish delivery through the OS.
+The completed pre-review browser run was 46/46 per engine (138 total), also green in PR CI at `9e64bcb`. That evidence is separate from verification of subsequent review fixes. Real-device Web Push remains a release check: verify the embedded Go scheduler → VAPID provider → closed-browser/device notification and click destination. Unit/integration tests and service-worker mocks do not establish delivery through the OS.
 
 ### Coverage mapping against 15 — Cross-feature Acceptance Scenarios
 
@@ -236,7 +236,7 @@ Do **not** modify these solely to match an outdated doc: `No plan` (null) versus
 |---|---|---|
 | GAP-01 | Shared service duration bounds; settings and legacy-default API tests; web validation | Existing sessions keep their targets |
 | GAP-02/03 | Original-slot tail split/delete, cadence changes, preserved IDs/history/exceptions, atomic revision-checked Undo; API and browser regressions | Keep legacy all/stop routes for older clients |
-| GAP-06 | Idempotent Focus settlement, authenticated bounded job endpoint, Cloudflare cron, recurring reminder horizons including early deadlines and delayed runs | Configure JOBS_SECRET and deploy scheduler |
+| GAP-06 | Idempotent Focus settlement, embedded deadline scheduler, recurring reminder horizons including early deadlines and durable per-series progress | Verify running API, retries/restarts and real-device delivery; see [scheduler architecture](../architecture/notificationScheduler.md) |
 | GAP-07 | Device opt-in/revocation, preferences, durable outbox, private payloads, retries, quiet hours, logout, earlier DST-overlap resolution; service/API/component tests | Configure VAPID; actual provider/closed-app delivery requires real-device release verification |
 | GAP-08/09 | Auth semantics, Escape focus return, timer labels, live calendar labels, modal Tab traversal and WebKit quick-Focus pointer behavior; isolated CI browser jobs | No claim of manual screen-reader or mobile certification |
 | GAP-04/05 | Excluded as requested | No Trash or immutable-baseline implementation |

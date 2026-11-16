@@ -16,7 +16,7 @@ An optional, account-wide Pomodoro timer: focus sessions attach to a task (or ru
 
 - **At most one active session** (running or paused) per user at any moment — enforced by a partial unique index in the database, not just in code.
 - The clock is *server-authoritative*: elapsed time is computed on the server from `running_since`/`accumulated_us`; clients only render and send start/pause/resume/end commands. `accumulated_us` never exceeds `target_seconds`.
-- A running session **logically reaches its target** at the server-computed end instant; the persisted row becomes `completed` when a later focus-settlement path runs (for example, `GET /focus` / `Active` or a focus command). A fully completed focus session earns `pomodoros = 1`. The current planning sweeper is **not** a guaranteed background Focus completion scheduler.
+- A running session **logically reaches its target** at the server-computed end instant; the persisted row becomes `completed` when a later focus-settlement path runs (for example, `GET /focus` / `Active` or a focus command). A fully completed focus session earns `pomodoros = 1`. The embedded scheduler also settles expired sessions while the API is running; a sleeping API delays persistence until it resumes.
 - A task's progress is computed at query time from its focus sessions: `actualFocusSeconds` = total `accumulated_us`; `focusProgress` = ratio against the target duration (counting completed/ended sessions).
 - Quick focus from the calendar: the event's quick-start control can start a task-bound session directly; opening the task panel and starting there is another path. If another session is active, offer that timer instead of starting a second session.
 
@@ -45,13 +45,13 @@ flowchart TD
 - The server is authoritative for focus timestamps, including after reload, sleep, or cross-device access. A client countdown estimates remaining time from the most recently fetched session state; it must not mutate the database or infer task completion on its own.
 - After the server confirms that a session completed, clients must invalidate/refetch task, calendar and analytics views that derive focus totals. A stale old task view must not subtract the completed session when the active timer disappears.
 - **Current notification behavior:** the web client can show a browser notification/sound when an observed active session transitions to completed, subject to permission and an active client. This is **not Web Push** and does not reliably notify when every app tab is closed.
-- The worker and authenticated scheduled-job endpoint persist expired Focus completion without a browser read. Cloudflare cron configuration invokes this endpoint; API catch-up remains a fallback. [Web Push](12-pwa-notifications.md) requires deployed scheduler/VAPID configuration and explicit device opt-in. Local tests do not verify live closed-browser delivery.
+- The embedded Go scheduler persists expired Focus completion without a browser read. It starts with the API and uses the next Focus deadline; API Focus reads/commands remain a fallback. There is no Cron or scheduled-job HTTP endpoint. [Web Push](12-pwa-notifications.md) requires deployed scheduler/VAPID configuration and explicit device opt-in. Local tests do not verify live closed-browser delivery.
 
 ## Acceptance checks
 
 1. A 25-minute session ended after 10 minutes records roughly 10 minutes and zero completed Pomodoros.
 2. Pausing/resuming or opening a second panel/device does not double-count time or drift a newly mounted clock back to the initial duration.
-3. A session past its target is settled at the logical end time on the next relevant server read/command, with one Pomodoro only.
+3. A session past its target is settled at the logical end time by the scheduler or next relevant server read/command, with one Pomodoro only.
 4. Upon server-confirmed completion, the task, calendar and report caches refresh; the task remains incomplete until the user completes it.
 
 ## Completion sounds

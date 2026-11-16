@@ -25,7 +25,7 @@ TodoCal/
 ├── api/openapi.yaml              Public REST contract; generated web types
 ├── apps/
 │   ├── web/                      Next.js user interface
-│   └── api/                      Go REST API and optional worker
+│   └── api/                      Go REST API with embedded scheduler
 ├── deploy/
 │   ├── cloudflare/               Frontend build, reverse proxy, Wrangler
 │   ├── README.md
@@ -139,8 +139,7 @@ app/ → home/ → features/ → shared/
 ```text
 apps/api/
 ├── cmd/
-│   ├── api/main.go                API startup and dependency wiring
-│   └── worker/main.go             Worker startup
+│   └── api/main.go                API and embedded scheduler startup
 └── internal/
     ├── router/                    Route registration
     ├── middleware/                HTTP security, proxy, request policies
@@ -253,12 +252,12 @@ For structural changes, follow these safeguards without repeating unnecessary mi
 ### Verification checklist
 
 - `make typecheck`, `make test-web` and `make build-web`; run **oxfmt `format:check`**, **oxlint `lint`** and `make check-web-architecture` as the local/CI quality gates.
-- `make test-go`, `make test-integration`, `make build-api` and `make build-worker`; retain `gofmt`/`go vet`; **`make lint-go`** runs the same pinned `golangci-lint` version/config as CI, and `make check-go-architecture` enforces package boundaries.
+- `make test-go`, `make test-integration`, `make build-api`; retain `gofmt`/`go vet`; **`make lint-go`** runs the same pinned `golangci-lint` version/config as CI, and `make check-go-architecture` enforces package boundaries.
 - `make generate-api-types` does not introduce unintended OpenAPI changes.
 - `make test-e2e` covers auth, tasks, calendar, Focus, analytics and settings.
 - Review visual states: light/dark, mobile/responsive, overlays, focus/hover, FullCalendar drag/resize.
 - Cover account isolation, conflict/revision, idempotency, schedule undo and atomic rollback in backend tests.
-- Verify Worker startup, migration embedding, test scripts and hosting references.
+- Verify API/scheduler startup, migration embedding, test scripts and hosting references.
 - Confirm there are no broken imports/links, newly circular packages, or accidental UI, schema or URL changes.
 
 **Documentation tracking note:** `.gitignore` currently contains `docs/**`. Previously tracked docs remain versioned, but **new** files under `docs/` are ignored by default in a normal local `git add`. Add an explicitly intended document with `git add -f <path>` or adjust ignore exceptions in a separate reviewed change; do not indiscriminately stage old local prototypes and generated assets.
@@ -271,7 +270,7 @@ For structural changes, follow these safeguards without repeating unnecessary mi
 - Keep styles near UI; don't add feature selectors to `globals.css`.
 - Use current destinations rather than obsolete paths: `home` instead of `workspace`, `shared/api` instead of `src/lib/api`, `controllers` instead of `internal/server` handlers, `services` for business logic, and `repository` for SQL.
 - When adding a feature, update the relevant feature doc and API contract before introducing new abstractions.
-- Never claim a background worker is always available just because `cmd/worker` exists. The [free deployment](../../deploy/README.md) currently has no dedicated always-on worker.
+- The embedded scheduler runs only while the API process runs. The [free deployment](../../deploy/README.md) can sleep; in-process timers do not guarantee reminders while it is idle.
 
 ## Related documents
 

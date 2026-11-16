@@ -23,7 +23,7 @@ Go net/http REST API (apps/api)
        PostgreSQL
 ```
 
-The current production setup uses **Cloudflare Workers/static assets** for the web app and API proxy, **Render** for the Go API and **Neon** for managed PostgreSQL. Local development uses Docker Compose for PostgreSQL. API and worker have separate Go entry points, but the free production deployment does **not** run an always-on background worker.
+The current production setup uses **Cloudflare Workers/static assets** for the web app and API proxy, **Render** for the Go API and **Neon** for managed PostgreSQL. Local development uses Docker Compose for PostgreSQL. The Go API starts the embedded notification scheduler automatically; there is no separate worker executable. The free API instance can sleep.
 
 **Version sources of truth:**
 - `apps/web/package.json` and `apps/web/package-lock.json`: frontend dependencies and pinned resolutions.
@@ -57,7 +57,7 @@ Avoid duplicating exhaustive dependency-version lists in this document. Review t
 
 | Technology | Responsibility / existing use | Guidance |
 |---|---|---|
-| **Go + standard `net/http`** | API server, routing, request handling, business services and worker executable | Keep `controllers → services → repository` boundaries. Use existing standard-library routing/middleware before introducing another web framework. |
+| **Go + standard `net/http`** | API server, routing, request handling, business services and embedded scheduler | Keep `controllers → services → repository` boundaries. Use existing standard-library routing/middleware before introducing another web framework. |
 | **pgx/v5 (incl. pgxpool)** | PostgreSQL connections, transactions, typed query/row operations | Repositories own SQL. Use the shared `repository.DBTX` pattern and service-selected transaction; do not add an ORM for ordinary persistence. |
 | **PostgreSQL** | Account-owned tasks, schedules, recurrence, focus, planning snapshots and receipts | Retain ownership predicates, uniqueness constraints, revision checks, transaction safety and indexes. |
 | **golang-migrate** | Embedded versioned SQL migrations | Add new up/down migrations for schema changes; do not rewrite migrations already applied to an environment. |
@@ -71,7 +71,7 @@ Avoid duplicating exhaustive dependency-version lists in this document. Review t
 - `database.WithTx` serializes account operations with a settings-row `SELECT ... FOR UPDATE` lock (**not** a PostgreSQL advisory lock).
 - Service code owns business invariants; repositories own SQL/scans; controllers map errors and responses. Worker jobs must reuse business services rather than bypass their transaction rules.
 
-**Database/runtime constraint:** The free Render API process may sleep; the presence of `cmd/worker` does not imply a reliable background scheduler in production. Do not promise background Focus completion or Web Push until implemented and deployed.
+**Database/runtime constraint:** The [embedded scheduler](notificationScheduler.md) settles Focus and dispatches Web Push while the API runs. A sleeping Render API cannot execute timers or send reminders. Delivery also requires VAPID configuration, device opt-in and provider availability.
 
 ## 4. API, monitoring and deployment
 
@@ -121,7 +121,6 @@ make lint-go check-go-architecture
 make test-go
 make test-integration
 make build-api
-make build-worker
 ```
 
 The `format` script uses oxfmt and modifies files; `format:check` is read-only. `generate:api` also formats generated types with oxfmt; Prettier is removed. `make lint-go` installs the checksummed pinned binary into an ignored local cache, without adding a runtime Go dependency.

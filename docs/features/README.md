@@ -23,14 +23,15 @@ This documentation set describes each TodoCal feature: its purpose, core concept
 
 ## Overall architecture
 
-TodoCal consists of three processes: the web app (Next.js), the API (Go REST), and a background worker (Go). All data operations go through the API; the web app never touches PostgreSQL directly.
+TodoCal serves the Next.js web app through Cloudflare and runs a Go API with an embedded notification scheduler. There is no standalone worker process. All web data operations go through the API; the web app never touches PostgreSQL directly. See [scheduler architecture](../architecture/notificationScheduler.md).
 
 ```mermaid
 flowchart LR
     U[User] --> WEB[Next.js Web<br/>apps/web]
     WEB -->|REST + Idempotency-Key| API[Go API<br/>apps/api/cmd/api]
     API --> DB[(PostgreSQL)]
-    WRK[Background worker<br/>apps/api/cmd/worker<br/>sweeps every 1 minute] --> DB
+    API --> S[Embedded scheduler]
+    S --> DB
     API -->|error events<br/>daily-budgeted| BS[Better Stack]
     WEB -->|browser errors via API| API
 ```
@@ -38,15 +39,15 @@ flowchart LR
 ## Cross-cutting principles
 
 - **The server is the single source of truth**: clients only render and send commands; all validation, finalization, and occurrence generation happen on the server.
-- **Every write command runs in one per-account transaction** (`WithTx`): advisory lock per user → `Settle` (finalize elapsed days) → idempotency receipt check → execute → store receipt. See [10-command-pipeline.md](10-command-pipeline.md).
+- **Every write command runs in one per-account transaction** (`WithTx`): account settings-row lock → `Settle` (finalize elapsed days) → idempotency receipt check → execute → store receipt. Catch-up may commit bounded batches before the final command transaction. See [10-command-pipeline.md](10-command-pipeline.md).
 - **Optimistic concurrency**: every entity carries a `revision`; clients send `expectedRevision`, and a mismatch returns 409.
 - **Past days are read from snapshots**; today and future days are read from live tables. A finalized snapshot can still be adjusted by an explicit historical command, and original finalized values are not retained as a separate immutable baseline. See [07-planning-finalization.md](07-planning-finalization.md).
 
 ## Documentation contract
 
-- Documents **01–11** describe the current implementation, including verified limitations. Documents **12–16** distinguish **Current** behavior from **Proposed** work; acceptance scenarios may be pending implementation.
+- Feature documents describe implemented behavior and explicitly label exclusions or future work. Acceptance/backlog records retain historical test evidence; implementation status is separate from live-provider verification.
 - These files are maintained with code changes. If product terminology or UI behavior changes, update the affected feature docs and acceptance examples in the same PR.
-- **Known design boundaries:** `This and following` edit/**delete** is the **approved proposal**, not the current code. Today's `All occurrences` edit affects eligible occurrences from today forward, whereas Stop Repeating cuts off after today. The implementation plan is in [16-implementation-backlog.md](16-implementation-backlog.md). A 10-second schedule undo is server-enforced, whereas delete/series recovery has a 10-second UI toast without equivalent backend expiration.
-- Installable PWA metadata currently exists, but background Web Push, offline editing, and automated scheduled Focus reminders are not yet promised. See [12-pwa-notifications.md](12-pwa-notifications.md).
+- **Recurrence scopes:** `This and following` edit/delete is implemented; see [recurrence](06-recurrence.md) and the implementation record in [16-implementation-backlog.md](16-implementation-backlog.md). A 10-second schedule undo is server-enforced, whereas delete/series recovery has a 10-second UI toast without equivalent backend expiration.
+- PWA installation, Web Push and scheduled Focus settlement are implemented. Delivery requires a running API, VAPID configuration and device permission; offline editing is not supported. See [12-pwa-notifications.md](12-pwa-notifications.md).
 
 Scope decision (2026-11-01): Trash / Recently Deleted and a separate immutable historical baseline are excluded. Existing Undo/restore and adjusted snapshots remain; see [backlog](16-implementation-backlog.md).

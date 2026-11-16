@@ -22,7 +22,9 @@ Finalize each elapsed day into an **initial historical snapshot** of the plan an
 
 ## Settle & Finalize
 
-`Settle()` runs in two places: (1) at the start of every API transaction of that user; (2) in a background worker process that sweeps all accounts every 1 minute. Each Settle pass processes at most 31 days starting after `caught_up_through`, then advances the watermark.
+Historical `Settle()` runs through `services.WithTx()` on account API operations. Each pass processes at most 31 days starting after `caught_up_through`, then advances the watermark; catch-up batches can commit before the final operation transaction. Inactive accounts are finalized when they return, not by a daily sweep. The embedded scheduler handles Focus and reminder horizons separately and does not finalize historical planning.
+
+Regression coverage in `controllers/planning_test.go` checks catch-up after 100 days; `controllers/planningWorker_test.go` checks concurrent API catch-up.
 
 Finalizing a day:
 1. The cutoff is local midnight at the start of the next day.
@@ -32,7 +34,7 @@ Finalizing a day:
 
 ```mermaid
 flowchart TD
-    A[Any API request<br/>or the worker every 1 minute] --> B[Settle: read caught_up_through]
+    A[Account API operation via services.WithTx] --> B[Settle: read caught_up_through]
     B --> C{Unprocessed past days left?<br/>at most 31 per pass}
     C -->|No| Z[Done]
     C -->|Yes| D[Materialize recurrence occurrences through today]

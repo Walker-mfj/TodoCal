@@ -17,7 +17,7 @@ This implements the [combined refactoring plan](https://github.com/Walker-mfj/To
 | Frontend and Go import boundaries, including negative fixtures | `make check-web-architecture check-go-architecture` |
 | TypeScript, unit tests and production build | `make typecheck test-web build-web` |
 | Go formatting and lint | `make format-go-check lint-go` |
-| Go analysis, builds and race tests | `(cd apps/api && go vet ./... && go build ./...)`, then `make test-go build-api build-worker` |
+| Go analysis, builds and race tests | `(cd apps/api && go vet ./... && go build ./...)`, then `make test-go build-api` |
 | Database integration | `make test-integration` |
 | Browser workflows and layout checks | `make test-e2e` (Chrome, Firefox and WebKit) |
 

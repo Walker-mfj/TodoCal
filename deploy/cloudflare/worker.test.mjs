@@ -31,19 +31,9 @@ test('invalid backend URL returns controlled unavailability', async () => {
   assert.equal((await worker.fetch(new Request('https://app.example.com/api/v1/auth/me'), {...env, API_ORIGIN:'not a url'})).status,503);
 });
 
-test('cron uses a dedicated credential and fails on a failed sweep', async () => {
- const original=globalThis.fetch;let sent;
- globalThis.fetch=async request=>{sent=request;return Response.json({accountsProcessed:2})};
- const scheduledEnv={...env,APP_ORIGIN:'https://app.example.com',JOBS_SECRET:'j'.repeat(32)};
- try{
-  await worker.scheduled({},scheduledEnv,{});
-  assert.equal(sent.url,'https://api.example.com/internal/jobs');
-  assert.equal(sent.method,'POST');assert.equal(sent.redirect,'manual');
-  assert.equal(sent.headers.get('Authorization'),'Bearer '+scheduledEnv.JOBS_SECRET);
-  assert.equal(sent.headers.get('Origin'),scheduledEnv.APP_ORIGIN);
-  assert.equal(sent.headers.get('Cookie'),null);
-  globalThis.fetch=async()=>new Response('private error',{status:503});
-  await assert.rejects(worker.scheduled({},scheduledEnv,{}),/Scheduled job failed: 503/);
-  await assert.rejects(worker.scheduled({}, {...scheduledEnv,JOBS_SECRET:''},{}),/not configured/);
- }finally{globalThis.fetch=original}
+test('deployment removes scheduled triggers and handler', async () => {
+  const {readFile} = await import('node:fs/promises');
+  const config = JSON.parse(await readFile(new URL('./wrangler.jsonc', import.meta.url), 'utf8'));
+  assert.deepEqual(config.triggers.crons, []);
+  assert.equal(worker.scheduled, undefined);
 });

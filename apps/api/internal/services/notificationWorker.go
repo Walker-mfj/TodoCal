@@ -18,8 +18,7 @@ type NotificationWorker struct {
 	Pool   *pgxpool.Pool
 	Now    func() time.Time
 	Sender PushSender
-	// Enabled only for the embedded scheduler; legacy Cron retains its policy
-	// until the staged cutover is explicitly enabled.
+	// The embedded scheduler enables bounded lateness for background delivery.
 	EnforceLateness bool
 }
 

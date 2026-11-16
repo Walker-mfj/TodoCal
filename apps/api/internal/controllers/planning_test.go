@@ -6,7 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"focuscalendar/internal/workers"
+	"focuscalendar/internal/services"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/google/uuid"
 )
@@ -111,7 +112,11 @@ func TestCatchupAcrossSeveralBatchesAndStopPreservesHistory(t *testing.T) {
 	c, csrf := register(t, s, "batches@example.com")
 	sr := series(t, s, c, csrf, "daily", 1, nil)
 	now = atDate("2031-01-27") // 100 elapsed days
-	if _, e := workers.Sweep(context.Background(), p, s.now); e != nil {
+	var user string
+	if e := p.QueryRow(context.Background(), "SELECT user_id FROM recurrence_series WHERE id=$1", sr["id"]).Scan(&user); e != nil {
+		t.Fatal(e)
+	}
+	if e := services.WithTx(context.Background(), p, user, s.now, func(pgx.Tx, string, time.Time) error { return nil }); e != nil {
 		t.Fatal(e)
 	}
 	var snapshots, entries int

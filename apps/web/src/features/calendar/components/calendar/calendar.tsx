@@ -7,7 +7,8 @@ import type { FocusView } from "../../../focus";
 import { CalendarEventContent } from "../eventContent/eventContent";
 import { priorityLabels } from "../../../../shared/constants/priorityLabels";
 import { draftEvent, type CalendarDraft } from "../../utils/draftPreview";
-import { useMemo, useEffect, useRef } from "react";
+import { DateTime } from "luxon";
+import { useMemo, useEffect, useRef, useCallback } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -31,6 +32,7 @@ export default function Calendar({
   days,
   groups,
   today,
+  timezone,
   onRange,
   onTask,
   onCreate,
@@ -51,6 +53,7 @@ export default function Calendar({
   days: Day[];
   groups: Group[];
   today: string;
+  timezone: string;
   onRange: (from: string, to: string) => void;
   onTask: (task: Task, historical: boolean) => void;
   onCreate: (seed: CalendarSlot) => void;
@@ -60,6 +63,15 @@ export default function Calendar({
   onScheduleError: (error: unknown) => void;
   onDay?: (date: string) => void;
 }) {
+  const timezoneRef = useRef(timezone);
+  timezoneRef.current = timezone;
+  const currentTime = useCallback(
+    () =>
+      DateTime.now()
+        .setZone(timezoneRef.current)
+        .toFormat("yyyy-MM-dd'T'HH:mm:ss'Z'"),
+    [],
+  );
   const calendarRef = useRef<FullCalendar>(null);
   // Recalculate widths when the navigation or editor changes the available space.
   const containerRef = useRef<HTMLDivElement>(null);
@@ -113,7 +125,8 @@ export default function Calendar({
         plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
         initialView="timeGridWeek"
         initialDate={today}
-        now={today + "T12:00:00Z"}
+        now={currentTime}
+        nowIndicator
         timeZone="UTC"
         firstDay={1}
         dayHeaderContent={(arg) => (

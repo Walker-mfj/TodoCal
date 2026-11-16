@@ -195,3 +195,24 @@
   :global(.fc-toolbar):global(.fc-header-toolbar) {
   margin-bottom: 12px;
 }
+
+:where(.calendar-wrap) :global(.fc) :global(.fc-timegrid-now-indicator-line) {
+  border-color: #e3342f;
+  border-top-width: 2px;
+  pointer-events: none;
+}
+:where(.calendar-wrap)
+  :global(.fc)
+  :global(.fc-timegrid-now-indicator-line)::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: -6px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #e3342f;
+}
+:where(.calendar-wrap) :global(.fc) :global(.fc-timegrid-now-indicator-arrow) {
+  display: none;
+}

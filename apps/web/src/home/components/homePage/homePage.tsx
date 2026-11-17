@@ -24,7 +24,8 @@ import { TaskDetail } from "../../../features/tasks";
 import { Groups } from "../../../features/tasks";
 import { SettingsForm } from "../../../features/settings";
 import { DailyProgress, Calendar } from "../../../features/calendar";
-import { useWallClock } from "../../../shared/hooks/useWallClock";
+import { useToday } from "../../../shared/hooks/useToday";
+import { useDayRollover } from "../../hooks/useDayRollover";
 import { type Draft } from "../../../features/tasks";
 import {
   type Task,
@@ -89,8 +90,8 @@ function AccountWorkspace() {
   } = useWorkspaceNavigation(account.user.id);
   const [focusHidden, setFocusHidden] = useState(false);
   const [focusTask, setFocusTask] = useState<Task | null>(null);
-  const now = useWallClock(account.settings.timezone);
-  const date = now.slice(0, 10);
+  const date = useToday(account.settings.timezone);
+  useDayRollover(account.user.id, date);
   const [panel, setPanel] = useState<Panel>(null);
   const [message, setMessage] = useState("");
   const {

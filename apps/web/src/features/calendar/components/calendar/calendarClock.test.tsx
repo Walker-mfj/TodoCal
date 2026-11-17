@@ -1,7 +1,7 @@
 import { act, fireEvent, render } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import Calendar from "./calendar";
-import { useWallClock } from "../../../../shared/hooks/useWallClock";
+import { useToday } from "../../../../shared/hooks/useToday";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -18,11 +18,11 @@ it("moves today's highlight at midnight and keeps navigation on the selected wee
     },
   );
   function ClockCalendar() {
-    const now = useWallClock("Asia/Tokyo");
+    const date = useToday("Asia/Tokyo");
     return (
       <Calendar
         timezone="Asia/Tokyo"
-        today={now.slice(0, 10)}
+        today={date}
         days={[]}
         groups={[]}
         onRange={vi.fn()}

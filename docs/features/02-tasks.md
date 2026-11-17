@@ -64,4 +64,4 @@ sequenceDiagram
 - A manually specified `completedAt` may attribute completion to a different date. The journal and affected daily snapshots must be reconciled once; do not count superseded completion events twice.
 - Task completion is independent of the Pomodoro goal: hitting a planned number of sessions never silently marks a task complete.
 - User-initiated backdated edits can intentionally adjust finalized history. This exception is auditable and distinct from automatic rescheduling or group cleanup; see [day finalization](07-planning-finalization.md).
-- **Proposed recurring deletion UX (not yet implemented):** ask **This occurrence** or **This and following**. The latter cancels the selected original slot and all future slots, while retaining task/Focus audit records; see [implementation backlog](16-implementation-backlog.md).
+- **Recurring deletion:** choose **This occurrence** or **This and following**. Tail deletion uses the selected original slot as the inclusive cutoff, preserves historical/Focus records, and requires confirmation for eligible completed occurrences. See [recurrence deletion](06-recurrence.md#delete-this-and-following).

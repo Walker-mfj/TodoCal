@@ -4,13 +4,13 @@ Next.js static assets run on Cloudflare Workers. A small Worker forwards `/api/*
 
 ## Configuration
 
-Live deployment (2026-10-25):
+Deployment endpoints:
 
 - App: https://todocal.laiphuc.workers.dev
 - API: https://todocal-api.onrender.com
 - Render dashboard: https://dashboard.render.com/web/srv-dbf0ekks728c73dmd6ig
 - Neon project: `delicate-moon-70365012`, production branch `br-icy-feather-b4u8imu4`.
-- Render currently deploys from `codex/free-deployment` automatically. Moving the local branch to `main` does not change the Render dashboard setting.
+- Configure Render to deploy `main`; the dashboard branch setting is independent of the GitHub frontend workflow.
 - `.github/workflows/deployFrontend.yml` deploys the frontend on pushes to `main`, or manual runs on `main`, once the workflow is pushed and the secrets below are configured. Local merges alone do not deploy anything. Manual frontend deployment remains available with `npm run deploy` from `deploy/cloudflare`.
 
 ## Frontend deployment from GitHub
@@ -85,34 +85,39 @@ periodic requests to Render: on a sleeping free instance, reminders cannot be
 sent until the API wakes. Choose an always-running instance if closed-tab,
 idle-time delivery is required.
 
-### Deploy the Cron removal
+### Deployment and obsolete configuration
 
-1. Deploy the API release and verify startup, readiness and a test Focus reminder.
-   The scheduler now runs regardless of any obsolete enable-flag environment value.
-2. Deploy the Cloudflare Worker from this release. `triggers.crons` is explicitly
-   `[]`: Wrangler removes existing Cron Triggers on deploy. Do not omit this key,
-   because omission preserves previously deployed triggers. The Worker has no
-   scheduled handler and remains the frontend/static asset server and API proxy.
-3. Confirm the Worker has no Cron Triggers, then remove obsolete `JOBS_SECRET`
-   secrets from Render and Cloudflare, `NOTIFICATION_SCHEDULER_ENABLED` from
-   Render, and the Cron-only `APP_ORIGIN` from Cloudflare if present. Keep
-   **Render** `APP_ORIGIN`. Stop any separately deployed legacy worker process.
+The Cron removal is implemented in PR #35. Keep `triggers.crons: []` in
+Wrangler configuration so subsequent deployments continue to remove legacy
+triggers. The Cloudflare Worker has no scheduled handler.
 
-This PR changes source/configuration only; it does not deploy or delete live
-secrets. API and Worker deployment are independent. During cutover, an old Cron
-request reaching the new API receives 404 and cannot dispatch notifications.
+| Location | Required configuration | Obsolete configuration |
+|---|---|---|
+| Render | `DATABASE_URL`, `APP_ORIGIN`, `PROXY_SECRET`, session settings and `VAPID_*` for delivery | `JOBS_SECRET`, `NOTIFICATION_SCHEDULER_ENABLED` |
+| Cloudflare | `API_ORIGIN`, `PROXY_SECRET` | `JOBS_SECRET`, Cron-only `APP_ORIGIN` |
+
+Remove obsolete variables only after the API release that starts the scheduler
+unconditionally is deployed. Keep Render `APP_ORIGIN`; it is still used by the
+API. There should be no separately deployed legacy worker or Cron trigger.
+`POST /internal/jobs` is removed and returns 404.
+
+For future releases, verify API startup/readiness and deploy the Worker through
+its normal workflow. A merged PR does not prove either platform finished
+deployment. Check provider settings separately from repository configuration.
 
 Verify with dedicated test accounts: closed-tab Focus completion, pause/resume,
 start/deadline edits, recurring reminders, retry and restart, quiet hours and
 subscription revocation. Keep terminal-outbox retention at 30 days; pending
 retries are never removed by cleanup. Existing lateness cutoffs remain: Focus,
 break and lead 5 minutes, task start 10 minutes, deadline 15 minutes; lead stops
-at task start. No database migrations or timeout changes are needed for cleanup.
+at task start. The Cron cleanup did not change these cutoffs or add database migrations.
 
 Run `make test-integration` for isolated PostgreSQL suites and
 `node --test deploy/cloudflare/worker.test.mjs` for the proxy/empty-Cron contract.
 
-### Scheduler review follow-up: progress and query cost
+### Progress and query-cost verification
+
+See [scheduler architecture](../docs/architecture/notificationScheduler.md) for runtime ownership, timeout decisions and tradeoffs.
 
 Migration 000020 marks schedule changes with a transaction-local dirty flag.
 The application publishes only after a dirty transaction commits. Read-only GETs
@@ -165,9 +170,16 @@ checks large history, not arbitrary database slowness or lock contention. No
 further Horizon architecture change is justified without measurements showing
 that a bounded series exceeds the budget.
 
-The benchmark and database integration cases have not yet been executed in the
-restricted editing environment. Do not treat the two-second deadline-query
-budget as validated at 100k tasks until these results are recorded on PostgreSQL.
-If that budget is exceeded, evaluate a mutation-maintained deadline table using
-these plans before expanding deployment to that scale. Reconciliation remains
+A PostgreSQL benchmark run shared during review passed at 100k tasks and five
+devices per account: candidate mean 450.3 ms / maximum 512.0 ms, full
+`NotificationSchedule.Next()` mean 438.9 ms / maximum 462.7 ms (10 iterations).
+The shared EXPLAIN excerpt reported 475.0 ms execution time. These are local
+benchmark observations, not a Neon Free latency guarantee or a load test.
+The excerpt alone does not establish which indexes were used or migration cost.
+Retain complete CI `scheduler-query-plans` artifacts for plan comparisons.
+
+A passing deadline benchmark does not establish that the large-single-series
+Horizon integration case passed; record that result separately. If measured
+latency exceeds the budget, inspect the plans and lock contention before changing
+timeouts or adopting a mutation-maintained deadline table. Reconciliation remains
 a 15-minute recovery mechanism, not the notification timing path.

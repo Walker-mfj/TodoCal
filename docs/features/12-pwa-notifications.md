@@ -4,7 +4,7 @@
 
 The manifest supports installation where offered by the browser. Installation alone does not enable notifications. Settings now provides explicit device opt-in, four event toggles, a reminder lead of 0–1440 minutes, quiet hours in the account timezone, and device revocation. Browser permission is requested only after **Enable on this device**. Denial or unsupported browsers leave task and Focus features usable.
 
-The Go API stores preferences, session-bound subscriptions and a durable delivery outbox. The service worker handles push and safe same-origin navigation; it does not cache private API responses or queue offline writes. VAPID configuration and a recurring scheduler must be enabled before background delivery is available. Repository tests use a fake push provider; real provider delivery and closed-app behavior on supported devices still require deployment verification. No live deployment is claimed by this PR.
+The Go API stores preferences, session-bound subscriptions and a durable delivery outbox. The service worker handles push and safe same-origin navigation; it does not cache private API responses or queue offline writes. The embedded Go scheduler starts automatically with the API; VAPID configuration and device opt-in are required for delivery. Repository tests use a fake push provider; real provider delivery and closed-app behavior on supported devices still require deployment verification. Automated tests alone do not establish production delivery.
 
 ## Events
 

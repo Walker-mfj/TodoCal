@@ -24,7 +24,8 @@ import { TaskDetail } from "../../../features/tasks";
 import { Groups } from "../../../features/tasks";
 import { SettingsForm } from "../../../features/settings";
 import { DailyProgress, Calendar } from "../../../features/calendar";
-import { today } from "../../../shared/utils/dateUtils";
+import { useToday } from "../../../shared/hooks/useToday";
+import { useDayRollover } from "../../hooks/useDayRollover";
 import { type Draft } from "../../../features/tasks";
 import {
   type Task,
@@ -89,7 +90,8 @@ function AccountWorkspace() {
   } = useWorkspaceNavigation(account.user.id);
   const [focusHidden, setFocusHidden] = useState(false);
   const [focusTask, setFocusTask] = useState<Task | null>(null);
-  const date = today(account.settings.timezone);
+  const date = useToday(account.settings.timezone);
+  useDayRollover(account.user.id, date);
   const [panel, setPanel] = useState<Panel>(null);
   const [message, setMessage] = useState("");
   const {
@@ -511,6 +513,7 @@ function AccountWorkspace() {
               days={calendar.data?.days || []}
               groups={allGroups}
               today={date}
+              timezone={account.settings.timezone}
               onRange={setRangeStable}
               onTask={(task, historical) =>
                 open({ type: "detail", task, historical })

@@ -28,6 +28,7 @@ function calendar(overrides: Record<string, unknown> = {}) {
         days: [],
         groups: [],
         today: "2030-03-10",
+        timezone: "Asia/Tokyo",
         onRange: vi.fn(),
         onTask: vi.fn(),
         onCreate,
@@ -115,4 +116,10 @@ it("resizes previews through the draft callback without persisting them", () => 
     endTime: "10:15",
   });
   expect(onSchedule).not.toHaveBeenCalled();
+});
+
+it("uses the account wall clock for the current-time indicator", () => {
+  calendar();
+  expect(capture.props.now).toBeTypeOf("function");
+  expect(capture.props.nowIndicator).toBe(true);
 });

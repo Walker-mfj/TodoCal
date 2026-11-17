@@ -2,6 +2,8 @@ name: CI
 
 on:
   pull_request:
+  # Manual runs exercise all browsers, including on a feature branch.
+  workflow_dispatch:
   push:
     branches: [main]
 
@@ -67,9 +69,10 @@ jobs:
       - name: Measure scheduler deadline query
         run: bash scripts/benchmarkScheduler.sh | tee scheduler-query-plans.txt
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: failure()
         with:
           name: scheduler-query-plans
+          retention-days: 3
           path: scheduler-query-plans.txt
           if-no-files-found: ignore
 
@@ -90,13 +93,9 @@ jobs:
           version: ${{ steps.lint-version.outputs.version }}
 
   browser:
-    name: Browser (${{ matrix.browser }})
+    name: Browser E2E
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        browser: [chromium, firefox, webkit]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -120,14 +119,22 @@ jobs:
       - name: Run against isolated database and local servers
         env:
           E2E_PLAYWRIGHT_IMAGE: ${{ steps.playwright-image.outputs.image }}
-        run: sh scripts/testE2e.sh --project=${{ matrix.browser }}
+          CI_EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$CI_EVENT_NAME" = pull_request ]; then
+            sh scripts/testE2e.sh --project=chromium
+          else
+            # No arguments runs all three browsers with one build and server setup.
+            sh scripts/testE2e.sh
+          fi
       - name: Retain browser traces and server logs
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: browser-${{ matrix.browser }}
+          name: browser-e2e
           path: |
             apps/web/test-results/
             .local/e2e-api.log
             .local/e2e-web.log
-          retention-days: 7
+          retention-days: 3
+          if-no-files-found: ignore

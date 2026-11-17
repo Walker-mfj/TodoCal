@@ -1,6 +1,6 @@
 # Integrated refactor verification
 
-Verified locally on 2026-11-10 on `codex/integrated-refactor`, incorporating `main` at `25429eb`. This is one combined frontend and Go implementation of the [refactoring plan](refactoringPlan.md). No deployment or merge is part of this verification.
+Verified locally on 2026-11-10 on `codex/integrated-refactor`, incorporating `main` at `25429eb`. This is one combined frontend and Go refactor; the maintained ownership rules are in [folder structure](folderStructure.md). No deployment or merge is part of this verification.
 
 ## Result
 

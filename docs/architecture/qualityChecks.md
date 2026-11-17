@@ -1,6 +1,6 @@
 # Architecture and quality checks
 
-This implements the [combined refactoring plan](https://github.com/Walker-mfj/TodoCal/blob/c53d6b5ee1e95d2819cd64e73e93fe3184f3ae28/docs/architecture/refactoringPlan.md). The product contracts are in [docs/features](../features/README.md). A structural change preserves the currently shipped workflows, including recurring edits from a selected occurrence onward, scheduled notifications and session renewal.
+The integrated frontend and Go refactor is complete; see its [verification record](refactorVerification.md). The product contracts are in [docs/features](../features/README.md). A structural change preserves the currently shipped workflows, including recurring edits from a selected occurrence onward, scheduled notifications and session renewal.
 
 ## Where changes belong
 

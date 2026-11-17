@@ -238,7 +238,7 @@ Frontend `src/` paths in this table are relative to `apps/web`. Prefer an existi
 
 ## 7. Structural-change workflow
 
-The planned frontend + Go cleanup is delivered in **one integrated implementation branch and one implementation PR**, with ordered internal checkpoints—not multiple PRs. Verify both apps together before marking that PR ready to merge; see [the integrated refactoring plan](refactoringPlan.md).
+The integrated frontend and Go cleanup is complete; see [recorded verification](refactorVerification.md). For future structural changes, preserve the current ownership boundaries and verify affected frontend and backend workflows.
 
 For structural changes, follow these safeguards without repeating unnecessary migrations:
 
@@ -276,7 +276,7 @@ For structural changes, follow these safeguards without repeating unnecessary mi
 
 - [Project README](../../README.md)
 - [Feature documentation](../features/README.md)
-- [Integrated FE + Go refactoring plan](refactoringPlan.md) — one implementation pass and one code PR with shared acceptance criteria.
+- [Integrated refactor verification](refactorVerification.md) — completed scope, test evidence and known limits.
 - [Technology stack & dependencies](techStack.md) — technologies, library ownership, quality checks, and dependency policy.
 - [OpenAPI contract](../../api/openapi.yaml)
 - [Deployment guide](../../deploy/README.md)

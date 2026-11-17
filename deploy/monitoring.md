@@ -84,3 +84,23 @@ Tracing samples 5% of server requests, at most 1,000 sampled roots per UTC day p
 Incoming valid W3C traceparent is retained as a link to a new locally sampled root, not as the parent: this prevents both sampled-bit and caller-selected trace-ID sampling bypass. Baggage is not extracted. Go→DB parentage is preserved. The existing Cloudflare proxy already forwards trace headers; malformed values are ignored at Go ingress. Browser instrumentation remains optional and is not added here.
 
 These budgets are **per process and reset on restart**, not durable account-wide billing caps. Before enabling, configure provider retention/quota and account for instance count and restarts. Start with a synthetic failed request in a controlled environment, match its request ID across Render and the log source, then verify a sampled trace and parentage. Alert routing/thresholds should be configured after measuring traffic; existing Errors quota and alert integration remain unchanged. Disable either exporter flag independently to roll back.
+
+## Implementation status and remaining release checks
+
+Request/DB diagnostics, allowlisted error correlation, bounded log export and
+OpenTelemetry tracing are implemented in `apps/api/internal/diagnostics` and wired
+at API startup. The former implementation plans are retired; this runbook is the
+maintained configuration and investigation reference.
+
+Implementation does not establish that production exporters are enabled or that
+provider verification has passed. When enabling or changing telemetry:
+
+- Confirm the separate log/trace destinations, credentials, retention and quotas.
+- Verify a synthetic sanitized log and a sampled API-to-DB trace, correlation and
+  parentage; confirm there is no duplicate Render forwarding pipeline.
+- Confirm exporter interruption and quota exhaustion do not block business requests.
+- Tune alert thresholds from measured traffic; keep request IDs out of grouping.
+
+Browser instrumentation and tail sampling remain optional future work, not missing
+parts of the delivered server-side implementation. Do not mark live acceptance
+complete based solely on repository tests.

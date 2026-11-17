@@ -103,7 +103,7 @@ Compose persists development data in the `focus_pg` volume. `docker compose stop
 ## Product references
 
 - [Feature documentation](docs/features/README.md)
-- [Implementation and verification record](docs/features/16-implementation-backlog.md)
+- [Acceptance and verification](docs/features/15-acceptance-scenarios.md)
 - [UX and accessibility](docs/features/14-ux-accessibility.md)
 
 Calendar gestures snap changed edges to 15 minutes; form inputs retain minute precision. External drops default to 30 minutes, untimed drops clear the time, and Month moves preserve existing times. Failed saves restore the previous event; uncertain commands retain their exact retry key. Undo is owner-scoped, expires on the server, and refuses to overwrite a concurrent edit.

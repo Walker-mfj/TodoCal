@@ -19,7 +19,6 @@ This documentation set describes each TodoCal feature: its purpose, core concept
 | 13 | Settings and personalization | [13-settings.md](13-settings.md) |
 | 14 | UX & accessibility | [14-ux-accessibility.md](14-ux-accessibility.md) |
 | 15 | Cross-feature acceptance scenarios | [15-acceptance-scenarios.md](15-acceptance-scenarios.md) |
-| 16 | Proposed code changes & implementation backlog | [16-implementation-backlog.md](16-implementation-backlog.md) |
 
 ## Overall architecture
 
@@ -47,7 +46,7 @@ flowchart LR
 
 - Feature documents describe implemented behavior and explicitly label exclusions or future work. Acceptance/backlog records retain historical test evidence; implementation status is separate from live-provider verification.
 - These files are maintained with code changes. If product terminology or UI behavior changes, update the affected feature docs and acceptance examples in the same PR.
-- **Recurrence scopes:** `This and following` edit/delete is implemented; see [recurrence](06-recurrence.md) and the implementation record in [16-implementation-backlog.md](16-implementation-backlog.md). A 10-second schedule undo is server-enforced, whereas delete/series recovery has a 10-second UI toast without equivalent backend expiration.
+- **Recurrence scopes:** `This and following` edit/delete is implemented; see [recurrence](06-recurrence.md). A 10-second schedule undo is server-enforced, whereas delete/series recovery has a 10-second UI toast without equivalent backend expiration.
 - PWA installation, Web Push and scheduled Focus settlement are implemented. Delivery requires a running API, VAPID configuration and device permission; offline editing is not supported. See [12-pwa-notifications.md](12-pwa-notifications.md).
 
-Scope decision (2026-11-01): Trash / Recently Deleted and a separate immutable historical baseline are excluded. Existing Undo/restore and adjusted snapshots remain; see [backlog](16-implementation-backlog.md).
+Scope decision (2026-11-01): Trash / Recently Deleted and a separate immutable historical baseline are excluded. Existing Undo/restore and adjusted snapshots remain.

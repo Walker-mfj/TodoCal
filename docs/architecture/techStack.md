@@ -51,7 +51,7 @@ Avoid duplicating exhaustive dependency-version lists in this document. Review t
 - Use the existing `shared/api/apiClient.ts` and authenticated session/command/query abstractions. Do not create a second `fetch` wrapper for each feature.
 - Server writes use the established **CSRF**, **Idempotency-Key**, ownership and `expectedRevision` contract. Keep exact request/key on uncertain retries.
 - Authenticated cached data and drafts must remain account-isolated and cleared appropriately on logout/switch.
-- Separate reusable UI **mechanisms** in `shared` from feature-specific domain behavior; see [folder ownership](folderStructure.md) and the [integrated refactoring plan](refactoringPlan.md).
+- Separate reusable UI **mechanisms** in `shared` from feature-specific domain behavior; see [folder ownership](folderStructure.md).
 
 ## 3. Backend technologies
 
@@ -133,7 +133,7 @@ The `format` script uses oxfmt and modifies files; `format:check` is read-only. 
 - `make check-go-architecture` uses `go list` to reject forbidden package edges; the compiler also catches package cycles.
 - Existing format/vet/build/unit/race/integration/browser checks remain active.
 
-These implement the tooling portion of the [combined refactoring plan](refactoringPlan.md); exact commands and local database isolation are in [qualityChecks.md](qualityChecks.md).
+The integrated refactor implemented these tooling checks; exact commands and local database isolation are in [qualityChecks.md](qualityChecks.md).
 
 ## 6. Dependency management policy
 
@@ -158,7 +158,7 @@ These implement the tooling portion of the [combined refactoring plan](refactori
 ## 8. Related files
 
 - [Folder structure](folderStructure.md) — module ownership, naming and dependencies.
-- [Unified refactoring plan](refactoringPlan.md) — FE + Go refactor and proposed architecture checks.
+- [Refactor verification](refactorVerification.md) — completed FE + Go refactor and recorded checks.
 - [Web package manifest](../../apps/web/package.json) — frontend dependency definitions and scripts.
 - [Go module](../../apps/api/go.mod) — backend dependencies and toolchain.
 - [CI workflow](../../.github/workflows/ci.yml) — currently configured checks.

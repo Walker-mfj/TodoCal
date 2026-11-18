@@ -84,6 +84,16 @@ export function CalendarEventContent({
         : task?.recurrenceIntervalDays
           ? `Every ${task.recurrenceIntervalDays}d`
           : "Repeating";
+  const repeatIndicator = repeating && (
+    <span
+      className={cx("event-repeat")}
+      aria-label={recurrence}
+      title={recurrence}
+    >
+      <Repeat2 size={12} aria-hidden="true" />
+      {!compact && <span>{recurrence}</span>}
+    </span>
+  );
   const stop = (event: { stopPropagation: () => void }) =>
     event.stopPropagation();
   return (
@@ -151,23 +161,18 @@ export function CalendarEventContent({
           )}
           {draft && <span className={cx("draft-badge")}>Draft</span>}
         </div>
-        {!compact && (
+        {compact ? (
+          repeatIndicator
+        ) : (
           <div className={cx("focus-card-footer")}>
-            <span>
+            <span className={cx("focus-card-time")}>
               {own ? time : timeText}
-              {!own && count > 0 ? ` · ${label}` : ""}
             </span>
+            {!own && count > 0 && (
+              <span className={cx("focus-card-focus-label")}>· {label}</span>
+            )}
+            {repeatIndicator}
           </div>
-        )}
-        {repeating && (
-          <span
-            className={cx("event-repeat")}
-            aria-label={recurrence}
-            title={recurrence}
-          >
-            <Repeat2 size={12} aria-hidden="true" />
-            {!compact && <span>{recurrence}</span>}
-          </span>
         )}
         {focus && (own || canStart) && (
           <div

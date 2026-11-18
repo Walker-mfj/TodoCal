@@ -1,18 +1,37 @@
 // Static Next.js frontend and a same-origin, authenticated API proxy.
+const VPC_ORIGIN = 'http://api:10000';
+
+function unavailable(message, retryAfter) {
+  const headers = {'Cache-Control':'no-store'};
+  if (retryAfter) headers['Retry-After'] = retryAfter;
+  return Response.json({error:{code:'unavailable',message}}, {status:503,headers});
+}
+
 export default {
   async fetch(request, env) {
     const incoming = new URL(request.url);
     if (!incoming.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
-    if (!env.API_ORIGIN || !env.PROXY_SECRET || env.PROXY_SECRET.length < 32) {
-      return Response.json({error:{code:'unavailable',message:'Service is not configured yet.'}}, {status:503,headers:{'Cache-Control':'no-store'}});
-    }
+
+    // An absent setting preserves Render. Never fall back to another database
+    // after a VPC error, and never forward requests during the write freeze.
+    const backend = env.API_BACKEND ?? 'render';
+    if (backend === 'maintenance') return unavailable('Service is temporarily unavailable for maintenance.', '60');
+    if (backend !== 'render' && backend !== 'vpc') return unavailable('Invalid API configuration.');
+    if (!env.PROXY_SECRET || env.PROXY_SECRET.length < 32) return unavailable('Service is not configured yet.');
+
+    const useVpc = backend === 'vpc';
+    if (useVpc && typeof env.TODOCAL_API?.fetch !== 'function') return unavailable('Service is not configured yet.');
     let upstream;
-    try { upstream = new URL(env.API_ORIGIN); } catch {
-      return new Response("Invalid API configuration", {status:503, headers:{"Cache-Control":"no-store"}});
+    try {
+      if (!useVpc && !env.API_ORIGIN) return unavailable('Service is not configured yet.');
+      upstream = new URL(useVpc ? VPC_ORIGIN : env.API_ORIGIN);
+    } catch {
+      return unavailable('Invalid API configuration.');
     }
-    if (upstream.protocol !== 'https:' || upstream.username || upstream.password) {
-      return new Response('Invalid API configuration', {status:503});
+    if ((!useVpc && upstream.protocol !== 'https:') || upstream.username || upstream.password) {
+      return unavailable('Invalid API configuration.');
     }
+
     upstream.pathname = incoming.pathname;
     upstream.search = incoming.search;
     const headers = new Headers(request.headers);
@@ -22,18 +41,19 @@ export default {
     headers.set('X-TodoCal-Proxy-Secret', env.PROXY_SECRET);
     headers.set('X-TodoCal-Client-IP', request.headers.get('CF-Connecting-IP') || '');
     try {
-      const response = await fetch(new Request(upstream, {
+      const forwarded = new Request(upstream, {
         method: request.method,
         headers,
         body: ['GET','HEAD'].includes(request.method) ? undefined : request.body,
         redirect: 'manual',
         duplex: 'half',
-      }));
+      });
+      const response = useVpc ? await env.TODOCAL_API.fetch(forwarded) : await fetch(forwarded);
       const result = new Response(response.body, response);
       result.headers.set('Cache-Control', 'no-store');
       return result;
     } catch {
-      return Response.json({error:{code:'unavailable',message:'The server is starting. Please try again shortly.'}}, {status:503,headers:{'Cache-Control':'no-store','Retry-After':'10'}});
+      return unavailable(useVpc ? 'Service is temporarily unavailable. Please try again shortly.' : 'The server is starting. Please try again shortly.', '10');
     }
   },
 };

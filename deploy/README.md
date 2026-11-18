@@ -6,12 +6,18 @@ Next.js static assets run on Cloudflare Workers. A small Worker forwards `/api/*
 
 Deployment endpoints:
 
-- App: https://todocal.laiphuc.workers.dev
+- App: https://todocal.digitalhome.workers.dev
 - API: https://todocal-api.onrender.com
 - Render dashboard: https://dashboard.render.com/web/srv-dbf0ekks728c73dmd6ig
 - Neon project: `delicate-moon-70365012`, production branch `br-icy-feather-b4u8imu4`.
 - Configure Render to deploy `main`; the dashboard branch setting is independent of the GitHub frontend workflow.
 - `.github/workflows/deployFrontend.yml` deploys the frontend on pushes to `main`, or manual runs on `main`, once the workflow is pushed and the secrets below are configured. Local merges alone do not deploy anything. Manual frontend deployment remains available with `npm run deploy` from `deploy/cloudflare`.
+
+## Lightsail transition (not yet cut over)
+
+The frontend now uses `https://todocal.digitalhome.workers.dev` (owner-reported). Treat this as a new browser origin: prior cookies, local drafts, service workers and push permissions are not transferred automatically. Verify the existing Render APP_ORIGIN matches the new origin before testing the current site. Verify the account ID and deployment token still target the correct Worker.
+
+The Worker supports a private API binding but Render remains the default until an operator explicitly switches the runtime setting. See [Workers VPC cutover](cloudflare/vpcCutover.md). No public backend hostname is required and no changes are made to the live infrastructure by this PR.
 
 ## Frontend deployment from GitHub
 

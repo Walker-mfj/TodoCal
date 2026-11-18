@@ -24,5 +24,12 @@
       "enabled": true,
       "head_sampling_rate": 0.05
     }
-  }
+  },
+  "vpc_services": [
+    {
+      "binding": "TODOCAL_API",
+      "service_id": "01a1eed9-dd8d-75e2-b7b3-617e4480ac78",
+      "remote": true
+    }
+  ]
 }

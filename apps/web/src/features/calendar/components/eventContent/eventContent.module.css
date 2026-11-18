@@ -95,7 +95,7 @@
   width: 100%;
   height: 100%;
   min-width: 0;
-  padding: 3px 28px 3px 4px;
+  padding: 3px 4px;
   overflow: hidden;
 }
 .focus-card .focus-card-main {
@@ -159,12 +159,36 @@
 .focus-card .focus-card-footer {
   margin-top: auto;
   font-size: 9px;
-  padding-right: 48px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
   white-space: nowrap;
+  overflow: hidden;
+}
+.focus-card .focus-card-time,
+.focus-card .focus-card-focus-label {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-:global(.fc) .focus-card.calendar-task-content .event-repeat {
+.focus-card .focus-card-time {
+  flex: 0 1 auto;
+}
+.focus-card .focus-card-focus-label {
+  flex: 0 2 auto;
+}
+.focus-card .focus-card-footer .event-repeat {
+  position: static;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  margin: 0 0 0 auto;
+  align-self: center;
+  font-size: 9px;
+}
+:global(.fc) .focus-card.calendar-task-content:global(.compact) .event-repeat {
   position: absolute;
   display: flex;
   gap: 3px;
@@ -183,6 +207,14 @@
   align-items: center;
   gap: 2px;
   opacity: 0;
+}
+.focus-card:not(:global(.compact)).focus-available:hover .focus-card-main,
+.focus-card:not(:global(.compact)).focus-available:focus-within .focus-card-main,
+.focus-card:not(:global(.compact)).focus-active .focus-card-main,
+:global(.fc-event):focus
+  .focus-card:not(:global(.compact)).focus-available
+  .focus-card-main {
+  padding-right: 24px;
 }
 .focus-card:hover .quick-focus {
   opacity: 1;
@@ -291,8 +323,10 @@
 }
 @media (pointer: coarse) {
   :global(.fc) .focus-card.calendar-task-content {
-    padding-right: 46px;
     min-height: 22px;
+  }
+  .focus-card:not(:global(.compact)).focus-available .focus-card-main {
+    padding-right: 46px;
   }
 }
 @media (pointer: coarse) {
@@ -325,7 +359,15 @@
 .focus-clock-narrow-count {
   display: none;
 }
+@container (max-width: 180px) {
+  .focus-card .focus-card-focus-label {
+    display: none;
+  }
+}
 @container (max-width: 120px) {
+  .focus-card .focus-card-footer .event-repeat > span {
+    display: none;
+  }
   .focus-card .focus-clocks .focus-stopwatch:nth-child(n + 2) {
     display: none;
   }

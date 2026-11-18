@@ -20,7 +20,22 @@ Browser unhandled errors, React error boundaries, Go internal errors and panics.
 
 ## Uptime and alerts
 
-Website monitor `5131235` checks the frontend for TodoCal. API/database monitor `5131236` checks `/readyz` for `"status":"ready"`. Both run every 1800 seconds, request timeout 120 seconds, incident confirmation 180 seconds, recovery 60 seconds. Email only. A normal schedule is 96 checks/day total before retries/confirmation probes; outage detection may take over 30 minutes. Render cold starts are expected. Checks can wake Render and Neon, consuming some free hours/compute.
+Website monitor `5131235` and API/database monitor `5131236` should use the following configuration after the Worker readiness route is deployed. Production cutover to Lightsail/VPC has been reported by the owner; verify the live Worker version before changing monitors.
+
+| Setting | Website | API and database |
+| --- | --- | --- |
+| URL | https://todocal.digitalhome.workers.dev/ | https://todocal.digitalhome.workers.dev/api/readyz |
+| Alert condition | URL becomes unavailable | URL becomes unavailable |
+| Method | GET | GET |
+| Check frequency | 5 minutes (if included in free plan) | 5 minutes (if included in free plan) |
+| Request timeout | 10 seconds | 10 seconds |
+| Confirmation / recovery | 1 minute / 1 minute | 1 minute / 1 minute |
+| SSL verification | On | On |
+| Follow redirects / retain cookies | Off | Off |
+
+Do not select keyword monitoring or any other billable option; check provider quota/plan before saving. Do not monitor /api/v1/auth/me with an unauthenticated success or readiness keyword expectation: it normally returns 401. Keep the existing Slack incident integration and verify the monitor is in its scope; no new paid escalation policy is required.
+
+The exact public /api/readyz path maps to Go GET /readyz through the selected backend (VPC in production); the handler calls pgx pool Ping. The Worker requires a valid backend configuration, checks upstream HTTP 200 and status ready, returns only a small sanitized status response (200 ready or 503 unavailable), does not forward viewer credentials or query parameters, and does not cache or follow redirects. HEAD performs the same underlying check without returning a body. Other methods receive 405 (maintenance takes precedence). No origin port or public backend hostname is needed. This measures API/DB connectivity, not scheduler progress or backup freshness. Pause the monitor during planned maintenance if alerts are undesirable; resume afterward. Verify with curl before enabling; do not deliberately stop production PostgreSQL merely to test alerts.
 
 Errors integration `469405` sends email incidents for new or reopened errors, scoped to TodoCal; it does not notify on every occurrence.
 

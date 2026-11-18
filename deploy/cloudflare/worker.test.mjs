@@ -132,3 +132,86 @@ test('deployment binds only the designated private VPC service and does not pin 
   assert.deepEqual(config.vpc_services,[{binding:'TODOCAL_API',service_id:'01a1eed9-dd8d-75e2-b7b3-617e4480ac78',remote:true}]);
   assert.equal(config.vars?.API_BACKEND,undefined);
 });
+
+test('public readiness reaches VPC /readyz without forwarding viewer credentials or query', async () => {
+  const original = globalThis.fetch;
+  let publicCalls = 0;
+  globalThis.fetch = async () => { publicCalls++; throw new Error('unexpected public fetch'); };
+  try {
+    for (const method of ['GET','HEAD']) {
+      let sent;
+      const result = await worker.fetch(new Request('https://app.example.com/api/readyz?secret=viewer', {
+        method, headers:{Cookie:'session=secret',Authorization:'Bearer secret','X-TodoCal-Proxy-Secret':'spoof'},
+      }), {...env,API_BACKEND:'vpc',TODOCAL_API:{fetch:async request => {
+        sent=request;
+        return Response.json({status:'ready',internal:'private'},{headers:{'Set-Cookie':'secret=1','X-Internal':'private','Cache-Control':'public'}});
+      }}});
+      assert.equal(sent.url,'http://api:10000/readyz');
+      assert.equal(sent.method,'GET');
+      assert.equal(sent.redirect,'manual');
+      for (const name of ['Cookie','Authorization','X-TodoCal-Proxy-Secret']) assert.equal(sent.headers.get(name),null);
+      assert.equal(result.status,200);
+      assert.equal(result.headers.get('Cache-Control'),'no-store');
+      assert.equal(result.headers.get('Set-Cookie'),null);
+      assert.equal(result.headers.get('X-Internal'),null);
+      assert.equal(await result.text(),method==='HEAD'?'':'{"status":"ready"}');
+    }
+    assert.equal(publicCalls,0);
+  } finally { globalThis.fetch=original; }
+});
+
+test('readiness returns 503 for database failure, wrong body, redirect, tunnel failure and bad configuration', async () => {
+  const original = globalThis.fetch;
+  let publicCalls=0;
+  globalThis.fetch=async () => {publicCalls++; throw new Error('unexpected public fetch');};
+  try {
+    for (const variant of [
+      {...env,API_BACKEND:'vpc',TODOCAL_API:{fetch:async()=>new Response('private db error',{status:503})}},
+      {...env,API_BACKEND:'vpc',TODOCAL_API:{fetch:async()=>new Response('wrong',{status:200})}},
+      {...env,API_BACKEND:'vpc',TODOCAL_API:{fetch:async()=>Response.json({status:'ok'})}},
+      {...env,API_BACKEND:'vpc',TODOCAL_API:{fetch:async()=>new Response(null,{status:302,headers:{Location:'https://other.example'}})}},
+      {...env,API_BACKEND:'vpc',TODOCAL_API:{fetch:async()=>{throw new Error('private failure');}}},
+      {...env,API_BACKEND:'vpc'},
+      {...env,API_BACKEND:'typo'},
+      {...env,API_BACKEND:'vpc',PROXY_SECRET:''},
+    ]) {
+      const result=await worker.fetch(new Request('https://app.example.com/api/readyz'),variant);
+      assert.equal(result.status,503);
+      assert.equal(result.headers.get('Cache-Control'),'no-store');
+      assert.deepEqual(await result.json(),{status:'unavailable'});
+    }
+    assert.equal(publicCalls,0);
+  } finally { globalThis.fetch=original; }
+});
+
+test('readiness respects maintenance and rejects unsupported methods without querying origin',async()=>{
+  let calls=0;
+  const binding={fetch:async()=>{calls++; return Response.json({status:'ready'});}};
+  for (const method of ['GET','HEAD','POST']) {
+    const result=await worker.fetch(new Request('https://app.example.com/api/readyz',{method}),{...env,API_BACKEND:'maintenance',TODOCAL_API:binding});
+    assert.equal(result.status,503);
+    assert.equal(result.headers.get('Retry-After'),'60');
+    if(method==='HEAD') assert.equal(await result.text(),'');
+  }
+  const rejected=await worker.fetch(new Request('https://app.example.com/api/readyz',{method:'POST'}),{...env,API_BACKEND:'vpc',TODOCAL_API:binding});
+  assert.equal(rejected.status,405);
+  assert.equal(rejected.headers.get('Allow'),'GET, HEAD');
+  assert.equal(rejected.headers.get('Cache-Control'),'no-store');
+  assert.equal(calls,0);
+});
+
+test('readiness respects explicit Render mode and disables public fetch cache',async()=>{
+  const original=globalThis.fetch;
+  let calls=0;
+  globalThis.fetch=async(request,options)=>{
+    calls++;
+    assert.equal(request.url,'https://api.example.com/readyz');
+    assert.equal(options.cache,'no-store');
+    return Response.json({status:'ready'});
+  };
+  try {
+    const res=await worker.fetch(new Request('https://app.example.com/api/readyz'),{...env,API_BACKEND:'render'});
+    assert.equal(res.status,200);
+    assert.equal(calls,1);
+  } finally {globalThis.fetch=original;}
+});

@@ -23,8 +23,13 @@ HTTP request. A cancelled Actions run cannot cancel an admitted job.
    triggerHost.py, deployReceiver.py, deploy-trigger.compose.yaml and
    three systemd unit files (todocal-trigger.socket,
    todocal-trigger@.service, todocal-deploy-job@.service) from main to
-   /opt/todocal (root-owned, scripts mode 600 or 700; units root-owned
-   mode 644 in /etc/systemd/system). Ensure no stale deploy timer is enabled.
+   /opt/todocal. All scripts root-owned, mode 600 or 700, EXCEPT
+   deployReceiver.py: root:root mode 644 so container UID 10002 can read it.
+   Systemd units root-owned mode 644 in /etc/systemd/system. Example:
+
+       install -o root -g root -m 644 /home/ubuntu/deployReceiver.py /opt/todocal/deployReceiver.py
+
+   Keep the PEM and trigger key mode 600. Ensure no stale deploy timer is enabled.
 3. Run as root, verify GID 10002 is unused before creating the group:
 
        getent group 10002
@@ -59,10 +64,12 @@ HTTP request. A cancelled Actions run cannot cancel an admitted job.
    and verify both bindings, API_BACKEND=vpc and readiness.
 6. Confirm unsigned POST /api/internal/deploy gets 401, no job started.
    Set repository variable LIGHTSAIL_EVENT_DEPLOY=true only after installation.
-   Run CI via workflow_dispatch on main to trigger the exact latest release.
-   A new backend release triggers automatically after all main CI jobs pass.
-   Unchanged API pushes skip image build and event; manual dispatch retries
-   latest release. If no new release and no manual dispatch there is no event.
+   Run CI via workflow_dispatch on main. The separate Deploy backend workflow
+   runs on successful trusted main CI completion and is not cancelled by newer CI.
+   Every successful current-main CI run delivers the latest matching release,
+   even when API files have not changed. Already-installed releases are no-ops
+   after readiness verification. This recovers a previously missed delivery.
+   On the first merge, if workflow_run did not start, manually run CI on main.
    On first/changed migration fingerprint, Actions reports needs_approval;
    review and use python3 deploy.py --approve api-<exact-sha> on host.
    Then rerun CI manually to verify the already-installed release.
@@ -72,8 +79,10 @@ HTTP request. A cancelled Actions run cannot cancel an admitted job.
 Inspect journalctl -u 'todocal-deploy-job@*.service' and root-owned
 /opt/todocal/deploy-events/<request-id>.json. GitHub Actions prints the ID.
 Success means exact release deployed or already current and public readiness.
-Failed or timed-out events need investigation; never blindly restart an
-unresolved queued/running job. A host reboot may leave such records; verify
+Busy events retry only lock contention every five seconds, for at most ten
+minutes before reporting failure. Superseded tags fail exact-latest validation;
+newer events must be delivered separately. Failed or timed-out events need investigation; never blindly restart an
+unresolved queued/running/busy job. A host reboot may leave such records; verify
 the deployment hold and actual running revision before retrying with a new
 event. Inspect records before manually cleaning unresolved ones; terminal
 records are pruned after seven days on new requests. Rollback/hold remains

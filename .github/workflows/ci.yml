@@ -141,13 +141,3 @@ jobs:
             .local/e2e-web.log
           if-no-files-found: ignore
           retention-days: 3
-
-  publish-api:
-    name: Publish API release
-    needs: [web, api, api-integration, api-lint, browser]
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    permissions:
-      contents: write
-    uses: ./.github/workflows/deployBackend.yml
-    secrets:
-      DEPLOY_TRIGGER_SECRET: ${{ secrets.DEPLOY_TRIGGER_SECRET }}

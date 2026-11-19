@@ -2,7 +2,7 @@ import json
 import tempfile
 from pathlib import Path
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import triggerHost as host
 from triggerProtocol import signature, validate
@@ -34,6 +34,33 @@ class TriggerTests(unittest.TestCase):
                 patch.object(host.subprocess, "run") as command:
             self.assertEqual(host.dispatch(EVENT | {"action": "status"}), (200, "unknown"))
             command.assert_not_called()
+
+    def test_busy_job_retries_then_succeeds(self):
+        with tempfile.TemporaryDirectory() as temp, patch.object(host, "STATE", Path(temp)), \
+                patch.object(host.subprocess, "run") as command, patch.object(host.time, "sleep") as wait:
+            path = host.record_path(EVENT["id"])
+            host.store(path, {"tag": TAG, "status": "queued"})
+            command.side_effect = [MagicMock(returncode=75), MagicMock(returncode=0)]
+            host.job(EVENT["id"])
+            self.assertEqual(json.loads(path.read_text())["status"], "succeeded")
+            self.assertEqual(command.call_count, 2)
+            wait.assert_called_once_with(5)
+            self.assertEqual(command.call_args.args[0][-2:], ["--deploy", TAG])
+
+    def test_busy_job_deadline_and_nonretryable_failure(self):
+        for code in (75, 1, 3):
+            with tempfile.TemporaryDirectory() as temp, patch.object(host, "STATE", Path(temp)), \
+                    patch.object(host.subprocess, "run", return_value=MagicMock(returncode=code)) as command, \
+                    patch.object(host.time, "monotonic", side_effect=[0, 601]):
+                path = host.record_path(EVENT["id"])
+                host.store(path, {"tag": TAG, "status": "queued"})
+                if code == 3:
+                    host.job(EVENT["id"])
+                else:
+                    with self.assertRaises(SystemExit):
+                        host.job(EVENT["id"])
+                self.assertEqual(json.loads(path.read_text())["status"], "needs_approval" if code == 3 else "failed")
+                command.assert_called_once()
 
 
 if __name__ == "__main__":

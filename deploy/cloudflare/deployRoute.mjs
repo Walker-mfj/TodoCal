@@ -41,7 +41,7 @@ export async function deploymentRequest(request, env) {
       method:'POST',body,redirect:'manual',headers:{'Content-Type':'application/json','X-TodoCal-Deploy-Signature':signature},
     }));
     const result = await response.json();
-    const statuses = ['queued','running','succeeded','failed','needs_approval','unknown','unavailable'];
+    const statuses = ['queued','running','busy','succeeded','failed','needs_approval','unknown','unavailable'];
     if (!statuses.includes(result.status)) return error(502);
     return Response.json({status:result.status},{status:response.status,headers:{'Cache-Control':'no-store'}});
   } catch { return error(503); }

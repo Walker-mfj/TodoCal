@@ -33,7 +33,7 @@ def main():
     request_id = uuid.uuid4().hex
     print(f"Deployment request {request_id}: {tag}", flush=True)
     started = False
-    deadline = time.monotonic() + 12*60
+    deadline = time.monotonic() + 45*60
     while time.monotonic() < deadline:
         try:
             status = call(secret, tag, request_id, "status" if started else "deploy")
@@ -55,7 +55,7 @@ def main():
                 return
             if status in TERMINAL:
                 raise SystemExit(f"Deployment {status}: {tag}; inspect host journal and runbook")
-            if status in ("queued", "running"):
+            if status in ("queued", "running", "busy"):
                 started = True
             elif status != "unknown":
                 raise SystemExit(f"Unexpected deployment status: {status}")

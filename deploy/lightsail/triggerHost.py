@@ -91,10 +91,22 @@ def job(request_id):
             return
         store(path, record | {"status": "running"})
     result = "failed"
+    # Contention with another event or a manual operation is retryable.
+    # Each attempt revalidates the exact latest release under deploy.py's
+    # existing exclusive lock. Never retry ordinary deployment failures.
+    deadline = time.monotonic() + 10*60
     try:
-        code = subprocess.run([sys.executable, str(ROOT / "deploy.py"), "--deploy", record["tag"]],
-                              cwd=ROOT, timeout=40*60).returncode
-        result = {0: "succeeded", 3: "needs_approval"}.get(code, "failed")
+        while True:
+            code = subprocess.run([sys.executable, str(ROOT / "deploy.py"), "--deploy", record["tag"]],
+                                  cwd=ROOT, timeout=30*60).returncode
+            if code != 75:
+                result = {0: "succeeded", 3: "needs_approval"}.get(code, "failed")
+                break
+            if time.monotonic() >= deadline:
+                break
+            store(path, record | {"status": "busy"})
+            time.sleep(5)
+            store(path, record | {"status": "running"})
     finally:
         store(path, record | {"status": result})
     if result == "failed":

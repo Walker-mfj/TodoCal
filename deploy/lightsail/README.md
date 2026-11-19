@@ -8,7 +8,7 @@ is over; never fall back to them automatically.
 ## Publish
 
 Full existing CI (web, Go, integration, lint, browser) must succeed on main.
-The final reusable workflow uses only its job-scoped GITHUB_TOKEN with
+The separate Deploy backend workflow triggered by successful main CI uses only its job-scoped GITHUB_TOKEN with
 contents:write. It compares apps/api against the last published API commit,
 including changes from earlier failed CI runs, and builds linux/amd64 only
 if necessary. No new GitHub secret, PAT, GHCR, runner on Lightsail or inbound

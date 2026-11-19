@@ -10,8 +10,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  # Cancel obsolete PR checks, but let main CI and release jobs finish.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
   web:

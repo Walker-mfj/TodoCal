@@ -10,7 +10,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Cancel obsolete PR checks, but let main CI and release jobs finish.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   web:
@@ -65,13 +66,15 @@ jobs:
           go-version-file: apps/api/go.mod
       - run: make test-integration
       - name: Measure scheduler deadline query
+        shell: bash
         run: bash scripts/benchmarkScheduler.sh | tee scheduler-query-plans.txt
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: failure()
         with:
           name: scheduler-query-plans
           path: scheduler-query-plans.txt
           if-no-files-found: ignore
+          retention-days: 3
 
   api-lint:
     name: API lint (golangci-lint)
@@ -96,7 +99,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        browser: [chromium, firefox, webkit]
+        # PR checks use Chromium; main verifies all supported browsers.
+        browser: ${{ fromJSON(github.event_name == 'pull_request' && '["chromium"]' || '["chromium","firefox","webkit"]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -122,7 +126,7 @@ jobs:
           E2E_PLAYWRIGHT_IMAGE: ${{ steps.playwright-image.outputs.image }}
         run: sh scripts/testE2e.sh --project=${{ matrix.browser }}
       - name: Retain browser traces and server logs
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: browser-${{ matrix.browser }}
@@ -130,4 +134,5 @@ jobs:
             apps/web/test-results/
             .local/e2e-api.log
             .local/e2e-web.log
-          retention-days: 7
+          if-no-files-found: ignore
+          retention-days: 3

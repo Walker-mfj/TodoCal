@@ -2,6 +2,7 @@ name: CI
 
 on:
   pull_request:
+  workflow_dispatch:
   push:
     branches: [main]
 
@@ -50,6 +51,9 @@ jobs:
         with:
           go-version-file: apps/api/go.mod
       - run: make -C ../.. format-go-check check-go-architecture
+      - name: Test Lightsail deployment tooling
+        working-directory: deploy/lightsail
+        run: python3 -m unittest -v testDeploy
       - run: go vet ./...
       - run: go build ./...
       - name: Unit tests (database tests skip without TEST_DATABASE_URL)
@@ -135,3 +139,11 @@ jobs:
             .local/e2e-web.log
           if-no-files-found: ignore
           retention-days: 3
+
+  publish-api:
+    name: Publish API release
+    needs: [web, api, api-integration, api-lint, browser]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/deployBackend.yml

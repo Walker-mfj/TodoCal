@@ -1,4 +1,6 @@
-# TodoCal free deployment
+# TodoCal deployment
+
+> Production owner reports the Lightsail/VPC cutover is complete. The current backend release procedure is [Lightsail API release deployment](lightsail/README.md). Render/Neon instructions below are legacy recovery context, not the active production target. Keep the old providers fenced until explicit cleanup.
 
 Next.js static assets run on Cloudflare Workers. A small Worker forwards `/api/*` to Render Free, with PostgreSQL on Neon Free. The Go API runs the notification scheduler; API planning catch-up remains active. Cold starts are expected.
 

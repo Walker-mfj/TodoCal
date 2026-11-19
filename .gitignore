@@ -17,3 +17,12 @@ docs/**
 apps/web/out/
 .wrangler/
 .dev.vars*
+
+# Lightsail deployment credentials and local state (examples may be committed)
+*.pem
+deploy.env
+api.env
+backup.env
+cloudflared.env
+deploy-state/
+__pycache__/

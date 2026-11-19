@@ -28,6 +28,7 @@ type Server struct {
 	secure       bool
 	now          func() time.Time
 	scheduleWake func()
+	broadcast    bool
 }
 
 func New(p *pgxpool.Pool, origin string, secure bool) *Server {
@@ -38,6 +39,9 @@ func (s *Server) Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.scheduleWake != nil {
 			r = r.WithContext(database.WithScheduleWake(r.Context(), s.scheduleWake))
+			if s.broadcast {
+				r = r.WithContext(database.WithScheduleBroadcast(r.Context()))
+			}
 		}
 		handler.ServeHTTP(w, r)
 	})
@@ -45,6 +49,10 @@ func (s *Server) Handler() http.Handler {
 
 // ConfigureScheduleWake is called once before serving HTTP requests.
 func (s *Server) ConfigureScheduleWake(wake func()) { s.scheduleWake = wake }
+
+// ConfigureScheduleBroadcast enables transactional cross-process wakes.
+// Call once at startup, before serving requests.
+func (s *Server) ConfigureScheduleBroadcast() { s.broadcast = true }
 func (s *Server) Health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }

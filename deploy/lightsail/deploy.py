@@ -64,7 +64,8 @@ def image(ref):
     data = json.loads(command("docker", "image", "inspect", ref, capture=True))[0]
     labels = data.get("Config", {}).get("Labels") or {}
     return {"id": data["Id"], "sha": labels.get(REVISION),
-            "fingerprint": labels.get(MIGRATIONS), "os": data["Os"], "arch": data["Architecture"]}
+            "fingerprint": labels.get(MIGRATIONS), "leader": labels.get("io.todocal.scheduler-lock"),
+            "os": data["Os"], "arch": data["Architecture"]}
 
 
 def compatible(a, b):
@@ -264,16 +265,24 @@ def main():
                 raise DeploymentError("Another deployment operation is running")
             log("Deployment operation already running.")
             return
+        import blueGreen
+        blue = blueGreen.enabled(sys.modules[__name__])
         if args.resume:
-            if not ready(wait=30):
+            if blue:
+                blueGreen.preflight(sys.modules[__name__])
+            elif not ready(wait=30):
                 raise DeploymentError("Resolve API readiness before clearing hold")
-            preflight()
+            if not blue:
+                preflight()
             clear_hold()
             log("Deployment hold cleared. Trigger a new GitHub Actions deployment explicitly.")
             return
         if args.rollback:
             # Even on a failed deployment, this only allows equal known schemas.
-            rollback()
+            if blue:
+                blueGreen.rollback(sys.modules[__name__])
+            else:
+                rollback()
             return
         if HOLD.exists() and not args.check:
             if args.approve or args.deploy:
@@ -293,6 +302,8 @@ def main():
         expected = args.deploy or args.approve
         if not TAG.fullmatch(expected) or release["tag"] != expected:
             raise DeploymentError("Requested release is not the exact latest API release")
+        if blue:
+            return blueGreen.update(sys.modules[__name__], client, release, args.approve)
         return update(client, release, args.approve)
 
 

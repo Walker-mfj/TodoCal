@@ -44,7 +44,7 @@ The PEM is a long-lived secret: rotate if exposed, keep out of Git and chat.
 
 On Mac, from a trusted checkout of the merged main commit:
 
-    scp deploy/lightsail/{deploy.py,githubRelease.py} todocal:~/
+    scp deploy/lightsail/{deploy.py,githubRelease.py,blueGreen.py} todocal:~/
 
 On Lightsail:
 
@@ -83,6 +83,13 @@ SHA-256 digest and asset size are checked before load; image revision, migration
 fingerprint and architecture must agree with the release. Local readiness
 is checked three times; also check the public Worker endpoint manually.
 A release verifies transport integrity, not independent publisher trust.
+
+## Optional blue-green mode
+
+See [blue-green deployment](blueGreen.md) for the one-time host transition,
+shared scheduler leadership, resource check, graceful proxy reload and
+migration-sensitive maintenance. The existing single-slot mode remains the
+safe default until the host is explicitly opted in.
 
 ## Migration gate, rollback and failure
 

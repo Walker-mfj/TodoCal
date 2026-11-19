@@ -1,0 +1,38 @@
+# Example fragment, NOT an override or a replacement for the host database.
+# Integrate these services into the existing compose.yaml in maintenance.
+# Preserve the actual postgres, cloudflared, networks, volumes, env and project.
+x-api-slot: &api-slot
+  profiles: ["bluegreen"]
+  env_file: api.env
+  environment:
+    SCHEDULER_LOCK_PATH: /run/todocal-scheduler/leader.lock
+    SKIP_STARTUP_MIGRATIONS: "true"
+  volumes:
+    - ./scheduler-lock:/run/todocal-scheduler:ro
+  networks: [ingress, database]
+  restart: unless-stopped
+  stop_grace_period: 60s
+  mem_limit: 512m
+  healthcheck:
+    test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:10000/readyz"]
+    interval: 15s
+    timeout: 5s
+    retries: 5
+
+services:
+  api:
+    image: nginx:1.28-alpine
+    entrypoint: ["nginx", "-g", "daemon off;"]
+    command: []
+    restart: unless-stopped
+    networks: [ingress]
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/active:/etc/nginx/todocal:ro
+    # No published ports. The existing VPC service still resolves api:10000.
+  api-blue:
+    <<: *api-slot
+    image: todocal-api:blue
+  api-green:
+    <<: *api-slot
+    image: todocal-api:green

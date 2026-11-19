@@ -544,3 +544,52 @@ test("completed calendar titles retain their strike-through after CSS scoping", 
   await expect(title).toBeVisible();
   await expect(title).toHaveCSS("text-decoration-line", "line-through");
 });
+
+test("overlapping calendar tasks keep time and recurrence separate", async ({
+  page,
+  auth,
+}) => {
+  const { today: date, send } = auth;
+  const title = "Recurring focus layout";
+  await send("/series", {
+    task: {
+      title,
+      scheduledDate: date,
+      startTime: "09:00",
+      endTime: "11:00",
+      estimatedPomodoros: 2,
+    },
+    cadence: "daily",
+    intervalDays: 1,
+  });
+  await send("/tasks", {
+    title: "Overlapping task",
+    scheduledDate: date,
+    startTime: "10:00",
+    endTime: "11:00",
+  });
+  await page.reload();
+  const card = page
+    .locator(".fc-day-today .fc-timegrid-event")
+    .filter({ hasText: title });
+  const time = card.locator(".focus-card-time");
+  const repeat = card.locator(".event-repeat");
+  await expect(time).toBeVisible();
+  await expect(repeat).toBeVisible();
+  await expect(repeat.locator("span")).toBeHidden();
+  const fits = async () => {
+    const timeBox = (await time.boundingBox())!;
+    const repeatBox = (await repeat.boundingBox())!;
+    const cardBox = (await card.boundingBox())!;
+    expect(timeBox.width).toBeGreaterThan(0);
+    expect(timeBox.x + timeBox.width).toBeLessThanOrEqual(repeatBox.x + 1);
+    expect(repeatBox.x + repeatBox.width).toBeLessThanOrEqual(
+      cardBox.x + cardBox.width + 1,
+    );
+  };
+  await fits();
+  await page.getByRole("button", { name: "Day", exact: true }).click();
+  await expect(repeat.locator("span")).toBeVisible();
+  await expect(card.locator(".focus-card-focus-label")).toBeVisible();
+  await fits();
+});

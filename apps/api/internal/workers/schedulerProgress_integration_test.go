@@ -182,7 +182,7 @@ func TestHorizonDurableProgressAndDormancy(t *testing.T) {
 	// Pure deadline reminders also need a horizon; negative offsets must be
 	// materialized even when their occurrence is far outside today's calendar.
 	exec("UPDATE notification_preferences SET task_start=false,deadline=true WHERE user_id=$1", user)
-	exec(`UPDATE recurrence_series SET stopped_after=NULL,deadline_offset=-10,deadline_time='09:00'
+	exec(`UPDATE recurrence_series SET stopped_after=NULL,deadline_offset=-10,deadline_time='09:00:00'
  WHERE user_id=$1 AND id='00000000-0000-0000-0000-000000000001'`, user)
 	exec("UPDATE notification_horizons SET next_run_at=$1 WHERE user_id=$2", now, user)
 	run()
@@ -233,7 +233,7 @@ func TestHorizonSingleLargeSeries(t *testing.T) {
 	now := time.Now().UTC()
 	series := uuid.NewString()
 	exec(progressSeriesSQL, user, series, now)
-	exec(`UPDATE recurrence_series SET start_date=$3::timestamptz::date-200000,deadline_offset=-10,deadline_time='09:00'
+	exec(`UPDATE recurrence_series SET start_date=$3::timestamptz::date-200000,deadline_offset=-10,deadline_time='09:00:00'
  WHERE user_id=$1 AND id=$2`, user, series, now)
 	exec("INSERT INTO notification_preferences(user_id,task_start,deadline) VALUES($1,true,true)", user)
 	exec(`INSERT INTO tasks(user_id,id,title,series_id,original_occurrence_date,scheduled_date,created_at,updated_at)

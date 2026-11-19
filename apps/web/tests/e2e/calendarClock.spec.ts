@@ -1,51 +1,33 @@
-import { test, expect } from "@playwright/test";
-import { build } from "vite";
+import { test, expect } from "./fixtures";
+import { DateTime } from "luxon";
 
 test.use({ timezoneId: "America/New_York" });
 
-let script: string;
-let css: string;
-test.beforeAll(async () => {
-  const output = await build({
-    configFile: false,
-    oxc: { jsx: { runtime: "automatic" } },
-    define: { "process.env.NODE_ENV": JSON.stringify("production") },
-    build: {
-      write: false,
-      lib: {
-        entry: "tests/e2e/fixtures/calendarClock.tsx",
-        name: "CalendarClock",
-        formats: ["iife"],
-      },
-    },
-  });
-  const bundles = Array.isArray(output) ? output : [output];
-  const files = bundles.flatMap((bundle) =>
-    "output" in bundle ? bundle.output : [],
-  );
-  script = files
-    .filter((file) => file.type === "chunk")
-    .map((file) => file.code)
-    .join("\n");
-  css = files
-    .filter((file) => file.type === "asset" && file.fileName.endsWith(".css"))
-    .map((file) => (file.type === "asset" ? file.source : ""))
-    .join("\n");
-});
-
 test("indicator follows account wall time, navigation and wake from sleep", async ({
   page,
+  auth,
 }) => {
-  // Browser timezone deliberately differs from the account timezone.
-  await page.clock.install({ time: new Date("2026-11-16T01:15:00Z") });
-  await page.setContent('<div id="root"></div>');
-  await page.addStyleTag({
-    content: css + "\n#root > div > div { height: 1500px; }",
-  });
-  await page.addScriptTag({ content: script });
-  const column = page.locator('.fc-timegrid-col[data-date="2026-11-16"]');
+  const settings = await (await page.request.get("/api/v1/settings")).json();
+  await auth.send(
+    "/settings",
+    { timezone: "Asia/Tokyo", expectedRevision: settings.revision },
+    "PATCH",
+  );
+  // Use a past local date so the simulated browser time cannot expire the
+  // real session. Reload the actual Next.js app with the account timezone.
+  const initial = DateTime.now()
+    .setZone("Asia/Tokyo")
+    .minus({ days: 1 })
+    .set({ hour: 10, minute: 15, second: 0, millisecond: 0 });
+  const date = initial.toISODate();
+  await page.clock.install({ time: initial.toJSDate() });
+  await page.reload();
+  const column = page.locator(`.fc-timegrid-col[data-date="${date}"]`);
   const line = column.locator(".fc-timegrid-now-indicator-line");
+  await expect(column).toHaveClass(/fc-day-today/);
+  await line.scrollIntoViewIfNeeded();
   await expect(line).toBeVisible();
+
   async function expectTime(time: string, fraction = 0) {
     await expect
       .poll(async () => {
@@ -58,6 +40,7 @@ test("indicator follows account wall time, navigation and wake from sleep", asyn
       })
       .toBeLessThan(3);
   }
+
   await expectTime("10:00:00", 0.5);
   await page.clock.runFor(15 * 60_000);
   await expectTime("10:30:00");
@@ -65,7 +48,9 @@ test("indicator follows account wall time, navigation and wake from sleep", asyn
   await expect(page.locator(".fc-timegrid-now-indicator-line")).toHaveCount(0);
   await page.getByRole("button", { name: "Today", exact: true }).click();
   await expect(line).toBeVisible();
-  await page.clock.setSystemTime(new Date("2026-11-16T05:45:00Z"));
+  await page.clock.setSystemTime(
+    initial.set({ hour: 14, minute: 45 }).toJSDate(),
+  );
   await page.evaluate(() =>
     document.dispatchEvent(new Event("visibilitychange")),
   );

@@ -48,6 +48,37 @@ class BlueGreenTests(unittest.TestCase):
             self.assertEqual(bg.update(self.ops, MagicMock(), release), 3)
         self.ops.download_image.assert_not_called()
 
+    def test_rollback_from_unhealthy_current_api(self):
+        with patch.multiple(bg, verify_slots=MagicMock(), active_config=MagicMock(return_value="green"),
+                            proxy_slot=MagicMock(return_value="green"), running=MagicMock(return_value=[]),
+                            active_image=MagicMock(return_value=self.candidate),
+                            ready=MagicMock(return_value=False), handoff=MagicMock()):
+            self.ops.image.return_value = self.current
+            self.ops.compatible.return_value = True
+            with self.assertRaisesRegex(DeploymentError, "Current proxy is not ready"):
+                bg.preflight(self.ops)
+            bg.ready.reset_mock()
+            bg.rollback(self.ops)
+            bg.ready.assert_not_called()
+            bg.handoff.assert_called_once_with(self.ops, "green", self.candidate, "blue",
+                                               self.current, True, keep_hold=True)
+
+    def test_rollback_refuses_ambiguous_slot(self):
+        with patch.multiple(bg, verify_slots=MagicMock(), active_config=MagicMock(return_value="green"),
+                            proxy_slot=MagicMock(return_value="blue"), handoff=MagicMock()):
+            with self.assertRaisesRegex(DeploymentError, "Ambiguous proxy"):
+                bg.rollback(self.ops)
+            bg.handoff.assert_not_called()
+
+    def test_rollback_refuses_incompatible_schema(self):
+        self.ops.image.return_value = self.current
+        self.ops.compatible.return_value = False
+        with patch.multiple(bg, inspect_active=MagicMock(return_value=("green", self.candidate)),
+                            handoff=MagicMock()):
+            with self.assertRaisesRegex(DeploymentError, "compatible slot image"):
+                bg.rollback(self.ops)
+            bg.handoff.assert_not_called()
+
     def test_unsupported_candidate_never_mutates_host(self):
         with self.assertRaises(DeploymentError):
             bg.handoff(self.ops, "blue", self.current, "green", self.candidate | {"leader": None}, True)

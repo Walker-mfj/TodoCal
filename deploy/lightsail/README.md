@@ -8,7 +8,7 @@ is over; never fall back to them automatically.
 ## Publish
 
 Full existing CI (web, Go, integration, lint, browser) must succeed on main.
-The final reusable workflow uses only its job-scoped GITHUB_TOKEN with
+The separate Deploy backend workflow triggered by successful main CI uses only its job-scoped GITHUB_TOKEN with
 contents:write. It compares apps/api against the last published API commit,
 including changes from earlier failed CI runs, and builds linux/amd64 only
 if necessary. No new GitHub secret, PAT, GHCR, runner on Lightsail or inbound
@@ -52,6 +52,7 @@ On Lightsail:
     cd /opt/todocal
     install -m 700 /home/ubuntu/deploy.py ./deploy.py
     install -m 600 /home/ubuntu/githubRelease.py ./githubRelease.py
+    install -m 600 /home/ubuntu/blueGreen.py ./blueGreen.py
     python3 deploy.py --check
 
 Requires Python 3, openssl, Docker Compose v2, GNU/Linux amd64. Keep

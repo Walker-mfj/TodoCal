@@ -87,6 +87,15 @@ class DeployTests(unittest.TestCase):
         with self.assertRaises(gh.DeploymentError):
             deploy.update(self.client, self.release, "api-" + "e" * 40)
 
+    def test_already_installed_release_still_checks_readiness(self):
+        self.old["sha"] = SHA
+        self.ready.return_value = False
+        with self.assertRaises(gh.DeploymentError):
+            deploy.update(self.client, self.release)
+        self.stop_api.assert_not_called()
+        self.ready.return_value = True
+        self.assertEqual(deploy.update(self.client, self.release), 0)
+
     def test_successful_schema_compatible_deploy(self):
         deploy.update(self.client, self.release)
         self.write_hold.assert_called_once()
@@ -136,6 +145,16 @@ class DeployTests(unittest.TestCase):
         deploy.verify_image(correct, self.release)
         with self.assertRaises(gh.DeploymentError):
             deploy.verify_image(correct | {"arch": "arm64"}, self.release)
+
+class LockTests(unittest.TestCase):
+    def test_event_returns_retryable_code_when_host_busy(self):
+        with tempfile.TemporaryDirectory() as temp, patch.object(deploy, "STATE", Path(temp)), \
+                patch.object(deploy.os, "geteuid", return_value=0), \
+                patch.object(deploy.fcntl, "flock", side_effect=BlockingIOError), \
+                patch("sys.argv", ["deploy.py", "--deploy", "api-"+SHA]), \
+                patch.object(deploy, "Client") as client:
+            self.assertEqual(deploy.main(), 75)
+            client.assert_not_called()
 
 
 if __name__ == "__main__":

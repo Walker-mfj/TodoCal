@@ -151,12 +151,17 @@ def active_image(ops, slot):
     return image
 
 
-def preflight(ops):
+def inspect_active(ops):
+    """Verify slot routing and image identity without requiring API readiness."""
     verify_slots(ops)
     slot = active_config(ops)
     if proxy_slot(ops) != slot or running(ops, other(slot)):
         raise DeploymentError("Ambiguous proxy/slot state; recover manually")
-    current = active_image(ops, slot)
+    return slot, active_image(ops, slot)
+
+
+def preflight(ops):
+    slot, current = inspect_active(ops)
     if not ready(ops, "api", wait=30):
         raise DeploymentError("Current proxy is not ready")
     return slot, current
@@ -281,7 +286,10 @@ def update(ops, client, release, approved=None):
 
 
 def rollback(ops):
-    slot, current = preflight(ops)
+    # The failing current API need not be healthy. The proxy must still
+    # identify exactly one active slot, and handoff checks the previous
+    # image readiness before switching any traffic.
+    slot, current = inspect_active(ops)
     previous = ops.image(slot_image(other(slot)))
     if current["id"] == previous["id"] or not ops.compatible(current, previous):
         raise DeploymentError("Rollback requires a different compatible slot image")

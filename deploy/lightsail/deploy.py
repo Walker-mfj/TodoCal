@@ -186,6 +186,8 @@ def update(client, release, approved=None):
         raise DeploymentError("Approval must match the current latest API release exactly")
     current = preflight()
     if current["sha"] == release["sha"]:
+        if not ready(wait=30):
+            raise DeploymentError("Installed API is not ready")
         log("API already at latest release.")
         return 0
     same = compatible(current, release)
@@ -261,7 +263,10 @@ def main():
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            if args.deploy or args.approve or args.rollback or args.resume:
+            if args.deploy:
+                log("Deployment host busy; retry the exact release")
+                return 75
+            if args.approve or args.rollback or args.resume:
                 raise DeploymentError("Another deployment operation is running")
             log("Deployment operation already running.")
             return
@@ -270,9 +275,9 @@ def main():
         if args.resume:
             if blue:
                 blueGreen.preflight(sys.modules[__name__])
-            elif not ready(wait=30):
-                raise DeploymentError("Resolve API readiness before clearing hold")
-            if not blue:
+            else:
+                if not ready(wait=30):
+                    raise DeploymentError("Resolve API readiness before clearing hold")
                 preflight()
             clear_hold()
             log("Deployment hold cleared. Trigger a new GitHub Actions deployment explicitly.")

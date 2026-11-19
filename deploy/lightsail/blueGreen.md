@@ -141,3 +141,9 @@ flow tests. Require real Linux/Compose/Nginx and PostgreSQL acceptance:
 - Repeated HTTP probes and authenticated writes through Worker throughout a
   compatible deployment; compare p95 and 5xx, inspect memory/OOM, focus and push.
 - Neither DB nor tunnel restarts. Record measured downtime; don't assume none.
+
+Rollback can recover an unhealthy running API without requiring its readiness.
+The proxy must still identify the active slot and the slot/image state must be
+unambiguous; the previous image must have a compatible migration fingerprint
+and pass readiness before traffic switches. If the active container is no
+longer identifiable as running, use manual recovery; do not bypass the hold.

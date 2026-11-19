@@ -26,14 +26,17 @@ test("criteria 4 and 7: overlapping calendar events selectable and Month creatio
     ).toBeVisible();
   }
   await page.getByRole("button", { name: "Month", exact: true }).click();
-  // Today contains four overlapping events; in a six-row month the old
-  // fixed point hits the first event instead of an empty slot in WebKit.
+  // The month range is a new query; until its data arrives, Calendar
+  // disables creation. Wait for a persisted event in the new view.
+  await expect(
+    page.locator(".fc-daygrid-event").filter({ hasText: "Overlap" }).first(),
+  ).toBeVisible();
   const emptyDate = DateTime.fromISO(today).plus({ days: 1 }).toISODate()!;
   const emptyCell = page.locator(`.fc-daygrid-day[data-date="${emptyDate}"]`);
   await expect(emptyCell.locator(".fc-event")).toHaveCount(0);
-  await emptyCell
-    .locator(".fc-daygrid-day-frame")
-    .click({ position: { x: 12, y: 40 } });
+  // Click the empty event area, not a fixed offset that can hit the daily
+  // progress button when WebKit lays out a shorter month row.
+  await emptyCell.locator(".fc-daygrid-day-events").click();
   await expect(page.getByLabel("Task title")).toBeVisible();
   await expect(page.getByLabel("Scheduled date")).toHaveValue(emptyDate);
   await expect(page.getByLabel("Start time", { exact: true })).toHaveValue("");

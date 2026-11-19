@@ -42,8 +42,8 @@ test("indicator follows account wall time, navigation and wake from sleep", asyn
   }
 
   await expectTime("10:00:00", 0.5);
-  await page.clock.runFor(60_000);
-  await expectTime("10:00:00", 16 / 30);
+  await page.clock.runFor(15 * 60_000);
+  await expectTime("10:30:00");
   await page.getByRole("button", { name: "Next", exact: true }).click();
   await expect(page.locator(".fc-timegrid-now-indicator-line")).toHaveCount(0);
   await page.getByRole("button", { name: "Today", exact: true }).click();

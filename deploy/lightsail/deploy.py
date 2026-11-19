@@ -184,8 +184,6 @@ def update(client, release, approved=None):
     if approved and release["tag"] != approved:
         raise DeploymentError("Approval must match the current latest API release exactly")
     current = preflight()
-    if not ready(wait=30):
-        raise DeploymentError("Current API is not ready; recover it before deploying")
     if current["sha"] == release["sha"]:
         log("API already at latest release.")
         return
@@ -193,6 +191,8 @@ def update(client, release, approved=None):
     if not same and not approved:
         log(f'Manual approval required for initial deployment or migration change: {release["tag"]}')
         return
+    if not ready(wait=30):
+        raise DeploymentError("Current API is not ready; recover it before deploying")
     loaded = download_image(client, release)
     # Re-check after potentially slow downloads, and avoid deploying a release
     # superseded while downloading. Manual approvals cannot float to new tags.

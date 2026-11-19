@@ -84,8 +84,8 @@ There is brief downtime when the single API container is replaced; the
 scheduler must not overlap. Plan maintenance if needed. Do not enable
 the timer until the first release and live readiness are verified.
 The timer checks five minutes after the previous unit finishes. Only API
-is stopped/recreated; database and tunnel are untouched. Docker image
-digest and asset size are checked before load; image revision, migration
+is stopped/recreated; database and tunnel are untouched. Docker archive
+SHA-256 digest and asset size are checked before load; image revision, migration
 fingerprint and architecture must agree with the release. Local readiness
 is checked three times; also check the public Worker endpoint manually.
 A release verifies transport integrity, not independent publisher trust.
@@ -93,7 +93,7 @@ A release verifies transport integrity, not independent publisher trust.
 ## Migration gate, rollback and failure
 
 Automatic deployment requires an identical known fingerprint of migration
-files, the migration runner and startup script. First deployment or any
+files, the migration runner, startup script and Go module manifests. First deployment or any
 fingerprint change is not automatically applied. The journal prints the
 exact release tag awaiting approval. Review SQL and compatibility before
 approval. An approved migration change stops the old API/scheduler, runs

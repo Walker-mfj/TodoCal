@@ -26,8 +26,9 @@ revisions. Release assets must be below 2 GiB.
 GitHub Releases and Apps do not require an extra paid service. Existing
 private-repository CI minutes are still metered; check remaining Actions
 quota and spending settings. No extra artifact upload or duplicate CI run.
-A five-minute poll uses outbound API calls, not Actions minutes. Download
-only when the image differs and the migration gate permits it. Monitor
+An authenticated event from successful GitHub Actions launches the exact release.
+No background release polling. During a deployment only, Actions checks job status
+and consumes runner minutes. Download only when needed and allowed. Monitor
 Lightsail transfer allowance and disk space. Frequent manual reruns and
 migration backups may consume quota; no claim of a hard billing cap.
 
@@ -43,7 +44,7 @@ The PEM is a long-lived secret: rotate if exposed, keep out of Git and chat.
 
 On Mac, from a trusted checkout of the merged main commit:
 
-    scp deploy/lightsail/{deploy.py,githubRelease.py,todocal-deploy.service,todocal-deploy.timer} todocal:~/
+    scp deploy/lightsail/{deploy.py,githubRelease.py} todocal:~/
 
 On Lightsail:
 
@@ -51,9 +52,6 @@ On Lightsail:
     cd /opt/todocal
     install -m 700 /home/ubuntu/deploy.py ./deploy.py
     install -m 600 /home/ubuntu/githubRelease.py ./githubRelease.py
-    install -m 644 /home/ubuntu/todocal-deploy.service /etc/systemd/system/
-    install -m 644 /home/ubuntu/todocal-deploy.timer /etc/systemd/system/
-    systemctl daemon-reload
     python3 deploy.py --check
 
 Requires Python 3, openssl, Docker Compose v2, GNU/Linux amd64. Keep
@@ -76,14 +74,10 @@ API, then run using the exact printed tag:
     python3 deploy.py --approve api-REPLACE_WITH_FULL_SHA
     docker compose ps
     curl -fsS https://todocal.digitalhome.workers.dev/api/readyz
-    systemctl enable --now todocal-deploy.timer
-    systemctl list-timers --all | grep todocal-deploy
-    journalctl -u todocal-deploy.service -n 50
 
 There is brief downtime when the single API container is replaced; the
-scheduler must not overlap. Plan maintenance if needed. Do not enable
-the timer until the first release and live readiness are verified.
-The timer checks five minutes after the previous unit finishes. Only API
+scheduler must not overlap. Plan maintenance if needed. After first deployment configure [event-driven deployment](eventDeployment.md).
+Do not re-enable the retired timer. Only API
 is stopped/recreated; database and tunnel are untouched. Docker archive
 SHA-256 digest and asset size are checked before load; image revision, migration
 fingerprint and architecture must agree with the release. Local readiness
@@ -112,10 +106,9 @@ forward or use a validated restore plan while users are fenced. Backup
 restore loses writes after backup; don't restore a live DB blindly.
 A durable deploy-state/hold.json interlock is written before any mutation
 and remains after failure, interrupted deployment or manual rollback.
-The timer won't undo a rollback or keep restarting a failing release.
+New events won't undo a rollback or keep restarting a failing release.
 
-    systemctl stop todocal-deploy.timer
-    journalctl -u todocal-deploy.service -n 100
+    journalctl -u 'todocal-deploy-job@*.service' -n 100
     docker compose ps
     python3 deploy.py --rollback
 
@@ -124,14 +117,12 @@ first hand-built image is intentionally not automatically rollback-safe.
 If the stable tag and current container differ after an interruption,
 inspect hold.json and docker image/container state; repair explicitly
 before running the deployer again. Avoid dumping env/Compose config to
-logs. Once recovered and ready, explicitly clear the hold (the next
-poll may deploy the latest release again):
+logs. Once recovered and ready, explicitly clear the hold and trigger a new deployment from Actions:
 
     python3 deploy.py --resume
-    systemctl enable --now todocal-deploy.timer
 
 For a pending migration, run --approve with the current exact tag.
-Do not delete the hold file to bypass checks. An automatic poll does not
+Do not delete the hold file to bypass checks. A schema-compatible deployment does not
 create a backup for schema-compatible releases; the existing schedule
 continues. The deployer keeps current and previous immutable local image
 tags and the stable/rollback aliases, removes older matching local API
@@ -146,7 +137,7 @@ paid monitoring configured in this PR.
 Run python3 -m unittest -v testDeploy from this directory; bash -n publish.sh
 and a successful main CI are required. Validate release upload, App
 authentication, first deploy and local/public readiness on the actual host
-before enabling the timer. Tests mock Docker/GitHub; they do not substitute
+before enabling event delivery. Tests mock Docker/GitHub; they do not substitute
 for host acceptance.
 
 - https://docs.github.com/en/rest/releases/assets

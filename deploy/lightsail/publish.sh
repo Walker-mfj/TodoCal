@@ -20,6 +20,9 @@ latest=$(gh api "$api/releases?per_page=100" --paginate --slurp \
 if [[ -n "$latest" ]] && git cat-file -e "$latest^{commit}"; then
   if git diff --quiet "$latest" "$GITHUB_SHA" -- apps/api; then
     echo "No API changes since published release $latest."
+    if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch || "$latest" == "$tag" ]]; then
+      echo "tag=$latest" >> "$GITHUB_OUTPUT"
+    fi
     exit 0
   fi
 fi
@@ -28,6 +31,7 @@ existing=$(gh api "$api/releases?per_page=100" --paginate --slurp \
   | jq -r "[.[][] | select(.tag_name == \"$tag\")] | first | if . == null then \"absent\" elif .draft then \"draft\" else \"published\" end")
 if [[ "$existing" == published ]]; then
   echo "Release already published."
+  echo "tag=$tag" >> "$GITHUB_OUTPUT"
   exit 0
 fi
 fingerprint=$(git ls-tree -r "$GITHUB_SHA" -- apps/api/internal/database/migrations apps/api/internal/database/migrate.go apps/api/start.sh apps/api/go.mod apps/api/go.sum | sha256sum | cut -d' ' -f1)
@@ -61,3 +65,4 @@ if ! is_current; then
   exit 0
 fi
 gh release edit "$tag" --draft=false --latest
+echo "tag=$tag" >> "$GITHUB_OUTPUT"

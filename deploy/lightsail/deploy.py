@@ -186,11 +186,11 @@ def update(client, release, approved=None):
     current = preflight()
     if current["sha"] == release["sha"]:
         log("API already at latest release.")
-        return
+        return 0
     same = compatible(current, release)
     if not same and not approved:
         log(f'Manual approval required for initial deployment or migration change: {release["tag"]}')
-        return
+        return 3
     if not ready(wait=30):
         raise DeploymentError("Current API is not ready; recover it before deploying")
     loaded = download_image(client, release)
@@ -227,6 +227,7 @@ def update(client, release, approved=None):
     clear_hold()
     prune_old({loaded["sha"], current["sha"]})
     log(f'API deployment successful: {release["tag"]}')
+    return 0
 
 
 def rollback():
@@ -238,13 +239,14 @@ def rollback():
     write_hold("operator rollback", current["id"], previous["id"])
     stop_api()
     activate(previous["id"])
-    # Leave hold enabled; otherwise next timer would undo the rollback.
+    # Leave hold enabled; a subsequent event must not undo the rollback.
     log("Rollback complete; automatic deployment remains on hold.")
 
 
 def main():
     parser = argparse.ArgumentParser()
-    mode = parser.add_mutually_exclusive_group()
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--deploy", metavar="API_TAG")
     mode.add_argument("--check", action="store_true")
     mode.add_argument("--approve", metavar="API_TAG")
     mode.add_argument("--rollback", action="store_true")
@@ -258,7 +260,7 @@ def main():
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            if args.approve or args.rollback or args.resume:
+            if args.deploy or args.approve or args.rollback or args.resume:
                 raise DeploymentError("Another deployment operation is running")
             log("Deployment operation already running.")
             return
@@ -267,33 +269,36 @@ def main():
                 raise DeploymentError("Resolve API readiness before clearing hold")
             preflight()
             clear_hold()
-            log("Deployment hold cleared. Next timer may deploy latest release.")
+            log("Deployment hold cleared. Trigger a new GitHub Actions deployment explicitly.")
             return
         if args.rollback:
             # Even on a failed deployment, this only allows equal known schemas.
             rollback()
             return
         if HOLD.exists() and not args.check:
-            if args.approve:
+            if args.approve or args.deploy:
                 raise DeploymentError("Deployment on hold; investigate before --resume")
             log("Deployment on hold; operator action required.")
             return
         client = Client(load_env())
         release = client.latest()
         if not release:
+            if args.deploy or args.approve:
+                raise DeploymentError("No API release published")
             log("GitHub App authenticated; no API release published.")
             return
         if args.check:
             log(f'GitHub App authenticated. Latest API: {release["tag"]}')
             return
-        if args.approve and not TAG.fullmatch(args.approve):
-            raise DeploymentError("Invalid approval tag")
-        update(client, release, args.approve)
+        expected = args.deploy or args.approve
+        if not TAG.fullmatch(expected) or release["tag"] != expected:
+            raise DeploymentError("Requested release is not the exact latest API release")
+        return update(client, release, args.approve)
 
 
 if __name__ == "__main__":
     try:
-        main()
+        sys.exit(main())
     except DeploymentError as exc:
         log(str(exc))
         sys.exit(1)

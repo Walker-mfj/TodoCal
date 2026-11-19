@@ -1,0 +1,14 @@
+[Unit]
+Description=Validate TodoCal deployment event
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/todocal
+UMask=0077
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+ExecStart=/usr/bin/python3 /opt/todocal/triggerHost.py
+RuntimeMaxSec=10
+CollectMode=inactive-or-failed

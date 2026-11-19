@@ -1,0 +1,13 @@
+[Unit]
+Description=TodoCal API release deployment
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/todocal
+UMask=0077
+ExecStart=/usr/bin/python3 /opt/todocal/deploy.py
+TimeoutStartSec=45min

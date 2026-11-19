@@ -107,6 +107,7 @@
 }
 .focus-card:not(:global(.compact)) .focus-card-main {
   min-height: 22px;
+  padding-right: var(--quick-focus-reserve, 0px);
 }
 .focus-card .event-title {
   flex: 0 1 auto;
@@ -208,13 +209,11 @@
   gap: 2px;
   opacity: 0;
 }
-.focus-card:not(:global(.compact)).focus-available:hover .focus-card-main,
-.focus-card:not(:global(.compact)).focus-available:focus-within .focus-card-main,
-.focus-card:not(:global(.compact)).focus-active .focus-card-main,
-:global(.fc-event):focus
-  .focus-card:not(:global(.compact)).focus-available
-  .focus-card-main {
-  padding-right: 24px;
+.focus-card.focus-available:hover,
+.focus-card.focus-available:focus-within,
+.focus-card.focus-active,
+:global(.fc-event):focus .focus-card.focus-available {
+  --quick-focus-reserve: var(--quick-focus-width, 24px);
 }
 .focus-card:hover .quick-focus {
   opacity: 1;
@@ -325,8 +324,9 @@
   :global(.fc) .focus-card.calendar-task-content {
     min-height: 22px;
   }
-  .focus-card:not(:global(.compact)).focus-available .focus-card-main {
-    padding-right: 46px;
+  .focus-card.focus-available {
+    --quick-focus-width: 46px;
+    --quick-focus-reserve: var(--quick-focus-width);
   }
 }
 @media (pointer: coarse) {

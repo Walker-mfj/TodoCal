@@ -13,12 +13,14 @@ See [production architecture and end-to-end flows](../docs/architecture/producti
 | GitHub repository secrets | DEPLOY_TRIGGER_SECRET |
 | GitHub production environment or repository secrets | CLOUDFLARE_API_TOKEN, BETTER_STACK_API_TOKEN |
 | GitHub variables | DEPLOY_VPC_SERVICE_ID (deployment receiver VPC UUID); LIGHTSAIL_EVENT_DEPLOY=false only to pause delivery |
-| Worker runtime settings | API_BACKEND=vpc, PROXY_SECRET, DEPLOY_TRIGGER_SECRET |
+| Worker runtime settings | PROXY_SECRET, DEPLOY_TRIGGER_SECRET; optional text MAINTENANCE_MODE (unset/false normally) |
 | Worker bindings | TODOCAL_API (api:10000), TODOCAL_DEPLOY (deploy-receiver:8080), ASSETS |
 | Lightsail api.env | DATABASE_URL (local production PostgreSQL), APP_ORIGIN (exact HTTPS frontend origin), PROXY_SECRET, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT, monitoring/session settings |
 | Lightsail host | root-owned secrets/trigger.key (same HMAC key as Worker and GitHub), backup.env, cloudflared.env, deployment tools, systemd socket, local scheduler lock, Blue-Green marker |
 
-Keep tokens narrowly scoped; publishing Workers needs Workers Scripts permissions and account-level Connectivity Directory access for VPC bindings. Do not print secrets or full resolved Compose config. The Worker uses the exact private VPC service only; missing/invalid mode fails closed. Maintenance returns 503 on API requests, including GETs (which may mutate state); static assets remain available. Do not point back to the retired database.
+Keep tokens narrowly scoped; publishing Workers needs Workers Scripts permissions and account-level Connectivity Directory access for VPC bindings. Do not print secrets or full resolved Compose config. The Worker uses the exact private VPC service only; missing required bindings or credentials fail closed. Set Worker text variable `MAINTENANCE_MODE=true` to block all API requests, readiness and signed deployment events with 503; GETs can mutate state. Static assets remain available. Set `MAINTENANCE_MODE=false` or remove it to reopen traffic; invalid values fail closed. Wrangler uses `keep_vars: true` to preserve the dashboard setting on frontend deployments. Do not point back to the retired database.
+
+For the one-time flag migration, deploy the new Worker only during normal operation (old `API_BACKEND=vpc`, no maintenance or active recovery). After the new Worker is live, verify public readiness, authenticated requests and the deployment route, then delete `API_BACKEND` from the dashboard. A rollback to a Worker version that still reads the old flag requires restoring `API_BACKEND=vpc` for normal service or `API_BACKEND=maintenance` to fence traffic before routing requests to it.
 
 ## Releases and operations
 

@@ -1,5 +1,6 @@
 // Static Next.js frontend and a same-origin, authenticated API proxy.
 import { deploymentRequest } from './deployRoute.mjs';
+import { maintenanceEnabled } from './maintenance.mjs';
 
 const VPC_ORIGIN = 'http://api:10000';
 
@@ -27,14 +28,12 @@ export default {
     const isReadiness = incoming.pathname === '/api/readyz';
     const probe = (ready, retryAfter) => readiness(ready, request.method, retryAfter);
 
-    // Only the designated private origin is supported. Missing/invalid mode
-    // fails closed; maintenance blocks requests before they reach the API.
-    const backend = env.API_BACKEND;
-    if (backend === 'maintenance') return isReadiness ? probe(false, '60') : unavailable('Service is temporarily unavailable for maintenance.', '60');
+    // The designated private origin is the only backend. Maintenance also
+    // fails closed for invalid settings, before any request reaches the API.
+    if (maintenanceEnabled(env)) return isReadiness ? probe(false, '60') : unavailable('Service is temporarily unavailable for maintenance.', '60');
     if (isReadiness && !['GET','HEAD'].includes(request.method)) {
       return new Response(null, {status:405,headers:{Allow:'GET, HEAD','Cache-Control':'no-store'}});
     }
-    if (backend !== 'vpc') return isReadiness ? probe(false) : unavailable('Invalid API configuration.');
     if (!env.PROXY_SECRET || env.PROXY_SECRET.length < 32) return isReadiness ? probe(false) : unavailable('Service is not configured yet.');
 
     if (typeof env.TODOCAL_API?.fetch !== 'function') return isReadiness ? probe(false) : unavailable('Service is not configured yet.');

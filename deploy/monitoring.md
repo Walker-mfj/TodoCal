@@ -41,7 +41,7 @@ Errors integration `469405` sends email incidents for new or reopened errors, sc
 
 ## Configuration and deploy
 
-`BETTER_STACK_DSN` is stored in Lightsail api.env. Empty or invalid configuration disables error reporting; invalid values emit a sanitized warning. No DSN/provider credential is embedded in browser assets. The API Docker image embeds `RENDER_GIT_COMMIT` from the tested Git SHA (the existing release metadata variable).
+`BETTER_STACK_DSN` is stored in Lightsail api.env. Empty or invalid configuration disables error reporting; invalid values emit a sanitized warning. No DSN/provider credential is embedded in browser assets. The API Docker image embeds `APP_RELEASE` from the tested Git SHA.
 
 From `deploy/cloudflare`, `npm run build` builds production assets with `NEXT_PUBLIC_MONITORING_ENABLED=true` and the current Git SHA as `NEXT_PUBLIC_RELEASE`. Source maps and matching bundles are copied to ignored `.local/sourcemaps/<SHA>`; all `.map` files are then removed from the public `apps/web/out` directory.
 
@@ -55,7 +55,7 @@ Run web tests/typecheck, Go race tests with the dedicated test database, static 
 
 ## Stage 1 request and database diagnostics
 
-Set `OBSERVABILITY_ENABLED=true` on the API to enable JSON stdout request completion records and pgx acquire/query diagnostics. It defaults off; remove the flag or set it to `false` to restore existing logging. Set `APP_ENV=production` (also accepts `staging` or `development`); unknown environment/release metadata becomes `unknown`. `RENDER_GIT_COMMIT` must be a full lowercase Git SHA.
+Set `OBSERVABILITY_ENABLED=true` on the API to enable JSON stdout request completion records and pgx acquire/query diagnostics. It defaults off; remove the flag or set it to `false` to restore existing logging. Set `APP_ENV=production` (also accepts `staging` or `development`); unknown environment/release metadata becomes `unknown`. `APP_RELEASE` must be a full lowercase Git SHA.
 
 The observer encloses the proxy and security middleware, so rejected 403/415 requests have the same server-generated ID in the response and completion log. Only registered method/route templates are logged; early rejections and unmatched routes use `unknown`. When adding a route, add its template to `internal/diagnostics/routes.go`; an omitted template safely falls back to `unknown`.
 

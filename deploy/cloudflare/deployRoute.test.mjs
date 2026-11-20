@@ -12,7 +12,7 @@ const request = (value,signature) => new Request('https://example.com/api/intern
 
 test('signed event goes only to dedicated deployment binding',async()=>{
   let calls=0;
-  const env={API_BACKEND:'vpc',DEPLOY_TRIGGER_SECRET:key,TODOCAL_DEPLOY:{fetch:async req=>{
+  const env={DEPLOY_TRIGGER_SECRET:key,TODOCAL_DEPLOY:{fetch:async req=>{
     calls++;
     assert.equal(req.url,'http://deploy-receiver:8080/deploy');
     assert.equal(req.headers.get('Cookie'),null);
@@ -23,6 +23,9 @@ test('signed event goes only to dedicated deployment binding',async()=>{
   assert.equal((await worker.fetch(request(body,'0'.repeat(64)),env)).status,401);
   const stale=JSON.stringify({...JSON.parse(body),ts:0});
   assert.equal((await worker.fetch(request(stale,sign(stale)),env)).status,401);
-  assert.equal((await worker.fetch(request(body,sign(body)),{...env,API_BACKEND:'maintenance'})).status,503);
+  assert.equal((await worker.fetch(request(body,sign(body)),{...env,MAINTENANCE_MODE:'true'})).status,503);
+  assert.equal((await worker.fetch(request(body,sign(body)),{...env,MAINTENANCE_MODE:'typo'})).status,503);
   assert.equal(calls,1);
+  assert.equal((await worker.fetch(request(body,sign(body)),{...env,MAINTENANCE_MODE:'false'})).status,200);
+  assert.equal(calls,2);
 });

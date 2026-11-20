@@ -184,7 +184,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (e instanceof DOMException && e.name === "AbortError") throw e;
         if (version === epoch.current) {
           if (e instanceof ApiError && e.status === 401) clear(true);
-          else if (!(e instanceof ApiError) || e.status >= 500)
+          // An HTTP 500 is a failed operation, not proof that the API is
+          // unreachable. Keep explicit uncertain-command retry available.
+          else if (
+            !(e instanceof ApiError) ||
+            e.status === 502 ||
+            e.status === 503 ||
+            e.status === 504
+          )
             setConnected(false);
         }
         throw e;

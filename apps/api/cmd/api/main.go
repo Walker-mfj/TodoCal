@@ -43,7 +43,7 @@ func run() error {
 	if enabled {
 		out, closeExports := diagnostics.ConfigureExports(os.Getenv, os.Stdout)
 		defer closeExports()
-		slog.SetDefault(diagnostics.Logger(out, os.Getenv("RENDER_GIT_COMMIT"), os.Getenv("APP_ENV")))
+		slog.SetDefault(diagnostics.Logger(out, os.Getenv("APP_RELEASE"), os.Getenv("APP_ENV")))
 	}
 	poolCfg, err := poolConfig(cfg.DatabaseURL, enabled)
 	if err != nil {
@@ -105,7 +105,7 @@ func run() error {
 		}
 	}()
 	defer func() { cancelScheduler(); <-schedulerDone }()
-	closeMonitoring := app.EnableMonitoring(os.Getenv("BETTER_STACK_DSN"), os.Getenv("RENDER_GIT_COMMIT"))
+	closeMonitoring := app.EnableMonitoring(os.Getenv("BETTER_STACK_DSN"), os.Getenv("APP_RELEASE"))
 	defer closeMonitoring()
 	handler := middleware.ProxyHandler(app.Handler(), os.Getenv("PROXY_SECRET"))
 	if enabled {

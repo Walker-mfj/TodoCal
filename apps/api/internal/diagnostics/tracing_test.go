@@ -168,3 +168,34 @@ func TestInvalidTraceContextIgnored(t *testing.T) {
 		}
 	}
 }
+
+func TestTraceReleaseMetadata(t *testing.T) {
+	release := strings.Repeat("a", 40)
+	legacy := strings.Repeat("b", 40)
+	for _, tc := range []struct {
+		name, release, environment, wantRelease, wantEnvironment string
+	}{
+		{"image release", release, "production", release, "production"},
+		{"missing release ignores legacy", "", "staging", "unknown", "staging"},
+		{"invalid release ignores legacy", "invalid", "development", "unknown", "development"},
+		{"uppercase release", strings.Repeat("A", 40), "invalid", "unknown", "unknown"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := map[string]string{
+				"APP_RELEASE":       tc.release,
+				"APP_ENV":           tc.environment,
+				"RENDER_GIT_COMMIT": legacy,
+			}
+			res := traceResource(func(key string) string { return env[key] })
+			got := make(map[string]string)
+			for _, attr := range res.Attributes() {
+				got[string(attr.Key)] = attr.Value.AsString()
+			}
+			if got["service.name"] != "todocal-api" ||
+				got["service.version"] != tc.wantRelease ||
+				got["deployment.environment.name"] != tc.wantEnvironment {
+				t.Fatalf("unexpected trace resource metadata: %v", got)
+			}
+		})
+	}
+}

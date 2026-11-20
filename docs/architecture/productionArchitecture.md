@@ -114,10 +114,16 @@ sequenceDiagram
 ```
 
 1. Cloudflare serves exported Next.js assets directly, not a running Next.js Node server. Browser API calls use the same HTTPS origin.
-2. The Worker routes the exact deploy and readiness paths separately. Normal API requests require API_BACKEND=vpc, PROXY_SECRET and TODOCAL_API. It removes Host, Forwarded and X-Forwarded-For, overwrites X-TodoCal-Proxy-Secret and X-TodoCal-Client-IP, and does not follow redirects.
+2. The Worker routes the exact deploy and readiness paths separately. Normal API requests require PROXY_SECRET and TODOCAL_API; the private VPC is the only origin. The optional dashboard text variable MAINTENANCE_MODE=true fences all API traffic and signed deployments (invalid values also fail closed); unset or false enables normal service. Wrangler preserves this operational variable across releases. It removes Host, Forwarded and X-Forwarded-For, overwrites X-TodoCal-Proxy-Secret and X-TodoCal-Client-IP, and does not follow redirects.
 3. Private VPC reaches Cloudflared and then Nginx on the ingress network. Nginx selects one Go slot using active.conf; no round-robin or automatic retry to the other slot.
 4. Go owns authentication, authorization, Origin/CSRF/idempotency checks where applicable and domain transactions. Controllers call services and repositories. Both slots share PostgreSQL. Dirty schedule changes wake the scheduler after successful commit.
 5. Browser state is not authoritative; the Service Worker neither caches private API responses nor queues offline writes.
+
+### Availability after migration
+
+The always-running API and PostgreSQL do not require provider wake-up requests. The Worker returns a neutral 503 for origin failures; the frontend has no periodic warm-up or automatic mutation retry. A failed HTTP 500 operation does not globally disable writes; transport failures and 502/503/504 still enter disconnected mode. Session verification, account-scoped drafts, explicit uncertain-command retry with the original key/body, and query cancellation remain necessary during real failures.
+
+The API uses the standard pgx pool, startup readiness and bounded request deadlines. Keep scheduler startup catch-up, event-driven deadlines, durable outbox retries, cross-slot leadership and reconciliation for real outages/restarts; keep the Focus deadline refetch to update the browser after server settlement. Do not shorten timeouts or tune connection pools without measured latency and failure evidence. Release metadata is supplied by the image as `APP_RELEASE`.
 
 Sources: [Worker](../../deploy/cloudflare/worker.mjs), [Nginx](../../deploy/lightsail/nginx.conf),
 [Go router](../../apps/api/internal/router/router.go),

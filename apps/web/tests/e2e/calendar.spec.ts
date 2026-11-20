@@ -170,7 +170,10 @@ test("calendar external drop assigns 30 minutes, clear-time drop and uncertain r
     "aria-label",
     new RegExp("T09:00"),
   );
-  await page.getByRole("button", { name: "Reconnect", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Reconnect", exact: true }),
+  ).toHaveCount(0);
+  expect(requests).toHaveLength(1);
   await expect(
     page.getByRole("button", { name: "Retry calendar change" }),
   ).toBeEnabled();

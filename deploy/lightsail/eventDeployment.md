@@ -62,7 +62,7 @@ HTTP request. A cancelled Actions run cannot cancel an admitted job.
    Set repository Actions variable DEPLOY_VPC_SERVICE_ID to its real UUID.
    Frontend deploy workflow adds the binding to its temporary Wrangler config.
    Do not use the existing API service ID. Run Deploy frontend on main
-   and verify both bindings, API_BACKEND=vpc and readiness.
+   and verify both bindings, maintenance disabled (MAINTENANCE_MODE unset or false) and readiness.
 6. Confirm unsigned POST /api/internal/deploy gets 401, no job started.
    Make the GHCR package public and verify anonymous access first (README).
    Remove the LIGHTSAIL_EVENT_DEPLOY override (or set true) only after installation.

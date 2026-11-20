@@ -114,7 +114,7 @@ sequenceDiagram
 ```
 
 1. Cloudflare serves exported Next.js assets directly, not a running Next.js Node server. Browser API calls use the same HTTPS origin.
-2. The Worker routes the exact deploy and readiness paths separately. Normal API requests require API_BACKEND=vpc, PROXY_SECRET and TODOCAL_API. It removes Host, Forwarded and X-Forwarded-For, overwrites X-TodoCal-Proxy-Secret and X-TodoCal-Client-IP, and does not follow redirects.
+2. The Worker routes the exact deploy and readiness paths separately. Normal API requests require PROXY_SECRET and TODOCAL_API; the private VPC is the only origin. The optional dashboard text variable MAINTENANCE_MODE=true fences all API traffic and signed deployments (invalid values also fail closed); unset or false enables normal service. Wrangler preserves this operational variable across releases. It removes Host, Forwarded and X-Forwarded-For, overwrites X-TodoCal-Proxy-Secret and X-TodoCal-Client-IP, and does not follow redirects.
 3. Private VPC reaches Cloudflared and then Nginx on the ingress network. Nginx selects one Go slot using active.conf; no round-robin or automatic retry to the other slot.
 4. Go owns authentication, authorization, Origin/CSRF/idempotency checks where applicable and domain transactions. Controllers call services and repositories. Both slots share PostgreSQL. Dirty schedule changes wake the scheduler after successful commit.
 5. Browser state is not authoritative; the Service Worker neither caches private API responses nor queues offline writes.

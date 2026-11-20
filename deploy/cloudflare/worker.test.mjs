@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import worker from './worker.mjs';
-const env = { API_BACKEND:'vpc', PROXY_SECRET: 'a'.repeat(64), ASSETS: { fetch: async () => new Response('asset') } };
+const env = { PROXY_SECRET: 'a'.repeat(64), ASSETS: { fetch: async () => new Response('asset') } };
 test('serves static assets without an API call', async () => {
   assert.equal(await (await worker.fetch(new Request('https://app.example.com/'), env)).text(), 'asset');
 });
@@ -9,7 +9,7 @@ test('fails closed when backend settings are missing', async () => {
   assert.equal((await worker.fetch(new Request('https://app.example.com/api/v1/auth/me'), {ASSETS:env.ASSETS})).status,503);
 });
 test('obsolete public origin alone cannot route requests', async () => {
-  assert.equal((await worker.fetch(new Request('https://app.example.com/api/v1/auth/me'), {...env, API_BACKEND:undefined, API_ORIGIN:'https://api.example.com'})).status,503);
+  assert.equal((await worker.fetch(new Request('https://app.example.com/api/v1/auth/me'), {...env, API_ORIGIN:'https://api.example.com'})).status,503);
 });
 
 test('deployment removes scheduled triggers and handler', async () => {
@@ -32,7 +32,7 @@ test('VPC routes only to the registered private service and preserves the proxy 
         'CF-Connecting-IP':'203.0.113.9', 'X-TodoCal-Client-IP':'spoof',
         'X-TodoCal-Proxy-Secret':'spoof', 'X-Forwarded-For':'spoof', Forwarded:'spoof', Host:'spoof',
       },
-    }), {...env, API_BACKEND:'vpc', API_ORIGIN:undefined, TODOCAL_API:{fetch:async request => {
+    }), {...env, API_ORIGIN:undefined, TODOCAL_API:{fetch:async request => {
       sent = request;
       const h = new Headers({Location:'/next','Cache-Control':'public, max-age=100'});
       h.append('Set-Cookie','focus_session=abc; Secure; HttpOnly');
@@ -61,7 +61,7 @@ test('maintenance blocks every API method without invoking either origin; assets
   const original = globalThis.fetch;
   let calls = 0;
   globalThis.fetch = async () => { calls++; throw new Error('unexpected'); };
-  const maintenance = {...env, API_BACKEND:'maintenance', TODOCAL_API:{fetch:globalThis.fetch}};
+  const maintenance = {...env, MAINTENANCE_MODE:'true', TODOCAL_API:{fetch:globalThis.fetch}};
   try {
     for (const method of ['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS']) {
       const res = await worker.fetch(new Request('https://app.example.com/api/v1/tasks',{method}),maintenance);
@@ -81,12 +81,11 @@ test('VPC failure never falls back to a public origin; missing binding and inval
   const request = () => new Request('https://app.example.com/api/v1/auth/me');
   try {
     for (const variant of [
-      {...env,API_BACKEND:'vpc'},
-      {...env,API_BACKEND:'vpc',TODOCAL_API:{fetch:async () => {throw new Error('tunnel down');}}},
-      {...env,API_BACKEND:'vpc',TODOCAL_API:{fetch:async () => new Response('upstream unavailable',{status:503})}},
-      {...env,API_BACKEND:'typo'},
-      {...env,API_BACKEND:'render',API_ORIGIN:'http://api:10000'},
-      {...env,API_BACKEND:'vpc',PROXY_SECRET:'short'},
+      {...env},
+      {...env,TODOCAL_API:{fetch:async () => {throw new Error('tunnel down');}}},
+      {...env,TODOCAL_API:{fetch:async () => new Response('upstream unavailable',{status:503})}},
+      {...env,MAINTENANCE_MODE:'typo'},
+      {...env,PROXY_SECRET:'short'},
     ]) {
       const res = await worker.fetch(request(),variant);
       assert.equal(res.status,503);
@@ -96,27 +95,39 @@ test('VPC failure never falls back to a public origin; missing binding and inval
   } finally { globalThis.fetch = original; }
 });
 
-test('retired Render mode and unset mode fail closed even with both origins configured', async () => {
-  const original = globalThis.fetch;
-  let calls = 0;
-  globalThis.fetch = async () => { calls++; throw new Error('unexpected public fetch'); };
-  try {
-    for (const mode of ['render', undefined]) {
-      const variant = {...env, API_BACKEND:mode, API_ORIGIN:'https://api.example.com',
-        TODOCAL_API:{fetch:async () => {calls++; throw new Error('unexpected VPC call');}}};
-      for (const path of ['/api/v1/auth/me','/api/readyz']) {
-        assert.equal((await worker.fetch(new Request('https://app.example.com'+path),variant)).status,503);
-      }
+test('VPC is the default with no maintenance variable or explicit false', async () => {
+  for (const settings of [{}, {MAINTENANCE_MODE:'false'}]) {
+    const paths = [];
+    const variant = {...env, ...settings,
+      TODOCAL_API:{fetch:async request => {
+        paths.push(new URL(request.url).pathname);
+        return Response.json({status:'ready'});
+      }}};
+    for (const path of ['/api/v1/auth/me','/api/readyz']) {
+      assert.equal((await worker.fetch(new Request('https://app.example.com'+path),variant)).status,200);
     }
-    assert.equal(calls,0);
-  } finally { globalThis.fetch=original; }
+    assert.deepEqual(paths,['/api/v1/auth/me','/readyz']);
+  }
 });
 
-test('deployment binds only the designated private VPC service and does not pin a live backend mode', async () => {
+test('invalid maintenance settings fail closed even with a valid VPC binding', async () => {
+  let calls = 0;
+  for (const mode of ['typo','']) {
+    const variant = {...env, MAINTENANCE_MODE:mode,
+      TODOCAL_API:{fetch:async () => {calls++; throw new Error('unexpected VPC call');}}};
+    for (const path of ['/api/v1/auth/me','/api/readyz']) {
+      assert.equal((await worker.fetch(new Request('https://app.example.com'+path),variant)).status,503);
+    }
+  }
+  assert.equal(calls,0);
+});
+
+test('deployment binds only the designated private VPC service and preserves the dashboard maintenance setting', async () => {
   const {readFile} = await import('node:fs/promises');
   const config = JSON.parse(await readFile(new URL('./wrangler.jsonc', import.meta.url), 'utf8'));
   assert.deepEqual(config.vpc_services,[{binding:'TODOCAL_API',service_id:'01a1eed9-dd8d-75e2-b7b3-617e4480ac78',remote:true}]);
-  assert.equal(config.vars?.API_BACKEND,undefined);
+  assert.equal(config.vars?.MAINTENANCE_MODE,undefined);
+  assert.equal(config.keep_vars,true);
 });
 
 test('public readiness reaches VPC /readyz without forwarding viewer credentials or query', async () => {
@@ -128,7 +139,7 @@ test('public readiness reaches VPC /readyz without forwarding viewer credentials
       let sent;
       const result = await worker.fetch(new Request('https://app.example.com/api/readyz?secret=viewer', {
         method, headers:{Cookie:'session=secret',Authorization:'Bearer secret','X-TodoCal-Proxy-Secret':'spoof'},
-      }), {...env,API_BACKEND:'vpc',TODOCAL_API:{fetch:async request => {
+      }), {...env,TODOCAL_API:{fetch:async request => {
         sent=request;
         return Response.json({status:'ready',internal:'private'},{headers:{'Set-Cookie':'secret=1','X-Internal':'private','Cache-Control':'public'}});
       }}});
@@ -152,14 +163,14 @@ test('readiness returns 503 for database failure, wrong body, redirect, tunnel f
   globalThis.fetch=async () => {publicCalls++; throw new Error('unexpected public fetch');};
   try {
     for (const variant of [
-      {...env,API_BACKEND:'vpc',TODOCAL_API:{fetch:async()=>new Response('private db error',{status:503})}},
-      {...env,API_BACKEND:'vpc',TODOCAL_API:{fetch:async()=>new Response('wrong',{status:200})}},
-      {...env,API_BACKEND:'vpc',TODOCAL_API:{fetch:async()=>Response.json({status:'ok'})}},
-      {...env,API_BACKEND:'vpc',TODOCAL_API:{fetch:async()=>new Response(null,{status:302,headers:{Location:'https://other.example'}})}},
-      {...env,API_BACKEND:'vpc',TODOCAL_API:{fetch:async()=>{throw new Error('private failure');}}},
-      {...env,API_BACKEND:'vpc'},
-      {...env,API_BACKEND:'typo'},
-      {...env,API_BACKEND:'vpc',PROXY_SECRET:''},
+      {...env,TODOCAL_API:{fetch:async()=>new Response('private db error',{status:503})}},
+      {...env,TODOCAL_API:{fetch:async()=>new Response('wrong',{status:200})}},
+      {...env,TODOCAL_API:{fetch:async()=>Response.json({status:'ok'})}},
+      {...env,TODOCAL_API:{fetch:async()=>new Response(null,{status:302,headers:{Location:'https://other.example'}})}},
+      {...env,TODOCAL_API:{fetch:async()=>{throw new Error('private failure');}}},
+      {...env},
+      {...env,MAINTENANCE_MODE:'typo'},
+      {...env,PROXY_SECRET:''},
     ]) {
       const result=await worker.fetch(new Request('https://app.example.com/api/readyz'),variant);
       assert.equal(result.status,503);
@@ -174,12 +185,12 @@ test('readiness respects maintenance and rejects unsupported methods without que
   let calls=0;
   const binding={fetch:async()=>{calls++; return Response.json({status:'ready'});}};
   for (const method of ['GET','HEAD','POST']) {
-    const result=await worker.fetch(new Request('https://app.example.com/api/readyz',{method}),{...env,API_BACKEND:'maintenance',TODOCAL_API:binding});
+    const result=await worker.fetch(new Request('https://app.example.com/api/readyz',{method}),{...env,MAINTENANCE_MODE:'true',TODOCAL_API:binding});
     assert.equal(result.status,503);
     assert.equal(result.headers.get('Retry-After'),'60');
     if(method==='HEAD') assert.equal(await result.text(),'');
   }
-  const rejected=await worker.fetch(new Request('https://app.example.com/api/readyz',{method:'POST'}),{...env,API_BACKEND:'vpc',TODOCAL_API:binding});
+  const rejected=await worker.fetch(new Request('https://app.example.com/api/readyz',{method:'POST'}),{...env,TODOCAL_API:binding});
   assert.equal(rejected.status,405);
   assert.equal(rejected.headers.get('Allow'),'GET, HEAD');
   assert.equal(rejected.headers.get('Cache-Control'),'no-store');

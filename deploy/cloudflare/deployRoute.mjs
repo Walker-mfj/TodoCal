@@ -1,3 +1,5 @@
+import { maintenanceEnabled } from './maintenance.mjs';
+
 const LIMIT = 1024;
 const error = (status) => Response.json({status:'unavailable'}, {status,headers:{'Cache-Control':'no-store'}});
 
@@ -23,7 +25,7 @@ async function boundedBody(request) {
 
 export async function deploymentRequest(request, env) {
   if (request.method !== 'POST' || new URL(request.url).search) return error(405);
-  if (env.API_BACKEND !== 'vpc') return error(503);
+  if (maintenanceEnabled(env)) return error(503);
   if (!/^[a-f0-9]{64}$/.test(env.DEPLOY_TRIGGER_SECRET || '') ||
       typeof env.TODOCAL_DEPLOY?.fetch !== 'function') return error(503);
   const signature = request.headers.get('X-TodoCal-Deploy-Signature') || '';

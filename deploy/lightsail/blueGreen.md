@@ -66,7 +66,7 @@ Production has adopted Blue-Green; these steps are retained for rebuilding, not 
    the host Compose file blindly. Do not start both slots using a generic
    up command. The api service becomes Nginx; the old API service is renamed
    api-blue; api-green stays stopped until needed.
-4. Set Worker API_BACKEND=maintenance; verify writes fenced. With the
+4. Set Worker MAINTENANCE_MODE=true; verify writes fenced. With the
    ORIGINAL Compose file, stop and remove only the old api container
    (docker compose stop api; docker compose rm -f api). Confirm it is
    fully stopped before any slot starts. Install the staged Compose file.
@@ -85,7 +85,7 @@ Production has adopted Blue-Green; these steps are retained for rebuilding, not 
        install -m 600 /dev/null /opt/todocal/bluegreen.enabled
        python3 deploy.py --check
 
-   Set Worker API_BACKEND=vpc, verify public readiness and authenticated
+   Set Worker MAINTENANCE_MODE=false, verify public readiness and authenticated
    smoke test. Remove the false override (or set true) and manually dispatch CI. First
    ordinary update should exercise both slots while monitoring errors, RAM,
    scheduler ownership and active slot. Test against disposable infrastructure
@@ -141,7 +141,7 @@ migration-only container and starts candidate with startup migrations
 disabled. This path is not zero downtime. After migration starts, no automatic
 old-binary rollback; recover forward or use a tested restore plan under
 maintenance. On success verify local and public readiness after returning
-Worker to vpc, then re-enable events. Do not change data semantics incompatibly
+Worker to normal mode (`MAINTENANCE_MODE=false`), then re-enable events. Do not change data semantics incompatibly
 even with identical migration fingerprints. Frontend deploy remains separate.
 
 ## Verification before activation

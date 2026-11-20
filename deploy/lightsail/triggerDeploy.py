@@ -9,6 +9,10 @@ import uuid
 from triggerProtocol import SECRET, DIGEST, signature
 
 URL = "https://todocal.digitalhome.workers.dev/api/internal/deploy"
+READY_URL = "https://todocal.digitalhome.workers.dev/api/readyz"
+# Identify the deployment client explicitly; workers.dev rejected the default
+# Python urllib User-Agent with HTTP 403 during the signed status probe.
+USER_AGENT = "TodoCal-Deployment/1.0"
 TERMINAL = {"succeeded", "failed", "needs_approval"}
 
 
@@ -21,6 +25,7 @@ def call(secret, digest, request_id, action):
     data = json.dumps({"action": action, "id": request_id, "digest": digest,
                        "ts": int(time.time())}, separators=(",", ":")).encode()
     req = Request(URL, data=data, headers={"Content-Type": "application/json",
+                  "User-Agent": USER_AGENT,
                   "X-TodoCal-Deploy-Signature": signature(secret, data)})
     with build_opener(NoRedirect()).open(req, timeout=15) as response:
         return json.load(response)["status"]
@@ -46,9 +51,8 @@ def main():
             if status == "succeeded":
                 # The root deploy script confirms exact image and local readiness;
                 # independently check the public Worker path.
-                with build_opener(NoRedirect()).open(
-                    "https://todocal.digitalhome.workers.dev/api/readyz", timeout=15
-                ) as response:
+                req = Request(READY_URL, headers={"User-Agent": USER_AGENT})
+                with build_opener(NoRedirect()).open(req, timeout=15) as response:
                     if response.status != 200 or json.load(response).get("status") != "ready":
                         raise SystemExit("Public readiness failed")
                 print("Deployment succeeded")

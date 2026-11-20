@@ -23,7 +23,7 @@ Go net/http REST API (apps/api)
        PostgreSQL
 ```
 
-The current production setup uses **Cloudflare Workers/static assets** for the web app and API proxy, **Render** for the Go API and **Neon** for managed PostgreSQL. Local development uses Docker Compose for PostgreSQL. The Go API starts the embedded notification scheduler automatically; there is no separate worker executable. The free API instance can sleep.
+Production uses **Cloudflare Workers/static assets** and private Workers VPC over Cloudflare Tunnel to **AWS Lightsail**, where Docker Compose runs Nginx, Blue/Green Go API slots, PostgreSQL and the deployment receiver. GitHub Actions publishes tested API images to GHCR and delivers signed deployment events. Local development uses Docker Compose for PostgreSQL. The embedded scheduler has one leader during slot overlap. See [production deployment](../../deploy/README.md) and [end-to-end architecture flows](productionArchitecture.md).
 
 **Version sources of truth:**
 - `apps/web/package.json` and `apps/web/package-lock.json`: frontend dependencies and pinned resolutions.
@@ -71,7 +71,7 @@ Avoid duplicating exhaustive dependency-version lists in this document. Review t
 - `database.WithTx` serializes account operations with a settings-row `SELECT ... FOR UPDATE` lock (**not** a PostgreSQL advisory lock).
 - Service code owns business invariants; repositories own SQL/scans; controllers map errors and responses. Worker jobs must reuse business services rather than bypass their transaction rules.
 
-**Database/runtime constraint:** The [embedded scheduler](notificationScheduler.md) settles Focus and dispatches Web Push while the API runs. A sleeping Render API cannot execute timers or send reminders. Delivery also requires VAPID configuration, device opt-in and provider availability.
+**Database/runtime constraint:** The [embedded scheduler](notificationScheduler.md) settles Focus and dispatches Web Push while the API runs. A stopped API/host cannot execute timers or send reminders; during slot overlap a shared local kernel lock permits only one scheduler. Delivery also requires VAPID configuration, device opt-in and provider availability.
 
 ## 4. API, monitoring and deployment
 
@@ -79,11 +79,13 @@ Avoid duplicating exhaustive dependency-version lists in this document. Review t
 |---|---|---|
 | **OpenAPI 3.1** | `api/openapi.yaml` | Source of request/response contracts. Update deliberately and regenerate TypeScript. |
 | **Cloudflare Workers** | `deploy/cloudflare` | Hosts static Next.js output and forwards same-origin `/api/*` to the Go API. Avoid duplicating API auth business logic at the edge. |
-| **Render** | `render.yaml` / `deploy/README.md` | Runs Go REST API; free-plan sleeping is an operational constraint. |
-| **Neon PostgreSQL** | Managed production Postgres | Never use production credentials or data in tests; migrations need backups and rollout planning. |
+| **AWS Lightsail / Docker Compose / Nginx** | `deploy/lightsail` | Private Blue-Green Go API slots, stable reverse proxy, systemd deployment receiver; single-host failure domain. |
+| **PostgreSQL / S3** | Lightsail PostgreSQL, off-host backups | Never use production credentials or data in tests; verify backup restore before migrations. |
+| **Workers VPC / Cloudflare Tunnel** | `deploy/cloudflare` | Separate private API and signed deploy-receiver bindings, no public origin port. |
+| **GHCR** | `deploy/lightsail/publish.sh` | Tested images published by trusted main CI, pulled by exact digest. |
 | **Better Stack** | Error telemetry destination via Sentry-compatible payloads | Enforce sanitization, bounded errors and private source maps; diagnostics must not disclose user data. |
 | **Docker Compose** | `compose.yaml` | Local PostgreSQL, distinct from isolated integration/E2E test databases. |
-| **GitHub Actions** | `.github/workflows/ci.yml` and `deployFrontend.yml` | CI gates and separate frontend deployment. CI and deployment are not one atomic FE+BE rollout. |
+| **GitHub Actions** | `.github/workflows/ci.yml`, `deployFrontend.yml`, `deployBackend.yml` | CI gates and independent frontend/backend deployment. CI and deployment are not one atomic FE+BE rollout. |
 
 Keep runtime secrets in provider settings or ignored local environment files. Do not add credentials, access tokens, DSNs, or private telemetry payloads to source, documentation or generated artifacts.
 
@@ -142,7 +144,7 @@ The integrated refactor implemented these tooling checks; exact commands and loc
 3. **Prefer narrow dependencies.** Avoid adding a full framework or state manager to replace one small helper.
 4. **Update manifests and lockfiles together.** Use `npm install` / `npm ci`-compatible changes or `go get` and `go mod tidy` with reproducible builds; don't edit lockfiles by hand.
 5. **Review upgrades.** Check release notes and breaking changes against the current Next.js/Go toolchain; run typecheck, lint, builds, focused tests and integration/E2E where applicable.
-6. **Keep infrastructure contracts safe.** An upgrade must not accidentally change session/cookie, timezone, history, recurrence, idempotency, or Cloudflare/Render runtime behavior.
+6. **Keep infrastructure contracts safe.** An upgrade must not accidentally change session/cookie, timezone, history, recurrence, idempotency, or Cloudflare/Lightsail runtime behavior.
 7. **Record real architectural decisions.** For significant replacements, document the reason and migration/rollback plan rather than introducing competing libraries.
 
 ## 7. Anti-patterns and ownership guardrails
@@ -158,7 +160,6 @@ The integrated refactor implemented these tooling checks; exact commands and loc
 ## 8. Related files
 
 - [Folder structure](folderStructure.md) — module ownership, naming and dependencies.
-- [Refactor verification](refactorVerification.md) — completed FE + Go refactor and recorded checks.
 - [Web package manifest](../../apps/web/package.json) — frontend dependency definitions and scripts.
 - [Go module](../../apps/api/go.mod) — backend dependencies and toolchain.
 - [CI workflow](../../.github/workflows/ci.yml) — currently configured checks.

@@ -1,6 +1,6 @@
 # Architecture and quality checks
 
-The integrated frontend and Go refactor is complete; see its [verification record](refactorVerification.md). The product contracts are in [docs/features](../features/README.md). A structural change preserves the currently shipped workflows, including recurring edits from a selected occurrence onward, scheduled notifications and session renewal.
+The product contracts are in [docs/features](../features/README.md). A structural change preserves the currently shipped workflows, including recurring edits from a selected occurrence onward, scheduled notifications and session renewal.
 
 ## Where changes belong
 

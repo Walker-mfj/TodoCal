@@ -1,4 +1,4 @@
-# Blue-green deployment on one Lightsail host (opt-in)
+# Blue-green deployment on one Lightsail host
 
 Ordinary compatible releases can warm the inactive API slot, verify database
 readiness, reload Nginx gracefully, drain old Nginx workers, then stop the
@@ -31,7 +31,9 @@ standby does not run scheduler lanes. Failed NOTIFY aborts the corresponding
 transaction instead of silently losing the wake. A listener outage can delay
 remote wakes until reconnect or reconciliation, not create another leader.
 
-## One-time adoption (maintenance required)
+## Fresh-host conversion / recovery (maintenance required)
+
+Production has adopted Blue-Green; these steps are retained for rebuilding, not a pending proposal.
 
 1. Merge PR and publish the new API. Before changing Compose, use existing
    single-slot mode and approve this new release (startup script fingerprint
@@ -84,7 +86,7 @@ remote wakes until reconnect or reconciliation, not create another leader.
        python3 deploy.py --check
 
    Set Worker API_BACKEND=vpc, verify public readiness and authenticated
-   smoke test. Re-enable event delivery and manually dispatch CI. First
+   smoke test. Remove the false override (or set true) and manually dispatch CI. First
    ordinary update should exercise both slots while monitoring errors, RAM,
    scheduler ownership and active slot. Test against disposable infrastructure
    before claiming zero downtime. The deployment guard requires 640 MiB

@@ -85,10 +85,14 @@ This design reuses PostgreSQL and the existing API instead of adding a queue
 service or scheduling service. Durable outbox records and Horizon cursors preserve
 work; timers avoid minute-by-minute polling of all accounts.
 
-It currently assumes **one API instance** and has no distributed leader election.
-A sleeping or stopped API cannot run timers or send reminders. Removing Cron also
-removes its periodic requests to Render. Device delivery still depends on VAPID,
-permission, valid subscriptions and the push provider.
+Production Blue-Green slots share one pre-created local inode (read-only mount).
+`RunHostLeader` holds an exclusive kernel flock through cancellation and lane drain;
+the standby attempts acquisition every 200 ms. A DB disconnect does not release
+ownership. Dirty domain commits publish transactional PostgreSQL NOTIFY, and the
+leader listens on a dedicated connection and wakes on reconnect. Local wakes and
+15-minute reconciliation remain. This is single-host only, not distributed HA
+or exactly-once provider delivery. A stopped host cannot run timers. Device
+delivery still depends on VAPID, valid subscriptions and the push provider.
 
 The global candidate view remains the main query-cost concern. Deadline queries
 repeat after mutations and lane completion, so single-query timings do not prove

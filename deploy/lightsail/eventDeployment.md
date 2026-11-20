@@ -1,6 +1,6 @@
 # Event-driven Lightsail deployment
 
-Opt-in. No live infrastructure changes are made by merging these files.
+Production uses this event-driven path. On a fresh host, explicitly disable delivery until installation is complete.
 The public GHCR image is pulled anonymously by fixed digest. CI signs a single
 event using an independent 32-byte hex secret. The Worker verifies HMAC
 and timestamp and sends the bounded request through a second private
@@ -16,7 +16,7 @@ HTTP request. A cancelled Actions run cannot cancel an admitted job.
 
 ## One-time setup (owner-operated)
 
-1. Merge and confirm CI; disable and remove only the old deploy timer/service
+1. Set LIGHTSAIL_EVENT_DEPLOY=false before provisioning a fresh host. Merge and confirm CI; disable and remove only the old deploy timer/service
    (inspect active deployment first, never stop a running job mid-deploy).
    Keep PostgreSQL backup timers. Verify first release and restore test.
 2. Copy the new deploy.py, registry.py, blueGreen.py, triggerProtocol.py,
@@ -36,7 +36,7 @@ HTTP request. A cancelled Actions run cannot cancel an admitted job.
        groupadd --gid 10002 todocal-trigger
        install -d -m 755 /opt/todocal/trigger-socket
        umask 077
-       openssl rand -hex 32 > /opt/todocal/secrets/trigger.key
+       test -f /opt/todocal/secrets/trigger.key || openssl rand -hex 32 > /opt/todocal/secrets/trigger.key
        chmod 600 /opt/todocal/secrets/trigger.key
        systemd-analyze --recursive-errors=no verify /etc/systemd/system/todocal-trigger.socket /etc/systemd/system/todocal-trigger@.service /etc/systemd/system/todocal-deploy-job@.service
        systemctl daemon-reload
@@ -65,7 +65,7 @@ HTTP request. A cancelled Actions run cannot cancel an admitted job.
    and verify both bindings, API_BACKEND=vpc and readiness.
 6. Confirm unsigned POST /api/internal/deploy gets 401, no job started.
    Make the GHCR package public and verify anonymous access first (README).
-   Set repository variable LIGHTSAIL_EVENT_DEPLOY=true only after installation.
+   Remove the LIGHTSAIL_EVENT_DEPLOY override (or set true) only after installation.
    Run CI via workflow_dispatch on main. The separate Deploy backend workflow
    runs on successful trusted main CI completion and is not cancelled by newer CI.
    Every successful current-main CI run delivers the latest matching tested digest,
@@ -91,8 +91,8 @@ records are pruned after seven days on new requests. Rollback/hold remains
 as described in README. Manual commands --deploy and --approve require exact
 tested image digest; no bare polling command remains.
 
-Disable delivery via LIGHTSAIL_EVENT_DEPLOY=false. Stop the socket and
+Delivery is enabled by default. Disable it explicitly via LIGHTSAIL_EVENT_DEPLOY=false, including during maintenance. Stop the socket and
 receiver only when no work is in flight; do not stop API/DB/tunnel.
 No additional purchased service; review Workers/VPC current limits,
 GitHub Actions minutes (wait is metered only per deployment), Docker image
-download and RAM. Single-slot mode has brief downtime; see [blue-green deployment](blueGreen.md) for opt-in compatible-image handoff.
+download and RAM. Single-slot mode has brief downtime; see [blue-green deployment](blueGreen.md) for the production compatible-image handoff.

@@ -1,7 +1,6 @@
 # Lightsail API images (GHCR + Workers VPC)
 
-Production owner reports Lightsail, PostgreSQL, Cloudflare Tunnel, S3 backups
-and monitoring configured. Live host not inspected. Keep old Render/Neon fenced.
+Production uses Lightsail PostgreSQL, Cloudflare Tunnel, private deployment receiver and Blue-Green API slots. See [production overview](../README.md). Keep backup timers and the host deployment lock intact.
 
 ## Publish
 
@@ -16,68 +15,20 @@ should update the tested tag. Protect main and package write access; digest
 verification secures content identity, not independent publisher attestation.
 The tag is a discovery pointer; production always pulls a fixed sha256 digest.
 
-## One-time transition from GitHub Releases
+## Runtime and routine release
 
-1. Keep LIGHTSAIL_EVENT_DEPLOY unset/false. Inspect old deployment status;
-   disable/remove the old timer/service only when idle. Keep backup timers,
-   existing API and rollback image. Merge and run CI on main to publish.
-2. In GitHub Packages, make todocal-api **Public** separately from the repo.
-   Grant Actions access only to the TodoCal repository; do not embed secrets
-   in public images. Verify anonymous pull from Lightsail or a clean client:
+- Host /opt/todocal: root-managed compose.yaml, api.env, backup.env, cloudflared.env, deploy.py, registry.py, blueGreen.py, triggerProtocol.py, triggerHost.py, deployReceiver.py and secrets/trigger.key.
+- Nginx service api:10000 routes to exactly one active slot; the other runs only during handoff. Both use the same local scheduler lock. Preserve DB, tunnel and receiver throughout routine releases.
+- The root-only bluegreen.enabled marker selects Blue-Green mode. See [setup and recovery](blueGreen.md) and [event delivery](eventDeployment.md) for host rebuilds. Set LIGHTSAIL_EVENT_DEPLOY=false before maintenance or fresh-host provisioning; ordinary deployment is enabled when unset.
+- Check current state without dumping credentials:
 
-       docker pull --platform linux/amd64 ghcr.io/walker-mfj/todocal-api:tested
+      cd /opt/todocal
+      docker compose --profile bluegreen ps
+      docker compose exec -T api wget -qO- http://127.0.0.1:10000/__slot
+      python3 deploy.py --check
+      curl -fsS https://todocal.digitalhome.workers.dev/api/readyz
 
-   The diagnostic pull may cache layers; it does not change the running API.
-   Publishing authenticates with GITHUB_TOKEN; the host needs no Docker login,
-   PAT, GitHub App, PEM or deploy.env. Public images/source are intentional.
-
-3. Copy deploy.py and registry.py from the reviewed merged main commit:
-
-       scp deploy/lightsail/{deploy.py,registry.py,blueGreen.py} todocal:~/
-
-   On Lightsail as root:
-
-       cd /opt/todocal
-       install -m 700 /home/ubuntu/deploy.py ./deploy.py
-       install -m 600 /home/ubuntu/registry.py ./registry.py
-       install -m 600 /home/ubuntu/blueGreen.py ./blueGreen.py
-       python3 deploy.py --check
-
-   This resolves and verifies the public tested manifest and prints its digest.
-   A private package, missing image or inaccessible registry fails closed.
-   Once the new system is verified, remove the retired githubRelease.py and
-   deploy.env, revoke the GitHub App key/uninstall only if dedicated to this
-   deployer. Retain old release assets/image until recovery is verified.
-   Do not remove api.env, backup.env, cloudflared.env or the HMAC secret.
-
-4. Existing compose.yaml API uses todocal-api:production with no build,
-   no published ports and one replica, readiness on port 10000. Keep
-   database, tunnel, volumes, networks and env files as-is. Ensure no stale
-   RENDER_GIT_COMMIT override. Require working backup.sh frequent and a
-   verified restore. Python 3 and Docker Compose v2 on Linux amd64.
-   Keep event delivery disabled until this and the receiver setup are verified.
-   Review current/new migration fingerprints and use the exact reported digest:
-
-       python3 deploy.py --deploy sha256:REPLACE_WITH_FULL_DIGEST
-
-   If unknown/changed migration fingerprint, review SQL and approve explicitly:
-
-       python3 deploy.py --approve sha256:REPLACE_WITH_FULL_DIGEST
-       docker compose ps
-       curl -fsS https://todocal.digitalhome.workers.dev/api/readyz
-
-   Single-slot replacement has brief downtime. A first GHCR image can be
-   automatically compatible if existing image has the same known fingerprint.
-   An old image with unknown fingerprint requires manual approval.
-   Configure [event-driven deployment](eventDeployment.md) and never re-enable
-   release polling.
-
-## Optional blue-green mode
-
-See [blue-green deployment](blueGreen.md) for one-time host transition,
-shared scheduler leadership, resource guard, graceful Nginx reload and
-maintenance for changed migrations. Single-slot remains default until
-explicitly enabled on the host.
+CI success triggers publication and delivery. A matching existing digest is a readiness-checked no-op. The first Blue-Green rollout of PR #51 succeeded on 2026-11-20; the owner reported HTTP 200 at one-second readiness probes. This is measured evidence, not an absolute zero-downtime guarantee. Manual rollback and provider-call overlap still require explicit operational verification.
 
 ## Migration, rollback, failure
 
@@ -91,11 +42,9 @@ tag. Existing image IDs/digests are checked for no-op with readiness.
 An already-installed image is not restarted. If registry resolution fails,
 no production mutation is attempted. A digest protects content, not authorship.
 
-Changed/unknown migration fingerprint requires approval. Old API/scheduler
-stops first, then the existing off-host backup must succeed before starting
-the new API (startup applies migration). Fence writes when needed.
+Changed/unknown migration fingerprint requires approval. Set maintenance and pause event delivery before approving. In Blue-Green mode, stop the old writer, require the off-host backup, run one migration-only container, then start the candidate with implicit migrations disabled.
 A changed fingerprint blocks automatic rollback after possible migration.
-Compatible failures attempt to restore the previous image. Even identical
+Compatible failures before the switch leave the old route active; ambiguous switches retain both slots and the hold for operator recovery. Even identical
 fingerprints do not prove compatible application data semantics; stage changes.
 Frontend deploy remains independent. Do not merge frontend incompatible with
 the live backend.
@@ -104,13 +53,12 @@ A persistent deploy-state/hold.json interlock survives interrupted jobs,
 failed deployments and rollback. Never delete it to bypass checks.
 
     journalctl -u 'todocal-deploy-job@*.service' -n 100
-    docker compose ps
+    docker compose --profile bluegreen ps
     python3 deploy.py --rollback
     # after investigation and readiness verified:
     python3 deploy.py --resume
 
-Rollback requires known equal migration fingerprints; retain current and
-previous image aliases. The deployer can prune only older local API image
+Rollback requires known equal migration fingerprints and the dedicated todocal-api:bluegreen-rollback pin, created only after a successful handoff; retain active and pinned images. The deployer can prune only older local API image
 references after success; never prunes volumes or unrelated images. Retain
 GHCR versions needed for recovery; only manually delete obsolete digests
 after checking actual deployed/rollback versions. Check free -h, df -h,
@@ -119,11 +67,10 @@ review current public package and Workers VPC terms.
 
 ## Verification
 
-Run python3 -m unittest -v testDeploy testTrigger testPublish and
+Run python3 -m unittest -v testDeploy testTrigger testPublish testBlueGreen and
 bash -n publish.sh. Require main CI, first GHCR publish, separate public
 visibility, actual anonymous manifest/pull, deployment and local/public
-readiness before enabling automatic event delivery. Mocked tests are not
-Linux/Compose acceptance. No live infrastructure changes on merge.
+readiness before enabling automatic event delivery on a fresh host. Mocked tests are not Linux/Compose acceptance; normal merges on main trigger production deployment.
 
 - https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry
 - https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility

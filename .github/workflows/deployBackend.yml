@@ -41,7 +41,7 @@ jobs:
         shell: bash
         run: bash deploy/lightsail/publish.sh
       - name: Trigger private Lightsail deployment and wait for result
-        if: vars.LIGHTSAIL_EVENT_DEPLOY == 'true' && steps.image.outputs.digest != ''
+        if: vars.LIGHTSAIL_EVENT_DEPLOY != 'false' && steps.image.outputs.digest != ''
         env:
           DEPLOY_TRIGGER_SECRET: ${{ secrets.DEPLOY_TRIGGER_SECRET }}
           DEPLOY_DIGEST: ${{ steps.image.outputs.digest }}

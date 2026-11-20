@@ -10,7 +10,7 @@ The frontend lives in `apps/web/src`: `app` contains Next.js entry points, `home
 
 The Go backend lives in `apps/api/internal`: HTTP controllers call services, services coordinate business rules and transactions, and repositories own persistence. Database migrations remain embedded in the database package. The API entry point is `apps/api/cmd/api`; it also owns the embedded notification scheduler.
 
-Custom file and folder names use camelCase; CSS classes use kebab-case. Framework-required names and existing migration names remain unchanged. See the [folder structure guide](docs/architecture/folderStructure.md) for the current layout, module ownership, dependency boundaries, and placement rules. See the [technology stack guide](docs/architecture/techStack.md) for library usage rules and format/lint/typecheck coverage. See [local and CI quality checks](docs/architecture/qualityChecks.md) for the implemented commands.
+Custom file and folder names use camelCase; CSS classes use kebab-case. Framework-required names and existing migration names remain unchanged. See the [folder structure guide](docs/architecture/folderStructure.md) for the current layout, module ownership, dependency boundaries, and placement rules. See the [technology stack guide](docs/architecture/techStack.md) for library usage rules and format/lint/typecheck coverage. See [local and CI quality checks](docs/architecture/qualityChecks.md) for the implemented commands, and [production architecture](docs/architecture/productionArchitecture.md) for topology and end-to-end flows.
 
 ## Current implementation
 
@@ -57,8 +57,8 @@ after migrations; no separate worker or Cron is needed. Focus settlement,
 notification delivery, recurring reminder horizons and retention cleanup have
 independent bounded lanes. Domain reads/mutations retain historical planning
 catch-up. Reconciliation runs every 15 minutes as a final recovery mechanism.
-See [deployment instructions](deploy/README.md) for the single-instance runtime
-requirement and removal of the old Cloudflare schedule.
+See [deployment instructions](deploy/README.md) for production Blue-Green deployment and single-host scheduler ownership.
+The legacy Cloudflare schedule has been removed.
 
 ```sh
 make lint-go           # installs the pinned linter locally on first run

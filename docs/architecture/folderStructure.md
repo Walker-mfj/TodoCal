@@ -36,7 +36,6 @@ TodoCal/
 ├── scripts/                      Integration, E2E, load, operations
 ├── compose.yaml                  Local PostgreSQL
 ├── Makefile                      Local build/test/dev entry points
-├── render.yaml                   Go API deployment configuration
 └── README.md                     Start here
 ```
 
@@ -230,7 +229,7 @@ On case-insensitive macOS filesystems, a case-only rename may need a **temporary
 | Schema change | **New** versioned file in `apps/api/internal/database/migrations` |
 | Background process orchestration | `apps/api/internal/workers` + service |
 | API contract / type generation | `api/openapi.yaml` → generate to `shared/api` |
-| Hosting/proxy/release logic | `deploy`, `render.yaml`, `.github/workflows` |
+| Hosting/proxy/release logic | `deploy`, `.github/workflows` |
 | Feature behavior | `docs/features` |
 | Cross-cutting structure decisions | `docs/architecture` |
 
@@ -238,7 +237,7 @@ Frontend `src/` paths in this table are relative to `apps/web`. Prefer an existi
 
 ## 7. Structural-change workflow
 
-The integrated frontend and Go cleanup is complete; see [recorded verification](refactorVerification.md). For future structural changes, preserve the current ownership boundaries and verify affected frontend and backend workflows.
+For structural changes, preserve the current ownership boundaries and verify affected frontend and backend workflows.
 
 For structural changes, follow these safeguards without repeating unnecessary migrations:
 
@@ -270,13 +269,12 @@ For structural changes, follow these safeguards without repeating unnecessary mi
 - Keep styles near UI; don't add feature selectors to `globals.css`.
 - Use current destinations rather than obsolete paths: `home` instead of `workspace`, `shared/api` instead of `src/lib/api`, `controllers` instead of `internal/server` handlers, `services` for business logic, and `repository` for SQL.
 - When adding a feature, update the relevant feature doc and API contract before introducing new abstractions.
-- The embedded scheduler runs only while the API process runs. The [free deployment](../../deploy/README.md) can sleep; in-process timers do not guarantee reminders while it is idle.
+- The embedded scheduler runs only while an API process holds the shared local scheduler lock. See [production architecture](productionArchitecture.md) for Blue-Green ownership and failure boundaries.
 
 ## Related documents
 
 - [Project README](../../README.md)
 - [Feature documentation](../features/README.md)
-- [Integrated refactor verification](refactorVerification.md) — completed scope, test evidence and known limits.
 - [Technology stack & dependencies](techStack.md) — technologies, library ownership, quality checks, and dependency policy.
 - [OpenAPI contract](../../api/openapi.yaml)
 - [Deployment guide](../../deploy/README.md)

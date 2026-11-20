@@ -33,13 +33,14 @@ The tag is a discovery pointer; production always pulls a fixed sha256 digest.
 
 3. Copy deploy.py and registry.py from the reviewed merged main commit:
 
-       scp deploy/lightsail/{deploy.py,registry.py} todocal:~/
+       scp deploy/lightsail/{deploy.py,registry.py,blueGreen.py} todocal:~/
 
    On Lightsail as root:
 
        cd /opt/todocal
        install -m 700 /home/ubuntu/deploy.py ./deploy.py
        install -m 600 /home/ubuntu/registry.py ./registry.py
+       install -m 600 /home/ubuntu/blueGreen.py ./blueGreen.py
        python3 deploy.py --check
 
    This resolves and verifies the public tested manifest and prints its digest.
@@ -70,6 +71,13 @@ The tag is a discovery pointer; production always pulls a fixed sha256 digest.
    An old image with unknown fingerprint requires manual approval.
    Configure [event-driven deployment](eventDeployment.md) and never re-enable
    release polling.
+
+## Optional blue-green mode
+
+See [blue-green deployment](blueGreen.md) for one-time host transition,
+shared scheduler leadership, resource guard, graceful Nginx reload and
+maintenance for changed migrations. Single-slot remains default until
+explicitly enabled on the host.
 
 ## Migration, rollback, failure
 

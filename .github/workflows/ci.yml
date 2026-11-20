@@ -55,7 +55,7 @@ jobs:
         working-directory: deploy/lightsail
         run: |
           bash -n publish.sh
-          python3 -m unittest -v testDeploy testTrigger testPublish
+          python3 -m unittest -v testDeploy testTrigger testPublish testBlueGreen
           systemd-analyze --recursive-errors=no verify todocal-trigger.socket todocal-trigger@.service todocal-deploy-job@.service
       - run: go vet ./...
       - run: go build ./...

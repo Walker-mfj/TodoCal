@@ -44,7 +44,8 @@ def image(ref):
     data = json.loads(command("docker", "image", "inspect", ref, capture=True))[0]
     labels = data.get("Config", {}).get("Labels") or {}
     return {"id": data["Id"], "sha": labels.get(REVISION),
-            "fingerprint": labels.get(MIGRATIONS), "os": data["Os"], "arch": data["Architecture"],
+            "fingerprint": labels.get(MIGRATIONS), "leader": labels.get("io.todocal.scheduler-lock"),
+            "os": data["Os"], "arch": data["Architecture"],
             "source": labels.get("org.opencontainers.image.source"),
             "digests": data.get("RepoDigests") or []}
 
@@ -266,16 +267,24 @@ def main():
                 raise DeploymentError("Another deployment operation is running")
             log("Deployment operation already running.")
             return
+        import blueGreen
+        blue = blueGreen.enabled(sys.modules[__name__])
         if args.resume:
-            if not ready(wait=30):
-                raise DeploymentError("Resolve API readiness before clearing hold")
-            preflight()
+            if blue:
+                blueGreen.preflight(sys.modules[__name__])
+            else:
+                if not ready(wait=30):
+                    raise DeploymentError("Resolve API readiness before clearing hold")
+                preflight()
             clear_hold()
             log("Deployment hold cleared. Trigger a new GitHub Actions deployment explicitly.")
             return
         if args.rollback:
             # Even on a failed deployment, this only allows equal known schemas.
-            rollback()
+            if blue:
+                blueGreen.rollback(sys.modules[__name__])
+            else:
+                rollback()
             return
         if HOLD.exists() and not args.check:
             if args.approve or args.deploy:
@@ -290,6 +299,8 @@ def main():
         expected = args.deploy or args.approve
         if not DIGEST.fullmatch(expected) or digest != expected:
             raise DeploymentError("Requested digest is not the exact current tested image")
+        if blue:
+            return blueGreen.update(sys.modules[__name__], client, digest, args.approve)
         return update(client, digest, args.approve)
 
 

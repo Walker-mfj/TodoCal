@@ -9,6 +9,11 @@ if [ "${#PROXY_SECRET}" -lt 32 ]; then
 fi
 export API_ADDR="0.0.0.0:${PORT:-10000}"
 export COOKIE_SECURE=true
-# Render Free has no pre-deploy command; the single instance migrates on startup.
-todocal-api -migrate
+# Single-container deployments still migrate at startup. Blue-green slots
+# must never run implicit schema changes while another API is serving.
+case "${SKIP_STARTUP_MIGRATIONS:-false}" in
+  true) : "${SCHEDULER_LOCK_PATH:?Set shared scheduler lock path}" ;;
+  false) todocal-api -migrate ;;
+  *) echo 'Invalid SKIP_STARTUP_MIGRATIONS' >&2; exit 1 ;;
+esac
 exec todocal-api

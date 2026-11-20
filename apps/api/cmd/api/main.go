@@ -72,9 +72,38 @@ func run() error {
 	notifications := services.NotificationWorker{Pool: pool, Now: time.Now, Sender: sender, EnforceLateness: true}
 	scheduler := workers.NewScheduler(&workers.NotificationSchedule{Pool: pool, Now: time.Now, Notifications: notifications})
 	app.ConfigureScheduleWake(scheduler.Wake)
+	lockPath := os.Getenv("SCHEDULER_LOCK_PATH")
+	var leaderFile *os.File
+	if lockPath != "" {
+		leaderFile, err = workers.OpenHostLeaderLock(lockPath)
+		if err != nil {
+			return errors.New("scheduler host lock unavailable")
+		}
+		defer func() { _ = leaderFile.Close() }()
+		app.ConfigureScheduleBroadcast()
+	}
 	schedulerCtx, cancelScheduler := context.WithCancel(ctx)
 	schedulerDone := make(chan struct{})
-	go func() { defer close(schedulerDone); scheduler.Run(schedulerCtx) }()
+	go func() {
+		defer close(schedulerDone)
+		if leaderFile == nil {
+			scheduler.Run(schedulerCtx)
+			return
+		}
+		if e := workers.RunHostLeader(schedulerCtx, leaderFile, func(leaderCtx context.Context) {
+			listenCtx, cancelListen := context.WithCancel(leaderCtx)
+			listenerDone := make(chan struct{})
+			go func() {
+				defer close(listenerDone)
+				workers.ListenScheduleWake(listenCtx, pool.Config().ConnConfig, scheduler.Wake)
+			}()
+			defer func() { cancelListen(); <-listenerDone }()
+			scheduler.Run(leaderCtx)
+		}); e != nil {
+			slog.Error("scheduler host lock failed")
+			stop()
+		}
+	}()
 	defer func() { cancelScheduler(); <-schedulerDone }()
 	closeMonitoring := app.EnableMonitoring(os.Getenv("BETTER_STACK_DSN"), os.Getenv("RENDER_GIT_COMMIT"))
 	defer closeMonitoring()

@@ -19,7 +19,7 @@ HTTP request. A cancelled Actions run cannot cancel an admitted job.
 1. Merge and confirm CI; disable and remove only the old deploy timer/service
    (inspect active deployment first, never stop a running job mid-deploy).
    Keep PostgreSQL backup timers. Verify first release and restore test.
-2. Copy the new deploy.py, registry.py, triggerProtocol.py,
+2. Copy the new deploy.py, registry.py, blueGreen.py, triggerProtocol.py,
    triggerHost.py, deployReceiver.py, deploy-trigger.compose.yaml and
    three systemd unit files (todocal-trigger.socket,
    todocal-trigger@.service, todocal-deploy-job@.service) from main to
@@ -95,4 +95,4 @@ Disable delivery via LIGHTSAIL_EVENT_DEPLOY=false. Stop the socket and
 receiver only when no work is in flight; do not stop API/DB/tunnel.
 No additional purchased service; review Workers/VPC current limits,
 GitHub Actions minutes (wait is metered only per deployment), Docker image
-download and RAM. This is still one API container and brief downtime.
+download and RAM. Single-slot mode has brief downtime; see [blue-green deployment](blueGreen.md) for opt-in compatible-image handoff.

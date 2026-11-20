@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type commitTx struct {
@@ -13,6 +14,7 @@ type commitTx struct {
 	err       error
 	committed bool
 	dirty     bool
+	notified  bool
 }
 
 func (t *commitTx) Commit(context.Context) error { t.committed = t.err == nil; return t.err }
@@ -58,5 +60,26 @@ func TestCleanCommitDoesNotWake(t *testing.T) {
 	}
 	if calls != 0 {
 		t.Fatal("clean transaction woke scheduler")
+	}
+}
+
+func (t *commitTx) Exec(_ context.Context, sql string, _ ...any) (pgconn.CommandTag, error) {
+	if sql != "SELECT pg_notify('todocal_schedule_wake', '')" || t.committed {
+		return pgconn.CommandTag{}, errors.New("invalid notify ordering")
+	}
+	t.notified = true
+	return pgconn.CommandTag{}, nil
+}
+
+func TestScheduleBroadcastOnlyForDirtyClusterCommit(t *testing.T) {
+	for _, dirty := range []bool{false, true} {
+		tx := &commitTx{dirty: dirty}
+		ctx := WithScheduleBroadcast(WithScheduleWake(context.Background(), func() {}))
+		if err := Commit(ctx, tx); err != nil {
+			t.Fatal(err)
+		}
+		if tx.notified != dirty || !tx.committed {
+			t.Fatal("incorrect transactional broadcast")
+		}
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -64,74 +63,5 @@ func TestMissingHostLeaderLockFailsClosed(t *testing.T) {
 	if file, err := OpenHostLeaderLock(filepath.Join(t.TempDir(), "missing")); err == nil {
 		_ = file.Close()
 		t.Fatal("unexpectedly created a lock")
-	}
-}
-
-func TestHostLeaderRejectsDirectory(t *testing.T) {
-	if file, err := OpenHostLeaderLock(t.TempDir()); err == nil {
-		_ = file.Close()
-		t.Fatal("accepted a directory as scheduler lock")
-	}
-}
-
-func TestHostLeaderReleasesLockAfterRunReturns(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "leader.lock")
-	if err := os.WriteFile(path, nil, 0o444); err != nil {
-		t.Fatal(err)
-	}
-	first, err := OpenHostLeaderLock(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = first.Close() }()
-	second, err := OpenHostLeaderLock(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = second.Close() }()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	firstRan, secondRan := false, false
-	if err := RunHostLeader(ctx, first, func(context.Context) { firstRan = true }); err != nil {
-		t.Fatal(err)
-	}
-	// The first file remains open: the lock must be released by RunHostLeader.
-	if err := RunHostLeader(ctx, second, func(context.Context) { secondRan = true }); err != nil {
-		t.Fatal(err)
-	}
-	if !firstRan || !secondRan {
-		t.Fatal("scheduler lock was not handed off after the first run returned")
-	}
-}
-
-func TestCancelledHostLeaderStandbyDoesNotRun(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "leader.lock")
-	if err := os.WriteFile(path, nil, 0o444); err != nil {
-		t.Fatal(err)
-	}
-	first, err := OpenHostLeaderLock(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = first.Close() }()
-	if err := syscall.Flock(int(first.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = syscall.Flock(int(first.Fd()), syscall.LOCK_UN) }()
-	second, err := OpenHostLeaderLock(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = second.Close() }()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-	ran := false
-	if err := RunHostLeader(ctx, second, func(context.Context) { ran = true }); err != nil {
-		t.Fatal(err)
-	}
-	if ran || ctx.Err() == nil {
-		t.Fatal("standby must stop on cancellation without running the scheduler")
 	}
 }

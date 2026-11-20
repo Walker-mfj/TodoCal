@@ -47,6 +47,26 @@ var tracer = otel.Tracer("todocal/api")
 var tracingEnabled atomic.Bool
 var traceExportErrors atomic.Uint64
 
+// traceResource uses the image's release metadata, not a provider-specific
+// environment variable that may still be present on a migrated host.
+func traceResource(getenv func(string) string) *resource.Resource {
+	release := getenv("APP_RELEASE")
+	if !revisionPattern.MatchString(release) {
+		release = "unknown"
+	}
+	environment := getenv("APP_ENV")
+	switch environment {
+	case "production", "staging", "development":
+	default:
+		environment = "unknown"
+	}
+	return resource.NewSchemaless(
+		attribute.String("service.name", "todocal-api"),
+		attribute.String("service.version", release),
+		attribute.String("deployment.environment.name", environment),
+	)
+}
+
 // ConfigureExports creates independent, opt-in exporters. Invalid configuration
 // fails closed without preventing API startup. No credentials enter logs.
 func ConfigureExports(getenv func(string) string, stdout io.Writer) (io.Writer, func()) {
@@ -68,17 +88,7 @@ func ConfigureExports(getenv func(string) string, stdout io.Writer) (io.Writer, 
 			exp, err := otlptracehttp.New(context.Background(), otlptracehttp.WithEndpointURL(endpoint), otlptracehttp.WithHTTPClient(&http.Client{Timeout: 2 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}), otlptracehttp.WithHeaders(map[string]string{"Authorization": "Bearer " + token}), otlptracehttp.WithTimeout(2*time.Second), otlptracehttp.WithRetry(otlptracehttp.RetryConfig{Enabled: false}))
 			if err == nil {
 				otel.SetErrorHandler(otel.ErrorHandlerFunc(func(error) { traceExportErrors.Add(1) }))
-				release := getenv("RENDER_GIT_COMMIT")
-				if !revisionPattern.MatchString(release) {
-					release = "unknown"
-				}
-				environment := getenv("APP_ENV")
-				switch environment {
-				case "production", "staging", "development":
-				default:
-					environment = "unknown"
-				}
-				provider = sdk.NewTracerProvider(sdk.WithSampler(newBudgetSampler(.05, 1000)), sdk.WithResource(resource.NewSchemaless(attribute.String("service.name", "todocal-api"), attribute.String("service.version", release), attribute.String("deployment.environment.name", environment))), sdk.WithBatcher(exp, sdk.WithMaxQueueSize(128), sdk.WithMaxExportBatchSize(32), sdk.WithBatchTimeout(time.Second), sdk.WithExportTimeout(2*time.Second)), sdk.WithRawSpanLimits(sdk.SpanLimits{AttributeCountLimit: 12, AttributeValueLengthLimit: 128, EventCountLimit: 0, LinkCountLimit: 1}))
+				provider = sdk.NewTracerProvider(sdk.WithSampler(newBudgetSampler(.05, 1000)), sdk.WithResource(traceResource(getenv)), sdk.WithBatcher(exp, sdk.WithMaxQueueSize(128), sdk.WithMaxExportBatchSize(32), sdk.WithBatchTimeout(time.Second), sdk.WithExportTimeout(2*time.Second)), sdk.WithRawSpanLimits(sdk.SpanLimits{AttributeCountLimit: 12, AttributeValueLengthLimit: 128, EventCountLimit: 0, LinkCountLimit: 1}))
 				tracer = provider.Tracer("todocal/api")
 				tracingEnabled.Store(true)
 			} else {

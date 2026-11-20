@@ -85,17 +85,26 @@ test("current-time dot and timed cards have separate horizontal space", async ({
         column.evaluate((node) => {
           const marker = node.querySelector(".fc-timegrid-now-indicator-line")!;
           const dot = getComputedStyle(marker, "::before");
+          const container = marker.closest(
+            ".fc-timegrid-now-indicator-container",
+          )!;
+          const overlay = getComputedStyle(container);
+          const dotWidth = parseFloat(dot.width);
+          const dotLeft = parseFloat(dot.left);
           const dotRight =
-            marker.getBoundingClientRect().left +
-            parseFloat(dot.left) +
-            parseFloat(dot.width);
+            marker.getBoundingClientRect().left + dotLeft + dotWidth;
           const bounds = node.getBoundingClientRect();
           const events = Array.from(
             node.querySelectorAll(".fc-timegrid-event"),
             (event) => event.getBoundingClientRect(),
           ).sort((a, b) => a.left - b.left);
           return (
-            parseFloat(dot.width) === 6 &&
+            dotWidth === 8 &&
+            parseFloat(dot.height) === 8 &&
+            dotLeft === -dotWidth / 2 &&
+            overlay.overflowX === "visible" &&
+            overlay.overflowY === "visible" &&
+            Number(overlay.zIndex) === 10 &&
             events.length === 2 &&
             events[0].left >= dotRight + 1 &&
             events[0].right + 1 <= events[1].left &&

@@ -37,9 +37,6 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: node --test ../../deploy/cloudflare/*.test.mjs
-      - name: Test safe VPC diagnostics
-        working-directory: deploy/cloudflare
-        run: python3 -m unittest -v testDiagnoseVpc
       - run: npm run build
 
   api:

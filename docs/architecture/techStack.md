@@ -23,7 +23,7 @@ Go net/http REST API (apps/api)
        PostgreSQL
 ```
 
-Production uses **Cloudflare Workers/static assets** and private Workers VPC over Cloudflare Tunnel to **AWS Lightsail**, where Docker Compose runs Nginx, Blue/Green Go API slots, PostgreSQL and the deployment receiver. GitHub Actions publishes tested API images to GHCR and delivers signed deployment events. Local development uses Docker Compose for PostgreSQL. The embedded scheduler has one leader during slot overlap. See [production deployment](../../deploy/README.md) and [end-to-end architecture flows](../../deploy/architecture.md).
+Production uses **Cloudflare Workers/static assets** and private Workers VPC over Cloudflare Tunnel to **AWS Lightsail**, where Docker Compose runs Nginx, Blue/Green Go API slots, PostgreSQL and the deployment receiver. GitHub Actions publishes tested API images to GHCR and delivers signed deployment events. Local development uses Docker Compose for PostgreSQL. The embedded scheduler has one leader during slot overlap. See [production deployment](../../deploy/README.md) and [end-to-end architecture flows](productionArchitecture.md).
 
 **Version sources of truth:**
 - `apps/web/package.json` and `apps/web/package-lock.json`: frontend dependencies and pinned resolutions.

@@ -269,7 +269,7 @@ For structural changes, follow these safeguards without repeating unnecessary mi
 - Keep styles near UI; don't add feature selectors to `globals.css`.
 - Use current destinations rather than obsolete paths: `home` instead of `workspace`, `shared/api` instead of `src/lib/api`, `controllers` instead of `internal/server` handlers, `services` for business logic, and `repository` for SQL.
 - When adding a feature, update the relevant feature doc and API contract before introducing new abstractions.
-- The embedded scheduler runs only while the API process runs. The [free deployment](../../deploy/README.md) can sleep; in-process timers do not guarantee reminders while it is idle.
+- The embedded scheduler runs only while an API process holds the shared local scheduler lock. See [production architecture](productionArchitecture.md) for Blue-Green ownership and failure boundaries.
 
 ## Related documents
 

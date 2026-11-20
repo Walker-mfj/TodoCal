@@ -1,10 +1,83 @@
 # Production architecture — end-to-end flows
 
-Start with the [combined production topology](README.md#architecture).
 This document describes the implementation and operator-reported installation,
 not a proposal. Live host files, backup cadence and activated telemetry flags
 have not been independently inspected. Blue is initially active in the examples;
 the next compatible release reverses the slots.
+
+## Production topology
+
+```mermaid
+flowchart TD
+    Browser["Browser / installed PWA"]
+    subgraph GitHub["GitHub"]
+        Main["Push to main"]
+        FE["Deploy frontend"]
+        CI["CI"]
+        BE["Deploy backend"]
+        GHCR["GHCR: tested image digest"]
+        Main --> FE
+        Main --> CI --> BE --> GHCR
+    end
+    subgraph Edge["Cloudflare"]
+        Worker["Worker todocal"]
+        Assets["Next.js static assets"]
+        APIBinding["TODOCAL_API"]
+        DeployBinding["TODOCAL_DEPLOY"]
+        Worker --> Assets
+        Worker --> APIBinding
+        Worker --> DeployBinding
+    end
+    subgraph Host["AWS Lightsail - Tokyo"]
+        Tunnel["Cloudflared: private tunnel"]
+        subgraph Ingress["Compose ingress network"]
+            Nginx["Nginx - api:10000"]
+            Receiver["deploy-receiver:8080"]
+            Blue["Go API blue"]
+            Green["Go API green"]
+            Nginx -->|example active route| Blue
+            Nginx -.->|alternative route| Green
+        end
+        subgraph Control["Host control"]
+            Socket["Restricted Unix socket"]
+            Job["Root systemd job / deploy.py"]
+            Lock["Shared scheduler flock"]
+            Backup["Host backup job"]
+            Receiver --> Socket --> Job
+            Job -.->|start / switch / drain| Nginx
+        end
+        DB["PostgreSQL - private database network"]
+        Blue --> DB
+        Green --> DB
+        Blue -.-> Lock
+        Green -.-> Lock
+        DB --> Backup
+        Tunnel -->|API service| Nginx
+        Tunnel -->|deploy service| Receiver
+    end
+    S3["AWS S3 backups"]
+    Push["Browser push providers"]
+    Monitor["Better Stack"]
+    Browser -->|HTTPS| Worker
+    FE -->|Wrangler publish| Worker
+    FE -->|private source maps| Monitor
+    BE -->|HMAC deploy and status| Worker
+    APIBinding -->|private VPC| Tunnel
+    DeployBinding -->|private VPC| Tunnel
+    GHCR -->|exact digest pull| Job
+    Blue -.->|Web Push if leader| Push
+    Green -.->|Web Push if leader| Push
+    Push -->|deliver| Browser
+    Backup --> S3
+    Backup -.->|backup heartbeat| Monitor
+    Blue -.->|sanitized telemetry| Monitor
+    Green -.->|sanitized telemetry| Monitor
+    Monitor -->|public uptime / readiness probe| Worker
+```
+
+AWS Lightsail (Tokyo, 2 GB RAM / 2 vCPU, owner-reported) runs PostgreSQL, Cloudflared, Nginx, one normally active API slot and a private deployment receiver. The API and DB have no published ports. During compatible releases the second slot warms, Nginx reloads gracefully, old workers drain, and the old API stops. Only one scheduler owns a shared local kernel lock. This is one host, not HA; host/database/proxy failures and incompatible migrations can cause downtime.
+
+Blue is active only in this example; either slot can serve production. The two private VPC services share Cloudflared but target separate internal hostnames. Dashed edges include alternative routes and control/ownership or telemetry relationships, not additional active traffic paths.
 
 ## 1. Browser → frontend → API → database
 
@@ -14,7 +87,7 @@ sequenceDiagram
     participant W as Cloudflare Worker
     participant S as Static assets (ASSETS)
     participant V as API VPC service / Tunnel
-    participant N as Nginx api:10000
+    participant N as Nginx port 10000
     participant A as Active Go API
     participant D as PostgreSQL
     U->>W: HTTPS GET /
@@ -27,7 +100,7 @@ sequenceDiagram
     else VPC mode and valid configuration
         W->>W: Replace proxy secret and trusted client IP headers
         W->>V: Forward method, path, query, body and auth headers
-        V->>N: Private HTTP api:10000
+        V->>N: Private HTTP to api port 10000
         N->>A: Route to selected slot
         A->>A: Trusted proxy, auth and applicable command checks
         A->>D: Read or transactional domain command
@@ -46,9 +119,9 @@ sequenceDiagram
 4. Go owns authentication, authorization, Origin/CSRF/idempotency checks where applicable and domain transactions. Controllers call services and repositories. Both slots share PostgreSQL. Dirty schedule changes wake the scheduler after successful commit.
 5. Browser state is not authoritative; the Service Worker neither caches private API responses nor queues offline writes.
 
-Sources: [Worker](cloudflare/worker.mjs), [Nginx](lightsail/nginx.conf),
-[Go router](../apps/api/internal/router/router.go),
-[command pipeline](../docs/features/10-command-pipeline.md).
+Sources: [Worker](../../deploy/cloudflare/worker.mjs), [Nginx](../../deploy/lightsail/nginx.conf),
+[Go router](../../apps/api/internal/router/router.go),
+[command pipeline](../features/10-command-pipeline.md).
 
 ## 2. Commit → CI → independent frontend and backend releases
 
@@ -57,8 +130,8 @@ flowchart TD
     PR["PR: CI verifies changes"] --> Merge["Merge / push to main"]
     Merge --> FE["Deploy frontend"]
     Merge --> CI["Main CI: web, API, lint, integration, browser"]
-    FE --> FETest["Install locked dependencies; test web and proxy"]
-    FETest --> FEBuild["Build static web; typecheck"]
+    FE --> FETest["Install locked dependencies, test web and proxy"]
+    FETest --> FEBuild["Build static web, typecheck"]
     FEBuild --> Maps["Upload private source maps to Better Stack"]
     Maps --> Bind["Configure deployment VPC binding"]
     Bind --> Publish["Wrangler publishes Worker and assets"]
@@ -70,8 +143,8 @@ flowchart TD
     Current -->|No| Abort["Superseded: stop publication or delivery"]
     Current -->|Yes| Same{"API tree and migration fingerprint match tested image?"}
     Same -->|Yes| Reuse["Reuse tested digest"]
-    Same -->|No| Build["Build linux/amd64 image; label revision, API tree and fingerprint"]
-    Build --> Push["Push revision tag; promote tested"]
+    Same -->|No| Build["Build linux/amd64 image, label revision, API tree and fingerprint"]
+    Build --> Push["Push revision tag, promote tested"]
     Push --> Digest["Resolve exact sha256 digest"]
     Reuse --> Digest
     Digest --> Gate{"Current main and delivery not disabled?"}
@@ -93,9 +166,9 @@ unset means enabled under the workflow in this PR. The workflows independently
 serialize their releases, without cancelling an in-flight deployment.
 Frontend/backend rollout is not atomic; keep API changes backward compatible.
 
-Sources: [CI](../.github/workflows/ci.yml),
-[frontend](../.github/workflows/deployFrontend.yml),
-[backend](../.github/workflows/deployBackend.yml), [publisher](lightsail/publish.sh).
+Sources: [CI](../../.github/workflows/ci.yml),
+[frontend](../../.github/workflows/deployFrontend.yml),
+[backend](../../.github/workflows/deployBackend.yml), [publisher](../../deploy/lightsail/publish.sh).
 
 ## 3. Signed deployment → host admission → status
 
@@ -110,9 +183,9 @@ sequenceDiagram
     participant E as Durable event record
     G->>G: Generate request ID and HMAC sign action/id/digest/ts
     G->>W: POST /api/internal/deploy
-    W->>W: Require vpc mode; verify HMAC, size and timestamp
+    W->>W: Require vpc mode, verify HMAC, size and timestamp
     W->>V: Private POST /deploy
-    V->>R: deploy-receiver:8080
+    V->>R: deploy-receiver port 8080
     R->>H: Bounded envelope via Unix socket
     H->>H: Verify HMAC and exact schema again
     H->>E: Check ID and digest under gate lock
@@ -148,7 +221,7 @@ sequenceDiagram
         G->>W: GET /api/readyz
         W-->>G: Require 200 and status ready
     else failed, needs_approval or timeout
-        G->>G: Fail workflow; inspect host state
+        G->>G: Fail workflow, inspect host state
     end
 ```
 
@@ -169,9 +242,9 @@ only lock contention (5 seconds, up to 10 minutes), not ordinary failures.
 Cancelling Actions or losing HTTP does not cancel an admitted job. Job records
 describe individual outcomes; the persistent hold fences unsafe future deploys.
 
-Sources: [event runbook](lightsail/eventDeployment.md),
-[edge gate](cloudflare/deployRoute.mjs), [receiver](lightsail/deployReceiver.py),
-[root gate](lightsail/triggerHost.py), [CI client](lightsail/triggerDeploy.py).
+Sources: [event runbook](../../deploy/lightsail/eventDeployment.md),
+[edge gate](../../deploy/cloudflare/deployRoute.mjs), [receiver](../../deploy/lightsail/deployReceiver.py),
+[root gate](../../deploy/lightsail/triggerHost.py), [CI client](../../deploy/lightsail/triggerDeploy.py).
 
 ## 4. Compatible backend update — Blue to Green
 
@@ -188,7 +261,7 @@ sequenceDiagram
     U->>N: Requests
     N->>B: Active traffic
     B->>L: Own scheduler lock
-    J->>J: Exclusive deploy lock; reject unresolved hold
+    J->>J: Exclusive deploy lock, reject unresolved hold
     J->>R: Resolve current tested digest
     J->>J: Verify requested digest and active slot / readiness
     alt Same verified image
@@ -197,9 +270,9 @@ sequenceDiagram
         J->>R: Pull exact digest and verify metadata
         J->>J: Recheck digest/slot, fingerprint and RAM
         J->>J: Write durable hold
-        J->>G: Start candidate; skip startup migrations
+        J->>G: Start candidate, skip startup migrations
         G->>D: Initialize API and check readiness
-        G->>L: Standby tries lock; blue owns it
+        G->>L: Standby tries lock, blue owns it
         U->>N: Requests still reach blue
         N->>B: Active traffic
         J->>G: Candidate ready (repeated probes)
@@ -214,9 +287,9 @@ sequenceDiagram
         G->>L: Acquire lock and run scheduler
         G->>D: Recompute persisted work / listen for wakes
         J->>N: Verify final readiness
-        J->>J: Pin previous image; clear hold; prune older API refs
+        J->>J: Pin previous image, clear hold, prune older API refs
     end
-    Note over D: Same DB; no DB, tunnel or receiver restart
+    Note over D: Same DB, no DB, tunnel or receiver restart
 ```
 
 | Phase | Nginx route | Blue | Green | Scheduler |
@@ -241,7 +314,7 @@ not the mutable inactive slot tag. Failure before switch stops the compatible
 candidate and leaves the old route; ambiguous switch/drain keeps both slots
 and the hold for inspection. Never blindly restart or stop either slot.
 
-Sources: [implementation](lightsail/blueGreen.py), [runbook](lightsail/blueGreen.md).
+Sources: [implementation](../../deploy/lightsail/blueGreen.py), [runbook](../../deploy/lightsail/blueGreen.md).
 
 ## 5. Migration approval, rollback and recovery
 
@@ -253,21 +326,21 @@ flowchart TD
     Equal -->|No| Compatible{"Known equal migration fingerprint?"}
     Compatible -->|Yes| Handoff["Compatible Blue-Green handoff"]
     Compatible -->|No| Approved{"Exact digest manually approved?"}
-    Approved -->|No| Approval["needs_approval; leave active API unchanged"]
+    Approved -->|No| Approval["needs_approval, leave active API unchanged"]
     Approval --> Operator["Inspect SQL / restore evidence, pause events, set maintenance"]
     Operator --> Manual["deploy.py --approve exact digest"]
     Manual --> Verify
     Approved -->|Yes| Stop["Stop old API and scheduler"]
     Stop --> Backup["Require off-host backup success"]
     Backup --> Migrate["One migration-only container"]
-    Migrate --> Start["Start candidate; startup migrations disabled"]
-    Start --> Switch["Verify candidate; switch proxy; final readiness"]
-    Switch --> Finish["Pin previous image; clear hold"]
+    Migrate --> Start["Start candidate, startup migrations disabled"]
+    Start --> Switch["Verify candidate, switch proxy, final readiness"]
+    Switch --> Finish["Pin previous image, clear hold"]
     Finish --> Public["Operator restores vpc, verifies public readiness, re-enables events"]
     Handoff --> Success{"Successful handoff?"}
-    Success -->|Yes| Forward["Pin previous image; clear hold"]
-    Success -->|No| Hold["Keep hold; inspect route and slots"]
-    Migrate -.->|failure after migration may have begun| Recovery["Keep maintenance; recover forward or tested DB restore"]
+    Success -->|Yes| Forward["Pin previous image, clear hold"]
+    Success -->|No| Hold["Keep hold, inspect route and slots"]
+    Migrate -.->|failure after migration may have begun| Recovery["Keep maintenance, recover forward or tested DB restore"]
     Hold --> Inspect["Resolve actual slot, image and schema"]
     Inspect --> Safe{"One healthy slot and no unresolved migration?"}
     Safe -->|Yes| Resume["Explicit --resume, then retry delivery"]
@@ -284,16 +357,16 @@ may have started. This path entails downtime.
 
 ```mermaid
 flowchart TD
-    R["Operator pauses automatic delivery; inspect host"] --> P["deploy.py --rollback under deploy lock"]
+    R["Operator pauses automatic delivery, inspect host"] --> P["deploy.py --rollback under deploy lock"]
     P --> I{"Unambiguous active slot, distinct pin, known equal fingerprint and leader support?"}
-    I -->|No| Block["Block rollback; inspect / recover manually"]
-    I -->|Yes| Warm["Start pinned image in inactive slot; verify readiness"]
-    Warm --> Switch["Switch Nginx; drain old workers; stop old slot"]
+    I -->|No| Block["Block rollback, inspect / recover manually"]
+    I -->|Yes| Warm["Start pinned image in inactive slot, verify readiness"]
+    Warm --> Switch["Switch Nginx, drain old workers, stop old slot"]
     Switch --> Check{"Final readiness?"}
-    Check -->|No| Hold["Keep hold; inspect actual route"]
-    Check -->|Yes| Done["Previous image active; hold remains"]
+    Check -->|No| Hold["Keep hold, inspect actual route"]
+    Check -->|Yes| Done["Previous image active, hold remains"]
     Done --> Smoke["Local/public readiness and authenticated smoke test"]
-    Smoke --> Resume["Resolve incident; explicit --resume; re-enable delivery when safe"]
+    Smoke --> Resume["Resolve incident, explicit --resume, re-enable delivery when safe"]
 ```
 
 Manual rollback uses only the dedicated compatible pin and does not repin
@@ -302,7 +375,7 @@ active slot can be rolled back without initial readiness. Missing pin,
 incompatible fingerprint, ambiguous active slot or already active pin blocks
 rollback. Successful rollback leaves the hold. Never clear hold.json by hand;
 --resume preflight is not proof of safe data semantics. Resolve migration
-uncertainty first. See [operations](lightsail/README.md) and [recovery](lightsail/blueGreen.md).
+uncertainty first. See [operations](../../deploy/lightsail/README.md) and [recovery](../../deploy/lightsail/blueGreen.md).
 
 ## 6. Scheduled work → Web Push (including slot overlap)
 
@@ -322,8 +395,8 @@ sequenceDiagram
     A-->>U: Command result
     D-->>S: LISTEN/NOTIFY after commit
     S->>D: Query persisted next deadline
-    S->>S: Arm next timer; 15-minute recovery reconciliation
-    S->>D: Run bounded due lane; persist outbox / progress
+    S->>S: Arm next timer, 15-minute recovery reconciliation
+    S->>D: Run bounded due lane, persist outbox / progress
     S->>D: Revalidate event, subscription, preferences and quiet hours
     alt Eligible notification and valid VAPID
         S->>P: HTTPS Web Push
@@ -351,10 +424,10 @@ Push does not require an open tab; actual delivery still depends on OS/browser
 and provider. Outbox is durable per device/event. Transient failures retry at
 persisted times, stale subscriptions are revoked when appropriate. Stable tags
 reduce duplicate display, but provider acceptance followed by a crash before
-commit remains at-least-once. See [scheduler architecture](../docs/architecture/notificationScheduler.md),
-[notification contract](../docs/features/12-pwa-notifications.md),
-[host leader](../apps/api/internal/workers/hostLeader.go),
-[transaction wake](../apps/api/internal/database/scheduleWake.go).
+commit remains at-least-once. See [scheduler architecture](notificationScheduler.md),
+[notification contract](../features/12-pwa-notifications.md),
+[host leader](../../apps/api/internal/workers/hostLeader.go),
+[transaction wake](../../apps/api/internal/database/scheduleWake.go).
 
 ## 7. Backup, recovery and observability
 
@@ -404,7 +477,7 @@ deduplication, rate limits and a shared durable budget. Optional Go diagnostic
 log and trace exports are separately configurable, not assumed enabled.
 Correlate safe request IDs and release metadata with container logs and the host
 journal, without logging credentials or private user data.
-See [monitoring](monitoring.md) and [error contract](../docs/features/11-monitoring.md).
+See [monitoring](../../deploy/monitoring.md) and [error contract](../features/11-monitoring.md).
 
 ## Operational boundaries
 
@@ -412,4 +485,4 @@ See [monitoring](monitoring.md) and [error contract](../docs/features/11-monitor
 - Public HTTPS, two private VPC services, unprivileged receiver, restricted Unix socket, root deployment and private DB are distinct trust boundaries.
 - Active API slot, scheduler leader, GHCR tested digest and rollback pin are different state variables.
 - First forward rollout succeeded on 2026-11-20; the owner reported HTTP 200 at every one-second probe. This does not establish sub-second continuity, no duplicate provider calls, manual rollback or backup restore.
-- Use the [operational runbooks](README.md#releases-and-operations), not diagrams alone, for host changes.
+- Use the [operational runbooks](../../deploy/README.md#releases-and-operations), not diagrams alone, for host changes.

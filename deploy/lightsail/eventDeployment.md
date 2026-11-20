@@ -38,6 +38,7 @@ HTTP request. A cancelled Actions run cannot cancel an admitted job.
        umask 077
        openssl rand -hex 32 > /opt/todocal/secrets/trigger.key
        chmod 600 /opt/todocal/secrets/trigger.key
+       systemd-analyze --recursive-errors=no verify /etc/systemd/system/todocal-trigger.socket /etc/systemd/system/todocal-trigger@.service /etc/systemd/system/todocal-deploy-job@.service
        systemctl daemon-reload
        systemctl enable --now todocal-trigger.socket
 

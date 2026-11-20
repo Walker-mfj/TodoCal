@@ -3,6 +3,7 @@ Description=Deploy exact TodoCal API release for event %i
 After=docker.service network-online.target
 Requires=docker.service
 Wants=network-online.target
+CollectMode=inactive-or-failed
 
 [Service]
 Type=oneshot
@@ -11,4 +12,3 @@ WorkingDirectory=/opt/todocal
 UMask=0077
 ExecStart=/usr/bin/python3 /opt/todocal/triggerHost.py %i
 TimeoutStartSec=45min
-CollectMode=inactive-or-failed

@@ -160,7 +160,6 @@ The integrated refactor implemented these tooling checks; exact commands and loc
 ## 8. Related files
 
 - [Folder structure](folderStructure.md) — module ownership, naming and dependencies.
-- [Refactor verification](refactorVerification.md) — completed FE + Go refactor and recorded checks.
 - [Web package manifest](../../apps/web/package.json) — frontend dependency definitions and scripts.
 - [Go module](../../apps/api/go.mod) — backend dependencies and toolchain.
 - [CI workflow](../../.github/workflows/ci.yml) — currently configured checks.

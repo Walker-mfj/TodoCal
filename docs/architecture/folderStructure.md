@@ -237,7 +237,7 @@ Frontend `src/` paths in this table are relative to `apps/web`. Prefer an existi
 
 ## 7. Structural-change workflow
 
-The integrated frontend and Go cleanup is complete; see [recorded verification](refactorVerification.md). For future structural changes, preserve the current ownership boundaries and verify affected frontend and backend workflows.
+For structural changes, preserve the current ownership boundaries and verify affected frontend and backend workflows.
 
 For structural changes, follow these safeguards without repeating unnecessary migrations:
 
@@ -275,7 +275,6 @@ For structural changes, follow these safeguards without repeating unnecessary mi
 
 - [Project README](../../README.md)
 - [Feature documentation](../features/README.md)
-- [Integrated refactor verification](refactorVerification.md) — completed scope, test evidence and known limits.
 - [Technology stack & dependencies](techStack.md) — technologies, library ownership, quality checks, and dependency policy.
 - [OpenAPI contract](../../api/openapi.yaml)
 - [Deployment guide](../../deploy/README.md)

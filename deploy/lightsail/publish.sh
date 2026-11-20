@@ -1,63 +1,62 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Called only from a successful main CI run, not a PR.
-: "$GITHUB_SHA" "$GITHUB_REPOSITORY" "$GH_TOKEN"
-[[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
-[[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
-tag="api-$GITHUB_SHA"
+# Only the trusted main-CI completion workflow may publish tested images.
+: "$TESTED_SHA" "$GITHUB_REPOSITORY" "$GH_TOKEN" "$GHCR_TOKEN" "$GITHUB_OUTPUT"
+[[ "$(git rev-parse HEAD)" == "$TESTED_SHA" ]]
+[[ "$TESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+[[ "$GITHUB_REPOSITORY" == Walker-mfj/TodoCal ]]
+image=ghcr.io/walker-mfj/todocal-api
 api="repos/$GITHUB_REPOSITORY"
 is_current() {
-  [[ "$(gh api "$api/git/ref/heads/main" --jq .object.sha)" == "$GITHUB_SHA" ]]
+  [[ "$(gh api "$api/git/ref/heads/main" --jq .object.sha)" == "$TESTED_SHA" ]]
 }
 if ! is_current; then
-  echo "Main advanced; the newer CI run owns publication."
+  echo "Main advanced; newer CI owns publication."
   exit 0
 fi
-# Compare against the last published API, not just the previous push. This
-# also catches backend changes from a failed or cancelled earlier CI run.
-latest=$(gh api "$api/releases?per_page=100" --paginate --slurp \
-  | jq -r '[.[][] | select(.draft == false and .prerelease == false and (.tag_name | test("^api-[0-9a-f]{40}$")))] | first | .tag_name // ""')
-if [[ -n "$latest" ]] && git cat-file -e "$latest^{commit}"; then
-  if git diff --quiet "$latest" "$GITHUB_SHA" -- apps/api; then
-    echo "No API changes since published release $latest."
+printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+tree=$(git rev-parse "$TESTED_SHA:apps/api")
+fingerprint=$(git ls-tree -r "$TESTED_SHA" -- apps/api/internal/database/migrations apps/api/internal/database/migrate.go apps/api/start.sh apps/api/go.mod apps/api/go.sum | sha256sum | cut -d' ' -f1)
+emit_digest() {
+  [[ "$1" =~ ^sha256:[0-9a-f]{64}$ ]]
+  if is_current; then
+    echo "digest=$1" >> "$GITHUB_OUTPUT"
+    echo "Tested image: $image@$1"
+  else
+    echo "Main advanced; newer CI owns delivery."
+  fi
+}
+# Pull only on a disposable runner; unchanged API trees reuse the tested
+# digest, including when the earlier workflow never delivered its event.
+if docker pull --platform linux/amd64 "$image:tested"; then
+  if [[ "$(docker image inspect --format '{{index .Config.Labels "io.todocal.api-tree"}}' "$image:tested")" == "$tree" ]] &&
+     [[ "$(docker image inspect --format '{{index .Config.Labels "io.todocal.migrations"}}' "$image:tested")" == "$fingerprint" ]]; then
+    ref=$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$image:tested" | grep -E "^$image@sha256:[0-9a-f]{64}$")
+    emit_digest "${ref##*@}"
     exit 0
   fi
 fi
-# A rerun may encounter its own incomplete draft; never replace a published asset.
-existing=$(gh api "$api/releases?per_page=100" --paginate --slurp \
-  | jq -r "[.[][] | select(.tag_name == \"$tag\")] | first | if . == null then \"absent\" elif .draft then \"draft\" else \"published\" end")
-if [[ "$existing" == published ]]; then
-  echo "Release already published."
-  exit 0
-fi
-fingerprint=$(git ls-tree -r "$GITHUB_SHA" -- apps/api/internal/database/migrations apps/api/internal/database/migrate.go apps/api/start.sh apps/api/go.mod apps/api/go.sum | sha256sum | cut -d' ' -f1)
-image="todocal-api:$GITHUB_SHA"
-work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
-archive="$work/todocal-api-$fingerprint.tar.gz"
+# A failed pull (including initial package absence) may cause an extra build,
+# but no event is emitted until push completes and the digest is validated.
 docker build --platform linux/amd64 \
-  --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+  --label "org.opencontainers.image.source=https://github.com/Walker-mfj/TodoCal" \
+  --label "org.opencontainers.image.revision=$TESTED_SHA" \
+  --label "io.todocal.api-tree=$tree" \
   --label "io.todocal.migrations=$fingerprint" \
-  --build-arg "GIT_COMMIT=$GITHUB_SHA" \
-  -t "$image" apps/api
-docker save "$image" | gzip -1 > "$archive"
-[[ $(stat -c %s "$archive") -lt 2147483648 ]]
+  --build-arg "GIT_COMMIT=$TESTED_SHA" \
+  -t "$image:sha-$TESTED_SHA" apps/api
 if ! is_current; then
-  echo "Main advanced during build; discard unpublished image."
+  echo "Main advanced during build."
   exit 0
 fi
-if [[ "$existing" == draft ]]; then
-  # This only removes an unpublished draft, with a matching commit-specific tag.
-  gh release delete "$tag" --yes
-fi
-gh release create "$tag" "$archive" --target "$GITHUB_SHA" --draft \
-  --title "TodoCal API $GITHUB_SHA" --notes "Built after successful main CI. Linux amd64."
-# Do not make a partially uploaded draft visible to the deployment poller.
-asset=$(gh api "$api/releases?per_page=100" --paginate --slurp \
-  | jq -r "[.[][] | select(.tag_name == \"$tag\" and .draft) | .assets[] | select(.name == \"$(basename "$archive")\" and .state == \"uploaded\")] | first | .digest // \"\"")
-[[ "$asset" == "sha256:$(sha256sum "$archive" | cut -d' ' -f1)" ]]
+docker push "$image:sha-$TESTED_SHA"
 if ! is_current; then
-  echo "Main advanced; leaving release as an unpublished draft."
+  echo "Main advanced before promotion."
   exit 0
 fi
-gh release edit "$tag" --draft=false --latest
+docker tag "$image:sha-$TESTED_SHA" "$image:tested"
+result=$(docker push "$image:tested")
+printf '%s\n' "$result"
+digest=$(printf '%s\n' "$result" | sed -nE 's/^tested: digest: (sha256:[a-f0-9]{64}) size: [0-9]+$/\1/p')
+emit_digest "$digest"

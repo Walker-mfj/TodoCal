@@ -1,4 +1,6 @@
 // Static Next.js frontend and a same-origin, authenticated API proxy.
+import { deploymentRequest } from './deployRoute.mjs';
+
 const VPC_ORIGIN = 'http://api:10000';
 
 function unavailable(message, retryAfter) {
@@ -21,6 +23,7 @@ export default {
     const incoming = new URL(request.url);
     if (!incoming.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
 
+    if (incoming.pathname === '/api/internal/deploy') return deploymentRequest(request, env);
     const isReadiness = incoming.pathname === '/api/readyz';
     const probe = (ready, retryAfter) => readiness(ready, request.method, retryAfter);
 

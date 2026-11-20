@@ -1,0 +1,15 @@
+services:
+  deploy-receiver:
+    image: python:3.12-alpine
+    user: "10002:10002"
+    command: ["python3", "-B", "/app/deployReceiver.py"]
+    restart: unless-stopped
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 64m
+    pids_limit: 32
+    volumes:
+      - ./deployReceiver.py:/app/deployReceiver.py:ro
+      - ./trigger-socket:/trigger:ro
+    networks: [ingress]

@@ -50,6 +50,16 @@
   font-size: 9px;
   color: var(--color-muted);
 }
+/* Reserve a gutter for the current-time marker and separate concurrent cards. */
+.calendar-wrap :global(.fc) :global(.fc-timegrid-col-events) {
+  margin-inline: 8px;
+}
+.calendar-wrap
+  :global(.fc)
+  :global(.fc-timegrid-event-harness)
+  > :global(.fc-timegrid-event) {
+  margin-inline: 2px;
+}
 :where(.calendar-wrap) :global(.fc) :global(.fc-timegrid-event) {
   border: 0;
   border-left: 3px solid;
@@ -206,10 +216,10 @@
   :global(.fc-timegrid-now-indicator-line)::before {
   content: "";
   position: absolute;
-  left: -5px;
-  top: -6px;
-  width: 10px;
-  height: 10px;
+  left: 1px;
+  top: -4px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: #e3342f;
 }

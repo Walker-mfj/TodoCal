@@ -57,8 +57,8 @@ after migrations; no separate worker or Cron is needed. Focus settlement,
 notification delivery, recurring reminder horizons and retention cleanup have
 independent bounded lanes. Domain reads/mutations retain historical planning
 catch-up. Reconciliation runs every 15 minutes as a final recovery mechanism.
-See [deployment instructions](deploy/README.md) for the single-instance runtime
-requirement and removal of the old Cloudflare schedule.
+See [deployment instructions](deploy/README.md) for production Blue-Green deployment and single-host scheduler ownership.
+The legacy Cloudflare schedule has been removed.
 
 ```sh
 make lint-go           # installs the pinned linter locally on first run

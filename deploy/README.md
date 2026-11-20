@@ -1,127 +1,60 @@
-# TodoCal deployment
+# TodoCal production deployment
 
-> Production owner reports the Lightsail/VPC cutover is complete. The current backend release procedure is [Lightsail API release deployment](lightsail/README.md). Render/Neon instructions below are legacy recovery context, not the active production target. Keep the old providers fenced until explicit cleanup.
+Production: https://todocal.digitalhome.workers.dev. Local development uses the repository root Compose file, not the root-managed production Compose file on Lightsail.
 
-Next.js static assets run on Cloudflare Workers. A small Worker forwards `/api/*` to Render Free, with PostgreSQL on Neon Free. The Go API runs the notification scheduler; API planning catch-up remains active. Cold starts are expected.
+## Architecture
 
-## Configuration
+```mermaid
+flowchart TD
+    Browser --> Worker[Cloudflare Workers: static Next.js and API proxy]
+    CI[GitHub Actions: trusted main CI] --> GHCR[Public GHCR tested digest]
+    CI -->|signed event| Worker
+    Worker -->|TODOCAL_API, private VPC/Tunnel| Proxy[Nginx api:10000]
+    Worker -->|TODOCAL_DEPLOY, private VPC/Tunnel| Receiver[Deployment receiver]
+    Receiver -->|Unix socket| Systemd[Root systemd event job]
+    Systemd -->|pull exact digest| GHCR
+    Systemd -->|start, check, switch, drain| Proxy
+    Proxy --> Blue[Go API blue]
+    Proxy --> Green[Go API green]
+    Blue --> DB[PostgreSQL on Lightsail]
+    Green --> DB
+    DB --> S3[Off-host S3 backups]
+```
 
-Deployment endpoints:
+AWS Lightsail (Tokyo, 2 GB RAM / 2 vCPU, owner-reported) runs PostgreSQL, Cloudflared, Nginx, one normally active API slot and a private deployment receiver. The API and DB have no published ports. During compatible releases the second slot warms, Nginx reloads gracefully, old workers drain, and the old API stops. Only one scheduler owns a shared local kernel lock. This is one host, not HA; host/database/proxy failures and incompatible migrations can cause downtime.
 
-- App: https://todocal.digitalhome.workers.dev
-- API: https://todocal-api.onrender.com
-- Render dashboard: https://dashboard.render.com/web/srv-dbf0ekks728c73dmd6ig
-- Neon project: `delicate-moon-70365012`, production branch `br-icy-feather-b4u8imu4`.
-- Configure Render to deploy `main`; the dashboard branch setting is independent of the GitHub frontend workflow.
-- `.github/workflows/deployFrontend.yml` deploys the frontend on pushes to `main`, or manual runs on `main`, once the workflow is pushed and the secrets below are configured. Local merges alone do not deploy anything. Manual frontend deployment remains available with `npm run deploy` from `deploy/cloudflare`.
+## Production configuration
 
-## Lightsail transition (not yet cut over)
+| Location | Required configuration |
+|---|---|
+| GitHub repository secrets | DEPLOY_TRIGGER_SECRET |
+| GitHub production environment or repository secrets | CLOUDFLARE_API_TOKEN, BETTER_STACK_API_TOKEN |
+| GitHub variables | DEPLOY_VPC_SERVICE_ID (deployment receiver VPC UUID); LIGHTSAIL_EVENT_DEPLOY=false only to pause delivery |
+| Worker runtime settings | API_BACKEND=vpc, PROXY_SECRET, DEPLOY_TRIGGER_SECRET |
+| Worker bindings | TODOCAL_API (api:10000), TODOCAL_DEPLOY (deploy-receiver:8080), ASSETS |
+| Lightsail api.env | DATABASE_URL (local production PostgreSQL), APP_ORIGIN (exact HTTPS frontend origin), PROXY_SECRET, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT, monitoring/session settings |
+| Lightsail host | root-owned secrets/trigger.key (same HMAC key as Worker and GitHub), backup.env, cloudflared.env, deployment tools, systemd socket, local scheduler lock, Blue-Green marker |
 
-The frontend now uses `https://todocal.digitalhome.workers.dev` (owner-reported). Treat this as a new browser origin: prior cookies, local drafts, service workers and push permissions are not transferred automatically. Verify the existing Render APP_ORIGIN matches the new origin before testing the current site. Verify the account ID and deployment token still target the correct Worker.
+Keep tokens narrowly scoped; publishing Workers needs Workers Scripts permissions and account-level Connectivity Directory access for VPC bindings. Do not print secrets or full resolved Compose config. The Worker uses the exact private VPC service only; missing/invalid mode fails closed. Maintenance returns 503 on API requests, including GETs (which may mutate state); static assets remain available. Do not point back to the retired database.
 
-The Worker supports a private API binding but Render remains the default until an operator explicitly switches the runtime setting. See [Workers VPC cutover](cloudflare/vpcCutover.md). No public backend hostname is required and no changes are made to the live infrastructure by this PR.
+## Releases and operations
 
-## Frontend deployment from GitHub
+- [Lightsail deployment and rollback](lightsail/README.md), [event delivery and fresh installation](lightsail/eventDeployment.md), [Blue-Green setup and recovery](lightsail/blueGreen.md).
+- [Monitoring and source maps](monitoring.md); [legacy provider retirement checklist](legacyProviderRetirement.md).
 
-Set these GitHub Actions secrets in the repository (or its `production` environment):
+Frontend deploys independently on main: locked dependencies, tests, build/typecheck, private source maps upload, configure deploy binding from DEPLOY_VPC_SERVICE_ID, Wrangler publication, website check. Do not deploy manually without both bindings: a bare Wrangler deploy can remove TODOCAL_DEPLOY. Set runtime secrets in the dashboard, verify both bindings after publishing, and avoid concurrent deployments.
 
-- `CLOUDFLARE_API_TOKEN`: an API token allowed to deploy Workers in account `8cf9e69ea0ad681889782c541601c0d1`. Scope it to that account. Local Wrangler OAuth login does not authenticate GitHub Actions.
-- `BETTER_STACK_API_TOKEN`: the existing Telemetry token authorized to upload private source maps for TodoCal. Source maps contain frontend source code; do not upload them as public build artifacts.
+Backend deploy runs after successful trusted main CI, publishes/reuses the tested image, and sends a signed event to the private receiver through the Worker. The host verifies the signature again and uses the exact digest under an exclusive deployment lock. Compatible updates use Blue-Green; changed/unknown migration fingerprints require digest-specific approval, maintenance and verified off-host backup. Pause delivery explicitly with LIGHTSAIL_EVENT_DEPLOY=false before host operations. Never bypass a persistent hold or restart both slots indiscriminately.
 
-The workflow installs locked dependencies, runs frontend/proxy tests, builds and checks types, uploads private source maps, then publishes the Worker. Failed checks or uploads stop publication. Only the publication step receives the Cloudflare token. Existing Worker secrets (`API_ORIGIN`, `PROXY_SECRET`) remain in Cloudflare. Deployments are serialized; in-flight deployments are not cancelled. The final website check reports failures but does not automatically roll back.
+Frontend/backend releases are not atomic; use additive, backward-compatible changes, deploy backend first when a new frontend depends on it, and preserve compatibility with existing tabs. Use maintenance for incompatible changes.
 
-To move the backend to the same release branch, change Render's deployment branch to `main` after the intended commits have been pushed there. This is a separate live configuration change; the frontend workflow does not change or wait for Render.
+Public GET /api/readyz confirms API/DB connectivity without exposing credentials or upstream internals. The proxy overwrites trusted client IP/secret headers, preserves cookies, Origin, CSRF and idempotency headers, never follows redirects, and marks API responses no-store. Keep Better Stack readiness and backup heartbeat monitoring independent.
 
-## Frontend/backend compatibility
+## Embedded notification scheduler and verification
 
-Render and Cloudflare deployments are independent, not an atomic release. One can succeed while the other fails, and open browser tabs can keep running older frontend code even after a successful deployment.
+Go starts the embedded scheduler automatically; there is no separate worker, enable flag, jobs endpoint or Cloudflare Cron. Keep triggers.crons empty. A pre-created shared local kernel lock fences scheduler ownership during slot overlap; transaction-coupled PostgreSQL NOTIFY wakes the leader across slots. Relevant committed changes wake the next-deadline timer; retries use explicit backoff and the 15-minute reconciliation is a recovery mechanism. See [scheduler architecture](../docs/architecture/notificationScheduler.md). Missing VAPID disables delivery only, not Focus settlement.
 
-Use additive releases: deploy backward-compatible API fields/endpoints and database migrations first, confirm the backend is live, then publish frontend code that uses them. Keep the old API behavior until older clients no longer need it. Split breaking changes into separate releases; do not merge a frontend requiring a new API until that API is live. For incompatible releases, coordinate maintenance or introduce versioned endpoints. Automatic frontend deployment alone does not enforce this ordering.
-
-Render and Neon use their Free plans. After inactivity, the first API request can take around a minute while Render wakes up. Local accounts and data have not been imported.
-
-Deploy `render.yaml` from this repository (Free plan, Docker context `apps/api`). The current Neon project is in Ohio; Render uses Ohio to keep API/database traffic nearby. Set `DATABASE_URL` to a direct Neon PostgreSQL 18 TLS connection (`sslmode=require`; remove `channel_binding` because the migration driver lib/pq does not support that parameter), `APP_ORIGIN` to the exact Cloudflare HTTPS origin with no trailing slash, and `PROXY_SECRET` to a random secret of at least 32 characters. Keep secrets in provider settings, never Git/chat.
-
-The startup script applies migrations and starts the API on `0.0.0.0:$PORT`. This is for a single instance. Back up before schema updates. Health probes use `/healthz` to avoid continually waking the database; check `/readyz` during release verification.
-
-In `deploy/cloudflare`, run `npm ci`, `npx wrangler login`, `npm run build`, and `npx wrangler deploy --dry-run`. Confirm the `todocal` worker name is unused or belongs to this app. Create/deploy the Worker using `npm run deploy`; store `API_ORIGIN` (Render HTTPS URL) and the same `PROXY_SECRET` using `wrangler secret put` or dashboard secret settings. Set Render APP_ORIGIN to the resulting workers.dev URL. Until secrets are configured, the frontend shell is available but API returns 503; this is not a completed deployment.
-
-The proxy preserves cookies, Origin, CSRF and idempotency headers, overwrites trusted client IP/token headers, never follows upstream redirects, and marks API responses `no-store`. Render API requests without the edge secret are rejected. Cloudflare supplies CF-Connecting-IP; Go trusts it only through the authenticated edge boundary.
-
-Local Next.js development is unchanged. Only `STATIC_EXPORT=true` enables static output. The toolchain pins a patched undici version via an override; remove it when upstream includes the fix. No toolchain dependencies run in the deployed Worker.
-
-## Cloudflare Worker observability
-
-Worker `todocal` enables persisted Workers Logs at 100% head sampling and automatic Workers Traces at 5% head sampling through `deploy/cloudflare/wrangler.jsonc`. This is separate from Render API `OBSERVABILITY_ENABLED` and Better Stack ingestion. No external telemetry destination, token, or API code change is required.
-
-After the frontend Worker is deployed, check Cloudflare Dashboard > Workers & Pages > todocal > Observability > Logs / Traces. Trigger a harmless API request and inspect its invocation and sampled outbound fetch span to Render; because traces are sampled, repeat requests may be needed. For live debugging, run `npx wrangler tail todocal --format pretty` from `deploy/cloudflare`. Invocation logs and traces are not a complete application-level audit, and sampled traces may omit any particular request. Do not include cookies, Authorization headers, proxy secrets, query parameters, request bodies, or user data in future `console.log` messages.
-
-Workers Logs and Traces use Cloudflare Observability account-level ingestion and retention limits. Cloudflare's unified usage-based pricing begins December 1, 2026; verify available usage and billing limits before raising sampling. Lower `observability.logs.head_sampling_rate` or `observability.traces.head_sampling_rate` if needed. This PR only changes deployment configuration; it does not activate the settings in production until `wrangler deploy` runs.
-
-## Verification
-
-Run `make typecheck test-web test-go`, `node --test deploy/cloudflare/worker.test.mjs`, the Docker build, and Cloudflare dry run. On this machine the PostgreSQL Compose project is `to-do-list`; use `COMPOSE_PROJECT_NAME=to-do-list make test-e2e` to avoid a port collision. Browser tests use a dedicated test database.
-
-On the live URL verify registration/login, session reload, create/edit task, calendar, timer, logout, cache headers, direct API rejection and cold-start recovery. Use a dedicated test account. Do not import local user data without a specific request. Keep backups outside Git and test restoration into a separate database.
-
-## Embedded notification scheduler and Web Push
-
-The Go API starts the notification scheduler automatically. There is no enable
-flag, legacy jobs HTTP endpoint, minute sweeper, or standalone worker process.
-Apply migrations through 000021 before starting the API (the Render startup
-script already migrates before serving).
-
-Configure the following **Render** environment variables for Web Push:
-
-- `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` (a `mailto:` or HTTPS
-  contact). Keep private keys in provider settings.
-- Keep `DATABASE_URL`, `APP_ORIGIN`, `PROXY_SECRET` and existing session settings.
-  Cloudflare still needs `API_ORIGIN` and `PROXY_SECRET` for the API proxy.
-
-Missing VAPID configuration disables delivery only; Focus settlement continues.
-The API owns one next-deadline timer with independent bounded lanes for Focus,
-Web Push delivery, recurrence horizons and terminal-outbox cleanup. Relevant
-committed changes wake the coordinator. Known failures and provider retries use
-explicit retry timers; reconciliation every **15 minutes** is only a final backup.
-Horizon commits one series and a durable cursor per batch. Historical planning
-catch-up remains at the API domain transaction boundary.
-
-The scheduler assumes **one API instance**, without overlapping replicas or any
-old standalone worker. It does not implement cross-process leader election.
-Timers run only while the API process is running. Removing Cron also removes its
-periodic requests to Render: on a sleeping free instance, reminders cannot be
-sent until the API wakes. Choose an always-running instance if closed-tab,
-idle-time delivery is required.
-
-### Deployment and obsolete configuration
-
-The Cron removal is implemented in PR #35. Keep `triggers.crons: []` in
-Wrangler configuration so subsequent deployments continue to remove legacy
-triggers. The Cloudflare Worker has no scheduled handler.
-
-| Location | Required configuration | Obsolete configuration |
-|---|---|---|
-| Render | `DATABASE_URL`, `APP_ORIGIN`, `PROXY_SECRET`, session settings and `VAPID_*` for delivery | `JOBS_SECRET`, `NOTIFICATION_SCHEDULER_ENABLED` |
-| Cloudflare | `API_ORIGIN`, `PROXY_SECRET` | `JOBS_SECRET`, Cron-only `APP_ORIGIN` |
-
-Remove obsolete variables only after the API release that starts the scheduler
-unconditionally is deployed. Keep Render `APP_ORIGIN`; it is still used by the
-API. There should be no separately deployed legacy worker or Cron trigger.
-`POST /internal/jobs` is removed and returns 404.
-
-For future releases, verify API startup/readiness and deploy the Worker through
-its normal workflow. A merged PR does not prove either platform finished
-deployment. Check provider settings separately from repository configuration.
-
-Verify with dedicated test accounts: closed-tab Focus completion, pause/resume,
-start/deadline edits, recurring reminders, retry and restart, quiet hours and
-subscription revocation. Keep terminal-outbox retention at 30 days; pending
-retries are never removed by cleanup. Existing lateness cutoffs remain: Focus,
-break and lead 5 minutes, task start 10 minutes, deadline 15 minutes; lead stops
-at task start. The Cron cleanup did not change these cutoffs or add database migrations.
-
-Run `make test-integration` for isolated PostgreSQL suites and
-`node --test deploy/cloudflare/worker.test.mjs` for the proxy/empty-Cron contract.
+Use dedicated test accounts to verify authentication, task CRUD, calendar/Focus, closed-tab push, quiet hours, recurrence and retry. Run CI, isolated database tests, local/public readiness and controlled authenticated smoke tests. On 2026-11-20 the first Blue-Green release succeeded (PR #51); owner reported a 200 response at each one-second probe. Sub-second gaps, authenticated in-flight requests, duplicate push behavior and manual rollback are not proved by those probes.
 
 ### Progress and query-cost verification
 
@@ -182,7 +115,7 @@ A PostgreSQL benchmark run shared during review passed at 100k tasks and five
 devices per account: candidate mean 450.3 ms / maximum 512.0 ms, full
 `NotificationSchedule.Next()` mean 438.9 ms / maximum 462.7 ms (10 iterations).
 The shared EXPLAIN excerpt reported 475.0 ms execution time. These are local
-benchmark observations, not a Neon Free latency guarantee or a load test.
+benchmark observations, not a production latency guarantee or a load test.
 The excerpt alone does not establish which indexes were used or migration cost.
 Retain complete CI `scheduler-query-plans` artifacts for plan comparisons.
 

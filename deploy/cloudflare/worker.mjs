@@ -27,28 +27,18 @@ export default {
     const isReadiness = incoming.pathname === '/api/readyz';
     const probe = (ready, retryAfter) => readiness(ready, request.method, retryAfter);
 
-    // An absent setting preserves Render. Never fall back to another database
-    // after a VPC error, and never forward requests during the write freeze.
-    const backend = env.API_BACKEND ?? 'render';
+    // Only the designated private origin is supported. Missing/invalid mode
+    // fails closed; maintenance blocks requests before they reach the API.
+    const backend = env.API_BACKEND;
     if (backend === 'maintenance') return isReadiness ? probe(false, '60') : unavailable('Service is temporarily unavailable for maintenance.', '60');
     if (isReadiness && !['GET','HEAD'].includes(request.method)) {
       return new Response(null, {status:405,headers:{Allow:'GET, HEAD','Cache-Control':'no-store'}});
     }
-    if (backend !== 'render' && backend !== 'vpc') return isReadiness ? probe(false) : unavailable('Invalid API configuration.');
+    if (backend !== 'vpc') return isReadiness ? probe(false) : unavailable('Invalid API configuration.');
     if (!env.PROXY_SECRET || env.PROXY_SECRET.length < 32) return isReadiness ? probe(false) : unavailable('Service is not configured yet.');
 
-    const useVpc = backend === 'vpc';
-    if (useVpc && typeof env.TODOCAL_API?.fetch !== 'function') return isReadiness ? probe(false) : unavailable('Service is not configured yet.');
-    let upstream;
-    try {
-      if (!useVpc && !env.API_ORIGIN) return isReadiness ? probe(false) : unavailable('Service is not configured yet.');
-      upstream = new URL(useVpc ? VPC_ORIGIN : env.API_ORIGIN);
-    } catch {
-      return isReadiness ? probe(false) : unavailable('Invalid API configuration.');
-    }
-    if ((!useVpc && upstream.protocol !== 'https:') || upstream.username || upstream.password) {
-      return isReadiness ? probe(false) : unavailable('Invalid API configuration.');
-    }
+    if (typeof env.TODOCAL_API?.fetch !== 'function') return isReadiness ? probe(false) : unavailable('Service is not configured yet.');
+    const upstream = new URL(VPC_ORIGIN);
 
     if (isReadiness) {
       // Always perform the real GET/Ping, including for a client HEAD. Never
@@ -59,7 +49,7 @@ export default {
       try {
         const forwarded = new Request(upstream, {method:'GET', redirect:'manual', headers:{Accept:'application/json','Cache-Control':'no-cache'}});
         // Bypass public-fetch edge caching; this probe must reach the origin.
-        const response = useVpc ? await env.TODOCAL_API.fetch(forwarded) : await fetch(forwarded, {cache:'no-store'});
+        const response = await env.TODOCAL_API.fetch(forwarded);
         if (response.status !== 200) {
           await response.body?.cancel();
           return probe(false);
@@ -87,12 +77,12 @@ export default {
         redirect: 'manual',
         duplex: 'half',
       });
-      const response = useVpc ? await env.TODOCAL_API.fetch(forwarded) : await fetch(forwarded);
+      const response = await env.TODOCAL_API.fetch(forwarded);
       const result = new Response(response.body, response);
       result.headers.set('Cache-Control', 'no-store');
       return result;
     } catch {
-      return unavailable(useVpc ? 'Service is temporarily unavailable. Please try again shortly.' : 'The server is starting. Please try again shortly.', '10');
+      return unavailable('Service is temporarily unavailable. Please try again shortly.', '10');
     }
   },
 };

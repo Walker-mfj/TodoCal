@@ -9,7 +9,7 @@ import sys
 import tempfile
 import time
 
-from triggerProtocol import ID, TAG, validate
+from triggerProtocol import ID, DIGEST, validate
 
 ROOT = Path("/opt/todocal")
 STATE = ROOT / "deploy-events"
@@ -42,7 +42,7 @@ def dispatch(data):
         fcntl.flock(lock, fcntl.LOCK_EX)
         if path.exists():
             record = json.loads(path.read_text())
-            if record["tag"] != data["tag"]:
+            if record["digest"] != data["digest"]:
                 return 409, "unavailable"
             return 200, record["status"]
         if data["action"] == "status":
@@ -55,7 +55,7 @@ def dispatch(data):
                     file.unlink()
         if sum(1 for _ in STATE.glob("*.json")) >= 1000:
             return 503, "unavailable"
-        record = {"tag": data["tag"], "status": "queued"}
+        record = {"digest": data["digest"], "status": "queued"}
         store(path, record)
         try:
             subprocess.run(["systemctl", "start", "--no-block",
@@ -87,7 +87,7 @@ def job(request_id):
     with (STATE / "gate.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         record = json.loads(path.read_text())
-        if record["status"] != "queued" or not TAG.fullmatch(record["tag"]):
+        if record["status"] != "queued" or not DIGEST.fullmatch(record["digest"]):
             return
         store(path, record | {"status": "running"})
     result = "failed"
@@ -97,7 +97,7 @@ def job(request_id):
     deadline = time.monotonic() + 10*60
     try:
         while True:
-            code = subprocess.run([sys.executable, str(ROOT / "deploy.py"), "--deploy", record["tag"]],
+            code = subprocess.run([sys.executable, str(ROOT / "deploy.py"), "--deploy", record["digest"]],
                                   cwd=ROOT, timeout=30*60).returncode
             if code != 75:
                 result = {0: "succeeded", 3: "needs_approval"}.get(code, "failed")

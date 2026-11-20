@@ -6,7 +6,7 @@ import re
 import time
 
 ID = re.compile(r"[0-9a-f]{32}")
-TAG = re.compile(r"api-[0-9a-f]{40}")
+DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 SECRET = re.compile(r"[0-9a-f]{64}")
 LIMIT = 1024
 
@@ -22,10 +22,10 @@ def validate(secret, body, supplied, now=None):
         raise ValueError("Invalid signature")
     data = json.loads(body)
     now = time.time() if now is None else now
-    if (not isinstance(data, dict) or set(data) != {"action", "id", "tag", "ts"}
+    if (not isinstance(data, dict) or set(data) != {"action", "id", "digest", "ts"}
             or data["action"] not in ("deploy", "status")
             or not isinstance(data["id"], str) or not ID.fullmatch(data["id"])
-            or not isinstance(data["tag"], str) or not TAG.fullmatch(data["tag"])
+            or not isinstance(data["digest"], str) or not DIGEST.fullmatch(data["digest"])
             or type(data["ts"]) is not int or abs(now-data["ts"]) > 120):
         raise ValueError("Invalid request")
     return data

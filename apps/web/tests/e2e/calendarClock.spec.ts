@@ -56,3 +56,53 @@ test("indicator follows account wall time, navigation and wake from sleep", asyn
   );
   await expectTime("14:30:00", 0.5);
 });
+
+test("current-time dot and timed cards have separate horizontal space", async ({
+  page,
+  auth,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const date = auth.today;
+  for (const title of ["First task", "Concurrent task"]) {
+    await auth.send("/tasks", {
+      title,
+      scheduledDate: date,
+      startTime: "09:00",
+      endTime: "11:00",
+    });
+  }
+  await page.reload();
+  const column = page.locator(`.fc-timegrid-col[data-date="${date}"]`);
+  const cards = column.locator(".fc-timegrid-event");
+  await expect(cards).toHaveCount(2);
+  const line = column.locator(".fc-timegrid-now-indicator-line");
+  await expect(line).toBeVisible();
+
+  for (const width of [1440, 720]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect
+      .poll(async () =>
+        column.evaluate((node) => {
+          const marker = node.querySelector(".fc-timegrid-now-indicator-line")!;
+          const dot = getComputedStyle(marker, "::before");
+          const dotRight =
+            marker.getBoundingClientRect().left +
+            parseFloat(dot.left) +
+            parseFloat(dot.width);
+          const bounds = node.getBoundingClientRect();
+          const events = Array.from(
+            node.querySelectorAll(".fc-timegrid-event"),
+            (event) => event.getBoundingClientRect(),
+          ).sort((a, b) => a.left - b.left);
+          return (
+            parseFloat(dot.width) === 6 &&
+            events.length === 2 &&
+            events[0].left >= dotRight + 1 &&
+            events[0].right + 1 <= events[1].left &&
+            events[1].right <= bounds.right - 1
+          );
+        }),
+      )
+      .toBe(true);
+  }
+});

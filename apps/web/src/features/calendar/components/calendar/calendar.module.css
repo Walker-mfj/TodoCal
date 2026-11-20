@@ -206,13 +206,16 @@
   margin-bottom: 12px;
 }
 
-/* Let the marker straddle the day boundary above neighboring columns. */
-.calendar-wrap :global(.fc) :global(.fc-timegrid-now-indicator-container) {
-  overflow: visible;
-  z-index: 10;
-  pointer-events: none;
+/* Make room for the dot across the day boundary without unclipping the overlay. */
+.calendar-wrap
+  :global(.fc)
+  :global(.fc-timegrid-now-indicator-container):has(
+    :global(.fc-timegrid-now-indicator-line)
+  ) {
+  left: -4px;
 }
-:where(.calendar-wrap) :global(.fc) :global(.fc-timegrid-now-indicator-line) {
+.calendar-wrap :global(.fc) :global(.fc-timegrid-now-indicator-line) {
+  left: 4px;
   border-color: #e3342f;
   border-top-width: 2px;
   pointer-events: none;

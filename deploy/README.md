@@ -40,7 +40,7 @@ Keep tokens narrowly scoped; publishing Workers needs Workers Scripts permission
 ## Releases and operations
 
 - [Lightsail deployment and rollback](lightsail/README.md), [event delivery and fresh installation](lightsail/eventDeployment.md), [Blue-Green setup and recovery](lightsail/blueGreen.md).
-- [Monitoring and source maps](monitoring.md); [legacy provider retirement checklist](legacyProviderRetirement.md).
+- [Monitoring and source maps](monitoring.md).
 
 Frontend deploys independently on main: locked dependencies, tests, build/typecheck, private source maps upload, configure deploy binding from DEPLOY_VPC_SERVICE_ID, Wrangler publication, website check. Do not deploy manually without both bindings: a bare Wrangler deploy can remove TODOCAL_DEPLOY. Set runtime secrets in the dashboard, verify both bindings after publishing, and avoid concurrent deployments.
 

@@ -36,7 +36,6 @@ TodoCal/
 ├── scripts/                      Integration, E2E, load, operations
 ├── compose.yaml                  Local PostgreSQL
 ├── Makefile                      Local build/test/dev entry points
-├── render.yaml                   Go API deployment configuration
 └── README.md                     Start here
 ```
 
@@ -230,7 +229,7 @@ On case-insensitive macOS filesystems, a case-only rename may need a **temporary
 | Schema change | **New** versioned file in `apps/api/internal/database/migrations` |
 | Background process orchestration | `apps/api/internal/workers` + service |
 | API contract / type generation | `api/openapi.yaml` → generate to `shared/api` |
-| Hosting/proxy/release logic | `deploy`, `render.yaml`, `.github/workflows` |
+| Hosting/proxy/release logic | `deploy`, `.github/workflows` |
 | Feature behavior | `docs/features` |
 | Cross-cutting structure decisions | `docs/architecture` |
 

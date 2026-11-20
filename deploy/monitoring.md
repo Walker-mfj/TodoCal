@@ -41,7 +41,7 @@ Errors integration `469405` sends email incidents for new or reopened errors, sc
 
 ## Configuration and deploy
 
-`BETTER_STACK_DSN` is stored in Lightsail api.env. Empty or invalid configuration disables error reporting; invalid values emit a sanitized warning. No DSN/provider credential is embedded in browser assets. The API Docker image embeds `RENDER_GIT_COMMIT` from the tested Git SHA (legacy variable name, no Render dependency).
+`BETTER_STACK_DSN` is stored in Lightsail api.env. Empty or invalid configuration disables error reporting; invalid values emit a sanitized warning. No DSN/provider credential is embedded in browser assets. The API Docker image embeds `RENDER_GIT_COMMIT` from the tested Git SHA (the existing release metadata variable).
 
 From `deploy/cloudflare`, `npm run build` builds production assets with `NEXT_PUBLIC_MONITORING_ENABLED=true` and the current Git SHA as `NEXT_PUBLIC_RELEASE`. Source maps and matching bundles are copied to ignored `.local/sourcemaps/<SHA>`; all `.map` files are then removed from the public `apps/web/out` directory.
 

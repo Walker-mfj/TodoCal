@@ -50,6 +50,10 @@
   font-size: 9px;
   color: var(--color-muted);
 }
+/* Reserve a gutter for the current-time marker and separate concurrent cards. */
+.calendar-wrap :global(.fc) :global(.fc-timegrid-col-events) {
+  margin-right: 6px;
+}
 :where(.calendar-wrap) :global(.fc) :global(.fc-timegrid-event) {
   border: 0;
   border-left: 3px solid;
@@ -196,7 +200,16 @@
   margin-bottom: 12px;
 }
 
-:where(.calendar-wrap) :global(.fc) :global(.fc-timegrid-now-indicator-line) {
+/* Make room for the dot across the day boundary without unclipping the overlay. */
+.calendar-wrap
+  :global(.fc)
+  :global(.fc-timegrid-now-indicator-container):has(
+    :global(.fc-timegrid-now-indicator-line)
+  ) {
+  left: -5px;
+}
+.calendar-wrap :global(.fc) :global(.fc-timegrid-now-indicator-line) {
+  left: 5px;
   border-color: #e3342f;
   border-top-width: 2px;
   pointer-events: none;

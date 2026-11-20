@@ -8,8 +8,8 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /api ./cmd/api
 FROM alpine:3.23
 ARG GIT_COMMIT
 LABEL io.todocal.scheduler-lock=v1
-# Existing application release metadata uses this legacy variable name.
-ENV RENDER_GIT_COMMIT=$GIT_COMMIT
+# Provider-neutral release metadata for diagnostics and error reporting.
+ENV APP_RELEASE=$GIT_COMMIT
 RUN apk add --no-cache ca-certificates && adduser -D -u 10001 app
 COPY --from=build /api /usr/local/bin/todocal-api
 COPY start.sh /usr/local/bin/start-api

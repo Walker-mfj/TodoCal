@@ -10,6 +10,8 @@ import time
 from registry import DeploymentError, IMAGE
 
 SLOTS = ("blue", "green")
+# Independent of the mutable slot tags and the legacy single-slot rollback alias.
+ROLLBACK_IMAGE = "todocal-api:bluegreen-rollback"
 LOCK_TARGET = "/run/todocal-scheduler"
 LOCK_FILE = LOCK_TARGET + "/leader.lock"
 
@@ -245,6 +247,12 @@ def handoff(ops, slot, current, target, loaded, compatible, keep_hold=False):
             stop(ops, slot)
         if not ready(ops, "api", wait=30):
             raise DeploymentError("Proxy readiness failed after handoff")
+        if not keep_hold:
+            # Pin the previous healthy image only after the forward handoff
+            # completed. Even a failed candidate that overwrites a slot tag
+            # must not erase the last known rollback target. Keep the hold
+            # if pinning fails; do not prune or report success.
+            ops.command("docker", "tag", current["id"], ROLLBACK_IMAGE)
     except (DeploymentError, OSError, subprocess.SubprocessError) as exc:
         if compatible and not proxy_switch_started:
             # Old route never changed; failed candidate must be stopped.
@@ -299,8 +307,13 @@ def rollback(ops):
     # identify exactly one active slot, and handoff checks the previous
     # image readiness before switching any traffic.
     slot, current = inspect_active(ops)
-    previous = ops.image(slot_image(other(slot)))
-    if current["id"] == previous["id"] or not ops.compatible(current, previous):
-        raise DeploymentError("Rollback requires a different compatible slot image")
+    try:
+        previous = ops.image(ROLLBACK_IMAGE)
+    except subprocess.CalledProcessError:
+        raise DeploymentError("No successful blue-green rollback image is pinned") from None
+    if previous["leader"] != "v1" or current["id"] == previous["id"] or not ops.compatible(current, previous):
+        raise DeploymentError("Rollback requires a different compatible pinned image")
+    # Do not pin the outgoing image on manual rollback: it may be unhealthy.
+    # Once the pinned image is active, another rollback is intentionally blocked.
     handoff(ops, slot, current, other(slot), previous, True, keep_hold=True)
     ops.log("Rollback completed; deployment remains on hold.")

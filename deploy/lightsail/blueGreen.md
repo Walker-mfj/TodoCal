@@ -105,9 +105,22 @@ can still be terminated; no absolute zero-downtime promise. New requests
 should continue during normal reload. The scheduler hands off after the
 old process drains; a bounded short scheduling gap is possible.
 
-The inactive image remains locally tagged. python3 deploy.py --rollback
-starts the inactive image only when its known migration fingerprint matches,
-switches/drains, stops the old slot and leaves the deployment hold set.
+The last known rollback image is pinned separately as
+todocal-api:bluegreen-rollback. Only a successful forward handoff (including
+final proxy readiness) updates this tag to the outgoing healthy image,
+before clearing the durable hold or pruning images. Failed candidates may
+overwrite the inactive slot tag, but never this dedicated rollback alias.
+python3 deploy.py --rollback uses only the pinned image ID, checks its known
+migration fingerprint and scheduler-lock support, starts it in the inactive
+slot, switches/drains, stops the old slot and leaves the hold set. A missing
+pin or incompatible schema blocks rollback; there is no fallback to the
+inactive slot tag or old single-slot rollback alias. A successful migration
+change pins the outgoing image too, but its different fingerprint blocks
+rollback. The pin is not changed by manual rollback: the outgoing version
+may be unhealthy. Once the pinned version is active, a further rollback is
+blocked until another forward deployment succeeds.
+The first blue-green installation has no eligible pin until a successful
+forward handoff; do not seed it from an unverified inactive image.
 An unready candidate never changes traffic; a failed/ambiguous reload leaves
 both slots and the durable hold for manual inspection (safe scheduler lock
 still applies). Do NOT blindly stop either slot or clear the hold. Confirm
@@ -138,6 +151,8 @@ flow tests. Require real Linux/Compose/Nginx and PostgreSQL acceptance:
 - In-flight requests complete through reload and old workers drain before stop.
 - Failed candidate, ambiguous reload, migration failure and rollback keep safe
   traffic/hold state; reboot recovery does not start duplicate schedulers.
+- A -> B successful, then C fails readiness after overwriting the inactive
+  tag: rollback must recover A, not C. Verify the independent pin survives.
 - Repeated HTTP probes and authenticated writes through Worker throughout a
   compatible deployment; compare p95 and 5xx, inspect memory/OOM, focus and push.
 - Neither DB nor tunnel restarts. Record measured downtime; don't assume none.

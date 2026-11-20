@@ -10,7 +10,7 @@
     "upload:sourcemaps": "node uploadSourcemaps.mjs"
   },
   "devDependencies": {
-    "wrangler": "4.152.0"
+    "wrangler": "4.165.0"
   },
   "overrides": {
     "undici": "7.30.1"

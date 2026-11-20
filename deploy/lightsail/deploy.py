@@ -12,7 +12,7 @@ import sys
 import tempfile
 import time
 from urllib.error import HTTPError, URLError
-from githubRelease import Client, DeploymentError, TAG
+from registry import Registry, DeploymentError, DIGEST, IMAGE
 
 ROOT = Path("/opt/todocal")
 STATE = ROOT / "deploy-state"
@@ -40,32 +40,14 @@ def compose(*args, **kwargs):
     return command("docker", "compose", *args, **kwargs)
 
 
-def load_env():
-    path = ROOT / "deploy.env"
-    if path.stat().st_uid != 0 or path.stat().st_mode & 0o077:
-        raise DeploymentError("deploy.env must be root-owned and mode 600")
-    config = {}
-    for line in path.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        key, sep, value = line.partition("=")
-        if not sep or key not in {"GITHUB_APP_ID", "GITHUB_INSTALLATION_ID",
-                                  "GITHUB_PRIVATE_KEY_PATH", "GITHUB_REPOSITORY"}:
-            raise DeploymentError("Invalid deploy.env line")
-        config[key] = value.strip()
-    if set(config) != {"GITHUB_APP_ID", "GITHUB_INSTALLATION_ID",
-                       "GITHUB_PRIVATE_KEY_PATH", "GITHUB_REPOSITORY"}:
-        raise DeploymentError("Missing GitHub App configuration")
-    return config
-
-
 def image(ref):
     data = json.loads(command("docker", "image", "inspect", ref, capture=True))[0]
     labels = data.get("Config", {}).get("Labels") or {}
     return {"id": data["Id"], "sha": labels.get(REVISION),
             "fingerprint": labels.get(MIGRATIONS), "leader": labels.get("io.todocal.scheduler-lock"),
-            "os": data["Os"], "arch": data["Architecture"]}
+            "os": data["Os"], "arch": data["Architecture"],
+            "source": labels.get("org.opencontainers.image.source"),
+            "digests": data.get("RepoDigests") or []}
 
 
 def compatible(a, b):
@@ -149,60 +131,75 @@ def activate(ref):
         raise DeploymentError("New API failed readiness")
 
 
-def verify_image(loaded, release):
-    if (loaded["sha"] != release["sha"] or loaded["fingerprint"] != release["fingerprint"]
+def verify_image(loaded, digest):
+    if (not DIGEST.fullmatch(digest) or f"{IMAGE}@{digest}" not in loaded["digests"]
+            or not SHA.fullmatch(loaded["sha"] or "")
+            or not FINGERPRINT.fullmatch(loaded["fingerprint"] or "")
+            or loaded["source"] != "https://github.com/Walker-mfj/TodoCal"
             or loaded["os"] != "linux" or loaded["arch"] != "amd64"):
-        raise DeploymentError("Image revision, migration fingerprint or architecture mismatch")
+        raise DeploymentError("Image digest, provenance labels or architecture mismatch")
 
 
 def prune_old(keep):
-    # Only remove our immutable per-commit local tags; never prune volumes,
-    # unrelated images, running containers or the rollback alias.
+    # Delete only old local references for the dedicated API image. Keep
+    # active/rollback digests and local aliases; never prune volumes.
     try:
+        rows = command("docker", "image", "ls", "--digests", IMAGE,
+                       "--format", "{{.Digest}}", capture=True).splitlines()
+        for digest in set(rows):
+            if DIGEST.fullmatch(digest):
+                ref = f"{IMAGE}@{digest}"
+                if image(ref)["id"] not in keep:
+                    command("docker", "image", "rm", ref)
         tags = command("docker", "image", "ls", "todocal-api",
                        "--format", "{{.Tag}}", capture=True).splitlines()
         for tag in tags:
-            if SHA.fullmatch(tag) and tag not in keep:
-                command("docker", "image", "rm", f"todocal-api:{tag}")
-    except subprocess.SubprocessError:
+            if SHA.fullmatch(tag):
+                ref = f"todocal-api:{tag}"
+                if image(ref)["id"] not in keep:
+                    command("docker", "image", "rm", ref)
+    except (subprocess.SubprocessError, ValueError, KeyError):
         log("Old API image cleanup incomplete; inspect disk manually.")
 
 
-def download_image(client, release):
-    if shutil.disk_usage(ROOT).free < 3 * release["size"] + 1024**3:
-        raise DeploymentError("Insufficient free disk space for API image")
-    with tempfile.TemporaryDirectory(prefix="api-release-", dir=STATE) as tmp:
-        archive = Path(tmp) / "image.tar.gz"
-        client.download(release, archive)
-        command("docker", "load", "-i", str(archive), timeout=300)
-    ref = f'todocal-api:{release["sha"]}'
-    loaded = image(ref)
-    verify_image(loaded, release)
+def download_image(digest):
+    if not DIGEST.fullmatch(digest):
+        raise DeploymentError("Invalid image digest")
+    ref = f"{IMAGE}@{digest}"
+    # Reuse a previously pulled candidate, including awaiting approval.
+    try:
+        loaded = image(ref)
+    except subprocess.CalledProcessError:
+        if shutil.disk_usage(ROOT).free < 2*1024**3:
+            raise DeploymentError("Insufficient free disk space for API image")
+        command("docker", "pull", "--platform", "linux/amd64", ref, timeout=300)
+        loaded = image(ref)
+    verify_image(loaded, digest)
     return loaded
 
 
-def update(client, release, approved=None):
-    if approved and release["tag"] != approved:
-        raise DeploymentError("Approval must match the current latest API release exactly")
+def update(client, digest, approved=None):
+    if approved and digest != approved:
+        raise DeploymentError("Approval must match the current tested digest exactly")
     current = preflight()
-    if current["sha"] == release["sha"]:
-        if not ready(wait=30):
-            raise DeploymentError("Installed API is not ready")
-        log("API already at latest release.")
-        return 0
-    same = compatible(current, release)
-    if not same and not approved:
-        log(f'Manual approval required for initial deployment or migration change: {release["tag"]}')
-        return 3
     if not ready(wait=30):
         raise DeploymentError("Current API is not ready; recover it before deploying")
-    loaded = download_image(client, release)
-    # Re-check after potentially slow downloads, and avoid deploying a release
-    # superseded while downloading. Manual approvals cannot float to new tags.
-    if client.latest() != release:
-        raise DeploymentError("Latest release changed during download; retry")
+    if f"{IMAGE}@{digest}" in current["digests"]:
+        verify_image(current, digest)
+        log("API already at tested digest.")
+        return 0
+    loaded = download_image(digest)
+    if client.latest() != digest:
+        raise DeploymentError("Tested digest changed during pull; retry")
     if preflight()["id"] != current["id"]:
-        raise DeploymentError("Current API changed during download")
+        raise DeploymentError("Current API changed during pull")
+    if loaded["id"] == current["id"]:
+        log("API already at tested digest.")
+        return 0
+    same = compatible(current, loaded)
+    if not same and not approved:
+        log(f'Manual approval required for unknown or changed migration fingerprint: {digest}')
+        return 3
     write_hold("deployment in progress", current["id"], loaded["id"])
     command("docker", "tag", current["id"], ROLLBACK)
     switched = False
@@ -228,8 +225,8 @@ def update(client, release, approved=None):
             log("Migration-sensitive deployment failed; no automatic rollback.")
         raise DeploymentError("Deployment failed; hold remains active") from None
     clear_hold()
-    prune_old({loaded["sha"], current["sha"]})
-    log(f'API deployment successful: {release["tag"]}')
+    prune_old({loaded["id"], current["id"]})
+    log(f"API deployment successful: {digest}")
     return 0
 
 
@@ -249,9 +246,9 @@ def rollback():
 def main():
     parser = argparse.ArgumentParser()
     mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--deploy", metavar="API_TAG")
+    mode.add_argument("--deploy", metavar="DIGEST")
     mode.add_argument("--check", action="store_true")
-    mode.add_argument("--approve", metavar="API_TAG")
+    mode.add_argument("--approve", metavar="DIGEST")
     mode.add_argument("--rollback", action="store_true")
     mode.add_argument("--resume", action="store_true")
     args = parser.parse_args()
@@ -294,22 +291,17 @@ def main():
                 raise DeploymentError("Deployment on hold; investigate before --resume")
             log("Deployment on hold; operator action required.")
             return
-        client = Client(load_env())
-        release = client.latest()
-        if not release:
-            if args.deploy or args.approve:
-                raise DeploymentError("No API release published")
-            log("GitHub App authenticated; no API release published.")
-            return
+        client = Registry()
+        digest = client.latest()
         if args.check:
-            log(f'GitHub App authenticated. Latest API: {release["tag"]}')
+            log(f"Public GHCR tested digest: {digest}")
             return
         expected = args.deploy or args.approve
-        if not TAG.fullmatch(expected) or release["tag"] != expected:
-            raise DeploymentError("Requested release is not the exact latest API release")
+        if not DIGEST.fullmatch(expected) or digest != expected:
+            raise DeploymentError("Requested digest is not the exact current tested image")
         if blue:
-            return blueGreen.update(sys.modules[__name__], client, release, args.approve)
-        return update(client, release, args.approve)
+            return blueGreen.update(sys.modules[__name__], client, digest, args.approve)
+        return update(client, digest, args.approve)
 
 
 if __name__ == "__main__":
@@ -319,9 +311,9 @@ if __name__ == "__main__":
         log(str(exc))
         sys.exit(1)
     except HTTPError as exc:
-        log(f"GitHub HTTP error: {exc.code}")
+        log(f"GHCR HTTP error: {exc.code}")
         sys.exit(1)
     except (URLError, OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
-        # Avoid printing URLs with signed query parameters or raw credentials.
+        # Avoid printing raw HTTP or Docker credential data.
         log(f"Deployment operation failed: {type(exc).__name__}")
         sys.exit(1)

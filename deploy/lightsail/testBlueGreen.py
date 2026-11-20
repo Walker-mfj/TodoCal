@@ -2,13 +2,13 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import blueGreen as bg
-from githubRelease import DeploymentError
+from registry import DeploymentError, IMAGE
 
 
 class BlueGreenTests(unittest.TestCase):
     def setUp(self):
         self.ops = MagicMock()
-        self.current = {"id": "old", "sha": "a"*40, "leader": "v1"}
+        self.current = {"id": "old", "sha": "a"*40, "leader": "v1", "digests": []}
         self.candidate = {"id": "new", "sha": "b"*40, "leader": "v1"}
 
     def test_candidate_ready_and_proxy_drained_before_old_stops(self):
@@ -42,10 +42,34 @@ class BlueGreenTests(unittest.TestCase):
             self.ops.clear_hold.assert_not_called()
 
     def test_migration_requires_explicit_approval(self):
-        release = {"sha": self.candidate["sha"], "tag": "api-"+self.candidate["sha"]}
+        digest = "sha256:"+"c"*64
         self.ops.compatible.return_value = False
-        with patch.object(bg, "preflight", return_value=("blue", self.current)):
-            self.assertEqual(bg.update(self.ops, MagicMock(), release), 3)
+        self.ops.download_image.return_value = self.candidate
+        client = MagicMock()
+        client.latest.return_value = digest
+        with patch.object(bg, "preflight", return_value=("blue", self.current)), \
+                patch.object(bg, "handoff") as handoff:
+            self.assertEqual(bg.update(self.ops, client, digest), 3)
+            handoff.assert_not_called()
+        self.ops.download_image.assert_called_once_with(digest)
+
+    def test_superseded_digest_never_switches(self):
+        digest = "sha256:"+"c"*64
+        self.ops.download_image.return_value = self.candidate
+        client = MagicMock()
+        client.latest.return_value = "sha256:"+"d"*64
+        with patch.object(bg, "preflight", return_value=("blue", self.current)), \
+                patch.object(bg, "handoff") as handoff:
+            with self.assertRaisesRegex(DeploymentError, "Tested digest changed"):
+                bg.update(self.ops, client, digest)
+            handoff.assert_not_called()
+
+    def test_existing_digest_is_noop(self):
+        digest = "sha256:"+"c"*64
+        current = self.current | {"digests": [IMAGE+"@"+digest]}
+        with patch.object(bg, "preflight", return_value=("blue", current)):
+            self.assertEqual(bg.update(self.ops, MagicMock(), digest), 0)
+        self.ops.verify_image.assert_called_once_with(current, digest)
         self.ops.download_image.assert_not_called()
 
     def test_rollback_from_unhealthy_current_api(self):

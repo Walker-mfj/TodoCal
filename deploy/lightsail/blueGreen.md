@@ -93,9 +93,9 @@ remote wakes until reconnect or reconciliation, not create another leader.
 
 ## Normal deployment and rollback
 
-The existing event sends the exact latest API tag. The deployer verifies
+The existing event sends the exact public GHCR tested digest. The deployer verifies
 both Compose definitions, actual active container mounts/labels, active
-proxy slot, migration fingerprint and archive integrity. It holds the
+proxy slot, migration fingerprint, fixed digest and image labels. It holds the
 existing deploy lock while starting the candidate (no startup migrations).
 Nginx configuration is atomically replaced on the stable directory mount,
 syntax tested, then gracefully reloaded. Wait for the selected slot,
@@ -120,7 +120,7 @@ docker compose up or remove-orphans commands.
 
 Unknown or changed fingerprints require manual approval; do not approve
 while event delivery is active. Set Worker maintenance and inspect SQL,
-stop API writers, run python3 deploy.py --approve api-<exact-latest-sha>.
+stop API writers, run python3 deploy.py --approve sha256:<exact-tested-digest>.
 The host stops old slot, takes existing off-host backup, runs one explicit
 migration-only container and starts candidate with startup migrations
 disabled. This path is not zero downtime. After migration starts, no automatic

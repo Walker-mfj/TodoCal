@@ -1,16 +1,16 @@
 # Event-driven Lightsail deployment
 
 Opt-in. No live infrastructure changes are made by merging these files.
-The GitHub App remains read-only and downloads releases. CI signs a single
+The public GHCR image is pulled anonymously by fixed digest. CI signs a single
 event using an independent 32-byte hex secret. The Worker verifies HMAC
 and timestamp and sends the bounded request through a second private
 VPC service to deploy-receiver:8080. The receiver has no secrets, Docker
 socket, database access or shell command execution. It forwards a bounded
 message over a group-restricted Unix socket. Root systemd verifies the
-signature again, atomically records the random event ID and tag, then
+signature again, atomically records the random event ID and digest, then
 launches a fixed per-event service. Replays of the same ID return the
 existing state, not a new deployment. The deploy script uses its existing
-host lock, exact latest tag, archive checksum, hold, migration gate and
+host lock, exact tested digest, Docker content verification, hold, migration gate and
 readiness/rollback logic. Jobs are independent of the API and of the
 HTTP request. A cancelled Actions run cannot cancel an admitted job.
 
@@ -19,7 +19,7 @@ HTTP request. A cancelled Actions run cannot cancel an admitted job.
 1. Merge and confirm CI; disable and remove only the old deploy timer/service
    (inspect active deployment first, never stop a running job mid-deploy).
    Keep PostgreSQL backup timers. Verify first release and restore test.
-2. Copy the new deploy.py, githubRelease.py, blueGreen.py, triggerProtocol.py,
+2. Copy the new deploy.py, registry.py, blueGreen.py, triggerProtocol.py,
    triggerHost.py, deployReceiver.py, deploy-trigger.compose.yaml and
    three systemd unit files (todocal-trigger.socket,
    todocal-trigger@.service, todocal-deploy-job@.service) from main to
@@ -29,7 +29,7 @@ HTTP request. A cancelled Actions run cannot cancel an admitted job.
 
        install -o root -g root -m 644 /home/ubuntu/deployReceiver.py /opt/todocal/deployReceiver.py
 
-   Keep the PEM and trigger key mode 600. Ensure no stale deploy timer is enabled.
+   Keep the trigger key mode 600. No GitHub App credentials are needed. Ensure no stale deploy timer is enabled.
 3. Run as root, verify GID 10002 is unused before creating the group:
 
        getent group 10002
@@ -63,34 +63,35 @@ HTTP request. A cancelled Actions run cannot cancel an admitted job.
    Do not use the existing API service ID. Run Deploy frontend on main
    and verify both bindings, API_BACKEND=vpc and readiness.
 6. Confirm unsigned POST /api/internal/deploy gets 401, no job started.
+   Make the GHCR package public and verify anonymous access first (README).
    Set repository variable LIGHTSAIL_EVENT_DEPLOY=true only after installation.
    Run CI via workflow_dispatch on main. The separate Deploy backend workflow
    runs on successful trusted main CI completion and is not cancelled by newer CI.
-   Every successful current-main CI run delivers the latest matching release,
-   even when API files have not changed. Already-installed releases are no-ops
+   Every successful current-main CI run delivers the latest matching tested digest,
+   even when API files have not changed. Already-installed digests are no-ops
    after readiness verification. This recovers a previously missed delivery.
    On the first merge, if workflow_run did not start, manually run CI on main.
    On first/changed migration fingerprint, Actions reports needs_approval;
-   review and use python3 deploy.py --approve api-<exact-sha> on host.
+   review and use python3 deploy.py --approve sha256:<exact-digest> on host.
    Then rerun CI manually to verify the already-installed release.
 
 ## Operations
 
 Inspect journalctl -u 'todocal-deploy-job@*.service' and root-owned
 /opt/todocal/deploy-events/<request-id>.json. GitHub Actions prints the ID.
-Success means exact release deployed or already current and public readiness.
+Success means exact digest deployed or already current and public readiness.
 Busy events retry only lock contention every five seconds, for at most ten
-minutes before reporting failure. Superseded tags fail exact-latest validation;
+minutes before reporting failure. Superseded digests fail tested-image validation;
 newer events must be delivered separately. Failed or timed-out events need investigation; never blindly restart an
 unresolved queued/running/busy job. A host reboot may leave such records; verify
 the deployment hold and actual running revision before retrying with a new
 event. Inspect records before manually cleaning unresolved ones; terminal
 records are pruned after seven days on new requests. Rollback/hold remains
 as described in README. Manual commands --deploy and --approve require exact
-latest API tag; no bare polling command remains.
+tested image digest; no bare polling command remains.
 
 Disable delivery via LIGHTSAIL_EVENT_DEPLOY=false. Stop the socket and
 receiver only when no work is in flight; do not stop API/DB/tunnel.
 No additional purchased service; review Workers/VPC current limits,
 GitHub Actions minutes (wait is metered only per deployment), Docker image
-download and RAM. Single-slot mode has brief downtime; see [blue-green deployment](blueGreen.md) for opt-in compatible-release handoff.
+download and RAM. Single-slot mode has brief downtime; see [blue-green deployment](blueGreen.md) for opt-in compatible-image handoff.

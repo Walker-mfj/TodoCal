@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 import time
 
-from githubRelease import DeploymentError
+from registry import DeploymentError, IMAGE
 
 SLOTS = ("blue", "green")
 LOCK_TARGET = "/run/todocal-scheduler"
@@ -263,24 +263,33 @@ def handoff(ops, slot, current, target, loaded, compatible, keep_hold=False):
         raise DeploymentError("Blue-green handoff failed; manual recovery required") from exc
     if not keep_hold:
         ops.clear_hold()
-        ops.prune_old({current["sha"], loaded["sha"]})
+        ops.prune_old({current["id"], loaded["id"]})
     ops.log(f"API active slot: {target}; revision: {loaded['sha']}")
 
 
-def update(ops, client, release, approved=None):
+def update(ops, client, digest, approved=None):
+    if approved and approved != digest:
+        raise DeploymentError("Approval does not match exact digest")
     slot, current = preflight(ops)
-    if current["sha"] == release["sha"]:
-        ops.log("API already at latest release.")
+    if f"{IMAGE}@{digest}" in current["digests"]:
+        ops.verify_image(current, digest)
+        ops.log("API already at tested digest.")
         return 0
-    same = ops.compatible(current, release)
+    loaded = ops.download_image(digest)
+    if client.latest() != digest:
+        raise DeploymentError("Tested digest changed during pull")
+    observed_slot, observed = preflight(ops)
+    if observed_slot != slot or observed["id"] != current["id"]:
+        raise DeploymentError("Active slot changed during pull")
+    if loaded["id"] == current["id"]:
+        ops.log("API already at tested digest.")
+        return 0
+    if loaded["leader"] != "v1":
+        raise DeploymentError("Candidate lacks shared-host leader support")
+    same = ops.compatible(current, loaded)
     if not same and not approved:
-        ops.log(f'Manual approval required for migration change: {release["tag"]}')
+        ops.log(f"Manual approval required for unknown or changed migration fingerprint: {digest}")
         return 3
-    if approved and approved != release["tag"]:
-        raise DeploymentError("Approval does not match exact release")
-    loaded = ops.download_image(client, release)
-    if client.latest() != release or preflight(ops) != (slot, current):
-        raise DeploymentError("Release or active slot changed during download")
     handoff(ops, slot, current, other(slot), loaded, same)
     return 0
 

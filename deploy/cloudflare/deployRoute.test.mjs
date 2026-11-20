@@ -4,7 +4,7 @@ import worker from './worker.mjs';
 import {createHmac} from 'node:crypto';
 
 const key='a'.repeat(64);
-const body=JSON.stringify({action:'deploy',id:'b'.repeat(32),tag:'api-'+'c'.repeat(40),ts:Math.floor(Date.now()/1000)});
+const body=JSON.stringify({action:'deploy',id:'b'.repeat(32),digest:'sha256:'+'c'.repeat(64),ts:Math.floor(Date.now()/1000)});
 const sign = value => createHmac('sha256',key).update(value).digest('hex');
 const request = (value,signature) => new Request('https://example.com/api/internal/deploy',{
   method:'POST',body:value,headers:{'X-TodoCal-Deploy-Signature':signature,Cookie:'secret'}

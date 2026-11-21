@@ -82,16 +82,6 @@
 .calendar-wrap :global(.fc-timegrid-body) {
   max-height: none;
 }
-/* Allow the now indicator to remain visible near midnight. FullCalendar
-   otherwise clamps the initial scroll at the last 24:00 slot, hiding the
-   indicator against the lower edge of a short viewport. These four
-   30-minute-slot heights provide space without adding next-day slots. */
-.calendar-wrap :global(.fc-timegrid-body)::after {
-  content: "";
-  display: block;
-  height: 108px;
-  pointer-events: none;
-}
 @media (max-width: 1200px) {
   :where(.calendar-wrap) :global(.fc) :global(.fc-toolbar-title) {
     font-size: 12px;

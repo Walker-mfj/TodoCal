@@ -11,14 +11,38 @@ test("near-midnight indicator is visible without blank space after time slots", 
   await page.setViewportSize({ width: 1366, height: 768 });
   const response = await page.request.get("/api/v1/auth/me");
   const session = await response.json();
-  const nearMidnight = DateTime.fromISO(`${auth.today}T23:45:00`, {
+  const nearMidnight = DateTime.fromISO(auth.today, {
     zone: session.settings.timezone,
-  }).toJSDate();
+  })
+    .minus({ days: 1 })
+    .set({ hour: 23, minute: 45 })
+    .toJSDate();
 
-  // Mock browser wall time on the account's current day so the backend range
-  // and FullCalendar's now indicator still refer to the same date.
+  // A past date avoids expiring the real session in the simulated browser.
+  // Hold the initial range response until the empty calendar has laid out.
+  let releaseRange!: () => void;
+  const rangeReady = new Promise<void>((resolve) => {
+    releaseRange = resolve;
+  });
+  await page.route("**/api/v1/calendar?**", async (route) => {
+    const response = await route.fetch();
+    await rangeReady;
+    await route.fulfill({ response });
+  });
   await page.clock.install({ time: nearMidnight });
   await page.reload();
+  await expect(page.locator(".fc-timegrid-body")).toBeVisible();
+  const header = page.locator(".fc-col-header");
+  const loadingHeaderHeight = await header.evaluate(
+    (el) => el.getBoundingClientRect().height,
+  );
+  releaseRange();
+  await expect(
+    page.getByRole("button", { name: /daily progress/ }).first(),
+  ).toBeVisible();
+  expect(await header.evaluate((el) => el.getBoundingClientRect().height)).toBe(
+    loadingHeaderHeight,
+  );
 
   for (const view of ["Week", "Day"]) {
     if (view === "Day") {
@@ -27,29 +51,36 @@ test("near-midnight indicator is visible without blank space after time slots", 
     const indicator = page.locator(
       ".fc-timegrid-col.fc-day-today .fc-timegrid-now-indicator-line",
     );
-    await expect(indicator).toBeVisible();
+    await expect(indicator).toBeInViewport({ ratio: 1 });
     await expect
       .poll(async () =>
         indicator.evaluate((line) => {
-          const viewport = line.closest(".fc-timegrid-body")?.closest(".fc-scroller");
+          const viewport = line
+            .closest(".fc-timegrid-body")
+            ?.closest(".fc-scroller");
           if (!viewport) return -1;
           const marker = line.getBoundingClientRect();
           const visible = viewport.getBoundingClientRect();
-          return Math.min(marker.top - visible.top, visible.bottom - marker.bottom);
+          return Math.min(
+            marker.top - visible.top,
+            visible.bottom - marker.bottom,
+          );
         }),
       )
       .toBeGreaterThan(0);
 
     // No artificial padding after the 23:30–24:00 slot: the last grid
     // line should still reach the end of the calendar's time-grid body.
-    const trailingBlank = await page.locator(".fc-timegrid-body").evaluate((body) => {
-      const lastSlot = body.querySelector(".fc-timegrid-slots tr:last-child");
-      if (!lastSlot) return Infinity;
-      return (
-        body.getBoundingClientRect().bottom -
-        lastSlot.getBoundingClientRect().bottom
-      );
-    });
+    const trailingBlank = await page
+      .locator(".fc-timegrid-body")
+      .evaluate((body) => {
+        const lastSlot = body.querySelector(".fc-timegrid-slots tr:last-child");
+        if (!lastSlot) return Infinity;
+        return (
+          body.getBoundingClientRect().bottom -
+          lastSlot.getBoundingClientRect().bottom
+        );
+      });
     expect(trailingBlank).toBeLessThan(8);
   }
 });
@@ -176,7 +207,9 @@ test("calendar external drop assigns 30 minutes, clear-time drop and uncertain r
     .filter({ hasText: "From unscheduled" });
   await expect(row.locator(".drag-handle")).toBeVisible();
   const col = await page.locator(".fc-timegrid-col.fc-day-today").boundingBox();
-  const targetSlot = page.locator('.fc-timegrid-slot[data-time="09:00:00"]').last();
+  const targetSlot = page
+    .locator('.fc-timegrid-slot[data-time="09:00:00"]')
+    .last();
   // The initial view now opens at the current time, which may be after 09:00.
   await targetSlot.scrollIntoViewIfNeeded();
   const slot = await targetSlot.boundingBox();

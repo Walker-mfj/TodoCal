@@ -11,6 +11,11 @@ describe("initialCalendarScrollTime", () => {
     );
   });
 
+  it("keeps late-night context within the same day", () => {
+    const instant = DateTime.fromISO("2026-11-21T14:45:00Z");
+    expect(initialCalendarScrollTime("Asia/Tokyo", instant)).toBe("21:45:00");
+  });
+
   it("clamps to midnight instead of wrapping into the previous day", () => {
     const instant = DateTime.fromISO("2026-11-21T15:30:00Z");
     expect(initialCalendarScrollTime("Asia/Tokyo", instant)).toBe("00:00:00");
@@ -22,8 +27,8 @@ describe("initialCalendarScrollTime", () => {
       "03:34:56",
     );
     const springForward = DateTime.fromISO("2026-03-08T10:30:00Z");
-    expect(initialCalendarScrollTime("America/Los_Angeles", springForward)).toBe(
-      "01:30:00",
-    );
+    expect(
+      initialCalendarScrollTime("America/Los_Angeles", springForward),
+    ).toBe("01:30:00");
   });
 });

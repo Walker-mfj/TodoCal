@@ -3,7 +3,7 @@ import { DateTime } from "luxon";
 /** Keep the now indicator visible with two hours of preceding context. */
 export function initialCalendarScrollTime(
   timezone: string,
-  now = DateTime.now(),
+  now: DateTime = DateTime.now(),
 ): string {
   // FullCalendar's UTC time grid displays account-local wall-clock labels.
   const accountNow = now.setZone(timezone);

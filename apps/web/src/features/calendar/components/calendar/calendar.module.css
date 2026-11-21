@@ -101,6 +101,10 @@
   color: var(--level);
   font-size: 10px;
   background: transparent;
+  white-space: nowrap;
+}
+:where(.calendar-wrap) :global(.calendar-progress-placeholder) {
+  visibility: hidden;
 }
 @media (max-width: 1000px) {
   .calendar-wrap {

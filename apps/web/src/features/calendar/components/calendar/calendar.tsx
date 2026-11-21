@@ -73,8 +73,9 @@ export default function Calendar({
         .toFormat("yyyy-MM-dd'T'HH:mm:ss'Z'"),
     [],
   );
-  // Capture the account-local time once when Calendar opens, not on every render.
-  const [initialScrollTime] = useState(() => initialCalendarScrollTime(timezone));
+  const [initialScrollTime] = useState(() =>
+    initialCalendarScrollTime(timezone),
+  );
   const calendarRef = useRef<FullCalendar>(null);
   // Recalculate widths when the navigation or editor changes the available space.
   const containerRef = useRef<HTMLDivElement>(null);
@@ -94,7 +95,21 @@ export default function Calendar({
   );
   const progress = (date: string) => {
     const day = days.find((d) => d.date === date);
-    if (!day) return null;
+    if (!day) {
+      return (
+        <button
+          className={cx(
+            "calendar-progress calendar-progress-placeholder",
+            true,
+          )}
+          aria-hidden="true"
+          tabIndex={-1}
+          disabled
+        >
+          Loading
+        </button>
+      );
+    }
     const label =
       day.percentage === null
         ? date > today

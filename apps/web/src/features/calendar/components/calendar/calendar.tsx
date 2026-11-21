@@ -8,13 +8,14 @@ import { CalendarEventContent } from "../eventContent/eventContent";
 import { priorityLabels } from "../../../../shared/constants/priorityLabels";
 import { draftEvent, type CalendarDraft } from "../../utils/draftPreview";
 import { DateTime } from "luxon";
-import { useMemo, useEffect, useRef, useCallback } from "react";
+import { useMemo, useEffect, useRef, useCallback, useState } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import type { Schedule } from "../../utils/interactions";
 import { calendarInteractions } from "../../utils/calendarInteractions";
 import { calendarEvents } from "../../utils/calendarEvents";
+import { initialCalendarScrollTime } from "../../utils/initialScrollTime";
 import interactionPlugin from "@fullcalendar/interaction";
 import {
   completionRatio,
@@ -72,6 +73,8 @@ export default function Calendar({
         .toFormat("yyyy-MM-dd'T'HH:mm:ss'Z'"),
     [],
   );
+  // Capture the account-local time once when Calendar opens, not on every render.
+  const [initialScrollTime] = useState(() => initialCalendarScrollTime(timezone));
   const calendarRef = useRef<FullCalendar>(null);
   // Recalculate widths when the navigation or editor changes the available space.
   const containerRef = useRef<HTMLDivElement>(null);
@@ -169,7 +172,7 @@ export default function Calendar({
         allDayText="Untimed"
         height="100%"
         scrollTimeReset={false}
-        scrollTime="08:00:00"
+        scrollTime={initialScrollTime}
         slotMinTime="00:00:00"
         slotMaxTime="24:00:00"
         slotDuration="00:30:00"

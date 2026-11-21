@@ -1,12 +1,14 @@
 import { DateTime } from "luxon";
 
-/** Keep the now indicator visible with two hours of preceding context. */
+const INITIAL_SCROLL_LOOKBACK_HOURS = 4;
+
+/** Keep the now indicator visible with preceding context. */
 export function initialCalendarScrollTime(
   timezone: string,
   now: DateTime = DateTime.now(),
 ): string {
   // FullCalendar's UTC time grid displays account-local wall-clock labels.
   const accountNow = now.setZone(timezone);
-  if (accountNow.hour < 2) return "00:00:00";
-  return `${String(accountNow.hour - 2).padStart(2, "0")}:${accountNow.toFormat("mm:ss")}`;
+  if (accountNow.hour < INITIAL_SCROLL_LOOKBACK_HOURS) return "00:00:00";
+  return `${String(accountNow.hour - INITIAL_SCROLL_LOOKBACK_HOURS).padStart(2, "0")}:${accountNow.toFormat("mm:ss")}`;
 }

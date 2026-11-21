@@ -1,7 +1,45 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
+import { DateTime } from "luxon";
 
 test.use({ viewport: { width: 1440, height: 1600 } });
+
+test("current-time indicator remains visible near midnight in Week and Day", async ({
+  page,
+  auth,
+}) => {
+  const response = await page.request.get("/api/v1/auth/me");
+  const session = await response.json();
+  const nearMidnight = DateTime.fromISO(`${auth.today}T23:45:00`, {
+    zone: session.settings.timezone,
+  }).toJSDate();
+
+  // Mock browser wall time on the account's current day so the backend range
+  // and FullCalendar's now indicator still refer to the same date.
+  await page.clock.install({ time: nearMidnight });
+  await page.reload();
+
+  for (const view of ["Week", "Day"]) {
+    if (view === "Day") {
+      await page.getByRole("button", { name: "Day", exact: true }).click();
+    }
+    const indicator = page.locator(
+      ".fc-timegrid-col.fc-day-today .fc-timegrid-now-indicator-line",
+    );
+    await expect(indicator).toBeVisible();
+    await expect
+      .poll(async () =>
+        indicator.evaluate((line) => {
+          const viewport = line.closest(".fc-timegrid-body")?.closest(".fc-scroller");
+          if (!viewport) return -1;
+          const marker = line.getBoundingClientRect();
+          const visible = viewport.getBoundingClientRect();
+          return Math.min(marker.top - visible.top, visible.bottom - marker.bottom);
+        }),
+      )
+      .toBeGreaterThan(24);
+  }
+});
 
 async function dragMinutes(page: Page, title: string, minutes: number) {
   const event = page.locator(".fc-timegrid-event").filter({ hasText: title });

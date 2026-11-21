@@ -4,10 +4,11 @@ import { DateTime } from "luxon";
 
 test.use({ viewport: { width: 1440, height: 1600 } });
 
-test("current-time indicator remains visible near midnight in Week and Day", async ({
+test("near-midnight indicator is visible without blank space after time slots", async ({
   page,
   auth,
 }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
   const response = await page.request.get("/api/v1/auth/me");
   const session = await response.json();
   const nearMidnight = DateTime.fromISO(`${auth.today}T23:45:00`, {
@@ -37,7 +38,19 @@ test("current-time indicator remains visible near midnight in Week and Day", asy
           return Math.min(marker.top - visible.top, visible.bottom - marker.bottom);
         }),
       )
-      .toBeGreaterThan(24);
+      .toBeGreaterThan(0);
+
+    // No artificial padding after the 23:30–24:00 slot: the last grid
+    // line should still reach the end of the calendar's time-grid body.
+    const trailingBlank = await page.locator(".fc-timegrid-body").evaluate((body) => {
+      const lastSlot = body.querySelector(".fc-timegrid-slots tr:last-child");
+      if (!lastSlot) return Infinity;
+      return (
+        body.getBoundingClientRect().bottom -
+        lastSlot.getBoundingClientRect().bottom
+      );
+    });
+    expect(trailingBlank).toBeLessThan(8);
   }
 });
 

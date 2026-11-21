@@ -187,6 +187,10 @@ test("calendar click/selection, filtered progress, conflicts, offline writes and
   const email = `calendar-${Date.now()}@example.com`;
   await signIn(page, email, true);
   const todayColumn = page.locator(".fc-timegrid-col.fc-day-today");
+  const morningSlot = page.locator(
+    '.fc-timegrid-slot-lane[data-time="09:00:00"]',
+  );
+  await morningSlot.scrollIntoViewIfNeeded();
   const box = await todayColumn.boundingBox();
   let slot = await page
     .locator('.fc-timegrid-slot[data-time="09:00:00"]')
@@ -200,7 +204,8 @@ test("calendar click/selection, filtered progress, conflicts, offline writes and
     "09:30",
   );
   await page.getByRole("button", { name: "Close editor" }).click();
-  // Live draft preview may scroll the calendar; read fresh coordinates.
+  // Live draft preview may scroll the calendar; reveal the selection first.
+  await morningSlot.scrollIntoViewIfNeeded();
   slot = await page
     .locator('.fc-timegrid-slot[data-time="09:00:00"]')
     .last()

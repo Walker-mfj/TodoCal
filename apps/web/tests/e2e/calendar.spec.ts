@@ -125,10 +125,12 @@ test("calendar external drop assigns 30 minutes, clear-time drop and uncertain r
     .filter({ hasText: "From unscheduled" });
   await expect(row.locator(".drag-handle")).toBeVisible();
   const col = await page.locator(".fc-timegrid-col.fc-day-today").boundingBox();
-  const slot = await page
+  const targetSlot = page
     .locator('.fc-timegrid-slot[data-time="09:00:00"]')
-    .last()
-    .boundingBox();
+    .last();
+  // The initial view now opens at the current time, which may be after 09:00.
+  await targetSlot.scrollIntoViewIfNeeded();
+  const slot = await targetSlot.boundingBox();
   const grip = await row.locator(".drag-handle").boundingBox();
   await page.mouse.move(grip!.x + 5, grip!.y + 5);
   await page.mouse.down();

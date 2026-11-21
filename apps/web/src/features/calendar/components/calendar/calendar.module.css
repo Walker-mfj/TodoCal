@@ -42,6 +42,10 @@
   font-size: 10px;
   padding: 9px 0;
 }
+:where(.calendar-wrap) :global(.fc) :global(.fc-col-header-cell-cushion),
+:where(.calendar-wrap) :global(.fc) :global(.fc-daygrid-day-number) {
+  max-width: 100%;
+}
 :where(.calendar-wrap) :global(.fc) :global(.fc-timegrid-slot-label) {
   color: var(--color-muted);
   font-size: 9px;
@@ -101,6 +105,9 @@
   color: var(--level);
   font-size: 10px;
   background: transparent;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 :where(.calendar-wrap) :global(.calendar-progress-placeholder) {

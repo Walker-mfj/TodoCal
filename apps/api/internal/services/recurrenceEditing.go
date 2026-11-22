@@ -13,7 +13,7 @@ import (
 
 // UpdateFromTask changes live occurrences and the lazy template in the same
 // account transaction. Original occurrence keys stay stable when dates move.
-func UpdateFromTask(ctx context.Context, tx pgx.Tx, user, zone string, now time.Time, selected Task, in TaskInput, revision int64, fields map[string]json.RawMessage) (Task, error) {
+func UpdateFromTask(ctx context.Context, tx pgx.Tx, user, zone string, now time.Time, selected Task, in TaskInput, revision int64, fields map[string]json.RawMessage, endpoints ...*time.Time) (Task, error) {
 	if selected.SeriesID == nil {
 		return Task{}, Invalid("This task does not repeat")
 	}
@@ -24,7 +24,20 @@ func UpdateFromTask(ctx context.Context, tx pgx.Tx, user, zone string, now time.
 	if sr.Revision != revision {
 		return Task{}, Conflict()
 	}
-	in, err = inputInZone(in, selected, zone, sr.Timezone)
+	accountZone := zone
+	accountLoc, err := time.LoadLocation(accountZone)
+	if err != nil {
+		return Task{}, err
+	}
+	accountToday := now.In(accountLoc).Format("2006-01-02")
+	historical, err := repository.TaskHasHistoricalAttribution(ctx, tx, user, selected.ID, selected.ScheduledDate)
+	if err != nil {
+		return Task{}, err
+	}
+	if historical || (selected.ScheduledDate != nil && *selected.ScheduledDate < accountToday) {
+		return Task{}, Invalid("Choose an occurrence outside finalized history")
+	}
+	in, err = inputInZone(in, selected, zone, sr.Timezone, endpoints...)
 	if err != nil {
 		return Task{}, err
 	}
@@ -34,7 +47,11 @@ func UpdateFromTask(ctx context.Context, tx pgx.Tx, user, zone string, now time.
 	if in.ScheduledDate == nil || selected.ScheduledDate == nil {
 		return Task{}, Invalid("Repeating tasks require a scheduled date")
 	}
-	if err = Validate(&in, zone, now, &selected); err != nil {
+	validationPrevious := selected
+	if len(endpoints) == 2 {
+		validationPrevious = projectTask(Task{TaskInput: in, ScheduledStartAt: endpoints[0], ScheduledEndAt: endpoints[1]}, zone)
+	}
+	if err = Validate(&in, zone, now, &validationPrevious); err != nil {
 		return Task{}, err
 	}
 	if err = validateSeriesSpan(in); err != nil {
@@ -68,7 +85,7 @@ func UpdateFromTask(ctx context.Context, tx pgx.Tx, user, zone string, now time.
 		clock := d.Format("15:04:05")
 		deadlineOffset, deadlineClock = &n, &clock
 	}
-	affected, err := repository.ListEditableOccurrences(ctx, tx, user, sr.ID, today, zone)
+	affected, err := repository.ListEditableOccurrences(ctx, tx, user, sr.ID, accountToday, accountZone)
 	if err != nil {
 		return Task{}, err
 	}
@@ -87,10 +104,16 @@ func UpdateFromTask(ctx context.Context, tx pgx.Tx, user, zone string, now time.
 		}
 		// Existing tasks may have activity attached; never silently drop one
 		// when a series edit selects a nonexistent wall time.
-		if validation := Validate(&next, zone, now, &old); validation != nil {
+		validationOld := old
+		var selectedEndpoints []*time.Time
+		if old.ID == selected.ID && len(endpoints) == 2 {
+			selectedEndpoints = endpoints
+			validationOld = validationPrevious
+		}
+		if validation := Validate(&next, zone, now, &validationOld); validation != nil {
 			return Task{}, Invalid("Cannot update occurrence on " + date + ": " + validation.Error())
 		}
-		updated, e := UpdateTask(ctx, tx, user, zone, now, old, next)
+		updated, e := UpdateTask(ctx, tx, user, zone, now, old, next, selectedEndpoints...)
 		if e != nil {
 			return Task{}, e
 		}

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"focuscalendar/internal/localdate"
 	"focuscalendar/internal/models"
+	"time"
 )
 
 // Command retains the exact inbound payload. Controllers hash those same bytes;
@@ -64,6 +65,14 @@ func (c Command) TaskPatch(current models.TaskInput) (out models.TaskPatch, err 
 	if v, ok := fields["expectedSeriesRevision"]; ok {
 		if err = json.Unmarshal(v, &out.SeriesRevision); err != nil {
 			return out, Invalid("Provide expectedSeriesRevision")
+		}
+	}
+	for key, target := range map[string]**time.Time{"scheduledStartAt": &out.ScheduledStartAt, "scheduledEndAt": &out.ScheduledEndAt} {
+		if raw, ok := fields[key]; ok {
+			if err = json.Unmarshal(raw, target); err != nil {
+				return out, Invalid("Use RFC3339 schedule instants")
+			}
+			delete(fields, key)
 		}
 	}
 	delete(fields, "scope")

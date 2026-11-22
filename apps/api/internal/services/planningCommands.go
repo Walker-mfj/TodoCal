@@ -52,11 +52,23 @@ func CalendarCommand(ctx context.Context, tx pgx.Tx, p Principal, zone string, n
 	if e != nil {
 		return nil, e
 	}
+	overlappingHistory := []Day{}
+	historyDates, e := repository.ListOverlappingHistoricalDates(ctx, tx, p.ID, from)
+	if e != nil {
+		return nil, e
+	}
+	for _, date := range historyDates {
+		day, err := DayReport(ctx, tx, p.ID, zone, date, now)
+		if err != nil {
+			return nil, err
+		}
+		overlappingHistory = append(overlappingHistory, day)
+	}
 	warnings, e := repository.ListInvalidTimeExceptions(ctx, tx, p.ID, from, to)
 	if e != nil {
 		return nil, e
 	}
-	return map[string]any{"from": from, "to": to, "tasks": live, "days": days, "warnings": warnings}, nil
+	return map[string]any{"from": from, "to": to, "tasks": live, "days": days, "overlappingHistory": overlappingHistory, "warnings": warnings}, nil
 }
 func DayDetailsCommand(ctx context.Context, tx pgx.Tx, p Principal, zone string, now time.Time, input CommandInput, params Parameters) (any, error) {
 	date := params.Date

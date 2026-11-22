@@ -30,14 +30,15 @@ func Reschedule(ctx context.Context, tx pgx.Tx, user, zone, id string, now time.
 	in.StartTime = schedule.StartTime
 	in.EndTime = schedule.EndTime
 	in.ScheduledEndDate = schedule.ScheduledEndDate
-	if err = Validate(&in, zone, now, &old); err != nil {
+	startAt, endAt, err := scheduleInstants(in, schedule, zone, old)
+	if err != nil {
 		return out, err
 	}
 	// A scheduling command must never mutate a finalized plan, including same-date time changes.
 	if err = EditableDate(ctx, tx, user, in.ScheduledDate); err != nil {
 		return out, err
 	}
-	out.Task, err = UpdateTask(ctx, tx, user, zone, now, old, in)
+	out.Task, err = UpdateTask(ctx, tx, user, zone, now, old, in, startAt, endAt)
 	if err != nil {
 		return out, err
 	}

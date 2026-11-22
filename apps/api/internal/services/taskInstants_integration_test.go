@@ -68,7 +68,7 @@ func TestTaskInstantsTimezoneCalendarRecurrenceAndUndo(t *testing.T) {
 	if originalEnd.Sub(originalStart) != 90*time.Minute {
 		t.Fatal(task)
 	}
-	if _, err = pool.Exec(ctx, "UPDATE notification_preferences SET task_start=true WHERE user_id=$1", principal.ID); err != nil {
+	if _, err = pool.Exec(ctx, "INSERT INTO notification_preferences(user_id,task_start) VALUES($1,true) ON CONFLICT(user_id) DO UPDATE SET task_start=true", principal.ID); err != nil {
 		t.Fatal(err)
 	}
 	var originalDue time.Time

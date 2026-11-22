@@ -26,7 +26,8 @@ func ListTasks(ctx context.Context, db DBTX, userID string, cursor string, searc
 
 // Half-open overlap includes overnight events beginning before the visible range.
 func ListCalendarTasks(ctx context.Context, db DBTX, user, from, to string, start, end time.Time) ([]models.Task, error) {
-	rows, err := db.Query(ctx, `SELECT `+TaskColumns+` FROM tasks WHERE user_id=$1 AND deleted_at IS NULL AND (
+	rows, err := db.Query(ctx, `SELECT `+TaskColumns+` FROM tasks WHERE user_id=$1 AND deleted_at IS NULL
+ AND NOT EXISTS(SELECT 1 FROM daily_plan_entries p WHERE p.user_id=tasks.user_id AND p.task_id=tasks.id) AND (
  (scheduled_start_at IS NOT NULL AND scheduled_start_at<$5 AND scheduled_end_at>$4)
  OR (scheduled_start_at IS NULL AND scheduled_date >= $2::date AND scheduled_date<$3::date)) ORDER BY task_local_date(tasks),scheduled_start_at NULLS FIRST,start_time NULLS FIRST,id`, user, from, to, start, end)
 	if err != nil {

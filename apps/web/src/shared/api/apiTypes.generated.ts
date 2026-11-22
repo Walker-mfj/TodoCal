@@ -807,6 +807,16 @@ export interface components {
       /** @description Per-task focus duration; null uses Settings. */
       focusMinutes?: number | null;
       estimatedPomodoros?: number | null;
+      /**
+       * Format: date-time
+       * @description Optional exact selected-occurrence start instant, paired with scheduledEndAt. Must match the local schedule in the account timezone.
+       */
+      scheduledStartAt?: string | null;
+      /**
+       * Format: date-time
+       * @description Optional exact selected-occurrence end instant for DST overlap disambiguation. Subsequent repetitions follow the series wall-clock template.
+       */
+      scheduledEndAt?: string | null;
       expectedRevision: number;
     };
     Task: {
@@ -882,6 +892,16 @@ export interface components {
       scheduledEndDate?: string | null;
       startTime: string | null;
       endTime: string | null;
+      /**
+       * Format: date-time
+       * @description Optional exact start instant for drag/resize, at minute precision. Supply together with scheduledEndAt; both must match the local schedule in the account timezone.
+       */
+      scheduledStartAt?: string | null;
+      /**
+       * Format: date-time
+       * @description Optional exact end instant to disambiguate DST overlaps. Must be after scheduledStartAt and match the supplied local end date/time.
+       */
+      scheduledEndAt?: string | null;
       expectedRevision: number;
     };
     ScheduledTask: {
@@ -1036,9 +1056,11 @@ export interface components {
       from: string;
       /** Format: date */
       to: string;
-      /** @description Current task identities whose schedules overlap the requested range, including timed tasks starting before the range. */
+      /** @description Live tasks not attributed to finalized snapshots whose schedules overlap the requested range, including timed tasks starting before the range. */
       tasks: components["schemas"]["Task"][];
       days: components["schemas"]["DayReport"][];
+      /** @description Finalized reporting days before the range containing overnight events that still overlap it. Render these events in their saved timezone; these days are not part of the range totals. */
+      overlappingHistory?: components["schemas"]["DayReport"][];
       warnings: components["schemas"]["CalendarWarning"][];
     };
     RecurrenceRule: {

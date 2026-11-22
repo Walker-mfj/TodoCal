@@ -5,6 +5,8 @@ import { localScheduleEndpoint } from "../../../shared/utils/taskSchedule";
 export type Schedule = {
   scheduledDate: string | null;
   scheduledEndDate?: string | null;
+  scheduledStartAt?: string;
+  scheduledEndAt?: string;
   startTime: string | null;
   endTime: string | null;
 };
@@ -40,27 +42,31 @@ export function scheduleFromDrop(
       ...(priorOvernight ? { scheduledEndDate: null } : {}),
     };
   }
-  if (kind === "month") {
-    const offset = wallClock(oldEndDate).diff(wallClock(oldDate), "days").days;
-    const endDate = wallClock(date).plus({ days: offset }).toISODate();
-    return {
-      scheduledDate: date,
-      startTime: task.startTime,
-      endTime: task.endTime,
-      ...(priorOvernight ? { scheduledEndDate: endDate } : {}),
-    };
+  if (kind === "month" && !task.startTime) {
+    return { scheduledDate: date, startTime: null, endTime: null };
   }
 
   const snap = (value: DateTime) =>
     value.startOf("day").plus({
       minutes: Math.round((value.hour * 60 + value.minute) / 15) * 15,
     });
-  const a = wallClock(start);
+  const a = wallClock(kind === "month" ? `${date}T${task.startTime}` : start);
   const fromWall =
-    kind === "resize" && a.toFormat("HH:mm") === task.startTime ? a : snap(a);
+    kind === "month" ||
+    (kind === "resize" && a.toFormat("HH:mm") === task.startTime)
+      ? a
+      : snap(a);
   const fromDate = fromWall.toISODate()!;
   const fromTime = fromWall.toFormat("HH:mm");
-  const from = localScheduleEndpoint(fromDate, fromTime, zone);
+  const endpoint = (day: string, clock: string, previous?: string | null) => {
+    if (kind === "resize" && previous) {
+      const saved = DateTime.fromISO(previous).setZone(zone);
+      if (saved.toISODate() === day && saved.toFormat("HH:mm") === clock)
+        return saved;
+    }
+    return localScheduleEndpoint(day, clock, zone);
+  };
+  const from = endpoint(fromDate, fromTime, task.scheduledStartAt);
 
   const duration =
     task.scheduledStartAt && task.scheduledEndAt
@@ -80,10 +86,10 @@ export function scheduleFromDrop(
     (rawEnd.toFormat("HH:mm") === task.endTime ? rawEnd : snap(rawEnd));
   const to =
     kind === "resize" && toWall
-      ? localScheduleEndpoint(
+      ? endpoint(
           toWall.toISODate()!,
           toWall.toFormat("HH:mm"),
-          zone,
+          task.scheduledEndAt,
         )
       : from?.plus({ minutes: duration });
   if (!from || !to)
@@ -94,6 +100,8 @@ export function scheduleFromDrop(
     scheduledDate: fromDate,
     startTime: fromTime,
     endTime: to.toFormat("HH:mm"),
+    scheduledStartAt: from.toUTC().toISO()!,
+    scheduledEndAt: to.toUTC().toISO()!,
     ...(toDate !== fromDate
       ? { scheduledEndDate: toDate }
       : priorOvernight

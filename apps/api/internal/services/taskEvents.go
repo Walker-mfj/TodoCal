@@ -13,6 +13,12 @@ import (
 )
 
 func Event(ctx context.Context, tx pgx.Tx, user, zone, kind string, now time.Time, before *Task, after Task) error {
+	return recordTaskEvent(ctx, tx, user, zone, kind, now, before, after, true)
+}
+
+// Automatic lazy materialization only journals the occurrence. Settlement must
+// collect the complete day's states before creating its snapshot.
+func recordTaskEvent(ctx context.Context, tx pgx.Tx, user, zone, kind string, now time.Time, before *Task, after Task, adjustHistory bool) error {
 	if before != nil {
 		var savedZone, savedDate string
 		e := tx.QueryRow(ctx, `SELECT s.timezone,p.date::text FROM daily_plan_entries p JOIN daily_snapshots s ON s.user_id=p.user_id AND s.date=p.date WHERE p.user_id=$1 AND p.task_id=$2 ORDER BY p.date DESC LIMIT 1`, user, after.ID).Scan(&savedZone, &savedDate)
@@ -60,11 +66,11 @@ func Event(ctx context.Context, tx pgx.Tx, user, zone, kind string, now time.Tim
 	if before != nil && before.ScheduledDate != nil && *before.ScheduledDate < now.In(loc).Format("2006-01-02") {
 		historical = true
 	}
-	_, err = repository.InsertTaskEvent(ctx, tx, user, uuid.NewString(), after.ID, kind, now, now.In(loc).Format("2006-01-02"), zone, old, next, historical && kind != "group_cleared" && kind != "series_reparented")
+	_, err = repository.InsertTaskEvent(ctx, tx, user, uuid.NewString(), after.ID, kind, now, now.In(loc).Format("2006-01-02"), zone, old, next, adjustHistory && historical && kind != "group_cleared" && kind != "series_reparented")
 	if err != nil {
 		return err
 	}
-	if kind == "group_cleared" || kind == "series_reparented" {
+	if !adjustHistory || kind == "group_cleared" || kind == "series_reparented" {
 		return nil
 	}
 	return refreshHistorical(ctx, tx, user, zone, now, before, after)

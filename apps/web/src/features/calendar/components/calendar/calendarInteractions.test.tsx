@@ -83,6 +83,8 @@ it("reverts a persisted drag before sending the authoritative schedule", () => {
     scheduledDate: "2030-03-11",
     startTime: "10:15",
     endTime: "11:15",
+    scheduledStartAt: "2030-03-11T01:15:00.000Z",
+    scheduledEndAt: "2030-03-11T02:15:00.000Z",
   });
   expect(revert.mock.invocationCallOrder[0]).toBeLessThan(
     onSchedule.mock.invocationCallOrder[0],

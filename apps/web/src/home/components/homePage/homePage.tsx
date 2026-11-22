@@ -527,7 +527,10 @@ function AccountWorkspace() {
                   ? draftPreview
                   : null
               }
-              days={calendar.data?.days || []}
+              days={[
+                ...(calendar.data?.days || []),
+                ...(calendar.data?.overlappingHistory || []),
+              ]}
               tasks={calendar.data?.tasks}
               groups={allGroups}
               today={date}

@@ -36,7 +36,7 @@ export function calendarEvents({
   );
   for (const day of days) {
     for (const { task, groupColor } of day.entries) {
-      if (!entries.has(task.id)) {
+      if (day.finalized || !entries.has(task.id)) {
         entries.set(task.id, {
           task,
           groupColor,

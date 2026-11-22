@@ -70,13 +70,6 @@ func materializeSelected(ctx context.Context, tx pgx.Tx, user, zone, from, to st
 				endDate := localdate.Add(date, sr.EndOffset)
 				in.ScheduledEndDate = &endDate
 			}
-			effective := now
-			if start := localdate.Boundary(date, loc).UTC(); effective.After(start) {
-				effective = start
-			}
-			if effective.Before(sr.CreatedAt) {
-				effective = sr.CreatedAt
-			}
 			startAt, endAt, resolveErr := taskInstants(in, sr.Timezone, nil)
 			invalid := resolveErr != nil
 			if sr.Offset != nil {
@@ -88,17 +81,12 @@ func materializeSelected(ctx context.Context, tx pgx.Tx, user, zone, from, to st
 					in.Deadline = &v
 				}
 			}
-			if invalid {
-				_, e = repository.InsertInvalidTimeException(ctx, tx, user, sr.ID, original, now)
-				if e != nil {
-					return e
-				}
-				continue
-			}
 			reportDate := date
 			if startAt != nil {
 				reportDate = startAt.In(loc).Format("2006-01-02")
 			}
+			// Cutoffs and durable exceptions suppress slots before recording any
+			// invalid-time prediction, including slots transferred to a split series.
 			var exists bool
 			e = repository.OccurrenceIsMaterialized(ctx, tx, user, sr.ID, original, reportDate, explicit, &exists)
 			if e != nil {
@@ -107,11 +95,25 @@ func materializeSelected(ctx context.Context, tx pgx.Tx, user, zone, from, to st
 			if exists {
 				continue
 			}
+			if invalid {
+				_, e = repository.InsertInvalidTimeException(ctx, tx, user, sr.ID, original, now)
+				if e != nil {
+					return e
+				}
+				continue
+			}
+			effective := now
+			if start := localdate.Boundary(reportDate, loc).UTC(); effective.After(start) {
+				effective = start
+			}
+			if effective.Before(sr.CreatedAt) {
+				effective = sr.CreatedAt
+			}
 			t, err := repository.InsertOccurrence(ctx, tx, user, uuid.NewString(), in.Title, in.Description, in.GroupID, in.Priority, date, in.StartTime, in.EndTime, in.Deadline, in.EstimatedPomodoros, effective, sr.ID, original, in.FocusMinutes, in.ScheduledEndDate, startAt, endAt)
 			if err != nil {
 				return err
 			}
-			if e = Event(ctx, tx, user, zone, "created", effective, nil, t); e != nil {
+			if e = recordTaskEvent(ctx, tx, user, zone, "created", effective, nil, t, explicit == sr.ID); e != nil {
 				return e
 			}
 		}

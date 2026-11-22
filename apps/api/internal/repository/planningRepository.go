@@ -76,3 +76,17 @@ func ListSnapshotEntries(ctx context.Context, db DBTX, userID string, date strin
 func ClearInvalidTimeExceptions(ctx context.Context, db DBTX, userID string, today string) (pgconn.CommandTag, error) {
 	return db.Exec(ctx, `DELETE FROM recurrence_exceptions e WHERE e.user_id=$1 AND e.reason='invalid_local_time' AND e.original_occurrence_date >= $2::date AND NOT EXISTS(SELECT 1 FROM daily_snapshots s WHERE s.user_id=e.user_id AND s.date=e.original_occurrence_date)`, userID, today)
 }
+
+// Historical overnight events retain their saved zone even when their reporting
+// day is before the requested calendar range.
+func ListOverlappingHistoricalDates(ctx context.Context, db DBTX, user, from string) ([]string, error) {
+	rows, err := db.Query(ctx, `SELECT DISTINCT p.date::text FROM daily_plan_entries p JOIN daily_snapshots s ON s.user_id=p.user_id AND s.date=p.date WHERE p.user_id=$1 AND p.date<$2::date AND COALESCE((p.task_state->'task'->>'scheduledEndAt')::timestamptz AT TIME ZONE s.timezone, (COALESCE(p.task_state->'task'->>'scheduledEndDate', p.task_state->'task'->>'scheduledDate') || 'T' || (p.task_state->'task'->>'endTime'))::timestamp)>$2::date ORDER BY 1`, user, from)
+	if err != nil {
+		return nil, err
+	}
+	return collect(rows, func(row pgx.Row) (string, error) {
+		var date string
+		err := row.Scan(&date)
+		return date, err
+	})
+}

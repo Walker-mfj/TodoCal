@@ -63,7 +63,7 @@ func ReadSeries(ctx context.Context, db DBTX, userID string, seriesID string, re
 }
 
 func ListEditableOccurrences(ctx context.Context, db DBTX, userID string, seriesID string, today string, zone string) ([]models.Task, error) {
-	rows, err := db.Query(ctx, `SELECT `+TaskColumns+` FROM tasks WHERE user_id=$1 AND series_id=$2 AND deleted_at IS NULL AND COALESCE((scheduled_start_at AT TIME ZONE $4)::date,scheduled_date) >= $3::date AND NOT EXISTS (SELECT 1 FROM daily_snapshots WHERE user_id=$1 AND date=task_local_date(tasks))`, userID, seriesID, today, zone)
+	rows, err := db.Query(ctx, `SELECT `+TaskColumns+` FROM tasks WHERE user_id=$1 AND series_id=$2 AND deleted_at IS NULL AND COALESCE((scheduled_start_at AT TIME ZONE $4)::date,scheduled_date) >= $3::date AND NOT EXISTS (SELECT 1 FROM daily_snapshots WHERE user_id=$1 AND date=task_local_date(tasks)) AND NOT EXISTS (SELECT 1 FROM daily_plan_entries p WHERE p.user_id=tasks.user_id AND p.task_id=tasks.id)`, userID, seriesID, today, zone)
 	if err != nil {
 		return nil, err
 	}
@@ -88,4 +88,11 @@ func ReadSeriesStopUndo(ctx context.Context, db DBTX, userID string, seriesID st
 
 func ClearSeriesStop(ctx context.Context, db DBTX, userID string, seriesID string) (pgconn.CommandTag, error) {
 	return db.Exec(ctx, `UPDATE recurrence_series SET stopped_after=NULL,stop_undo=NULL,revision=revision+1 WHERE user_id=$1 AND id=$2`, userID, seriesID)
+}
+
+// A task's accepted reporting date can differ from its current local date.
+func TaskHasHistoricalAttribution(ctx context.Context, db DBTX, user, task string, date *string) (bool, error) {
+	var historical bool
+	err := db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM daily_plan_entries WHERE user_id=$1 AND task_id=$2) OR EXISTS(SELECT 1 FROM daily_snapshots WHERE user_id=$1 AND date=$3::date)`, user, task, date).Scan(&historical)
+	return historical, err
 }

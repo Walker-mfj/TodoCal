@@ -80,7 +80,10 @@ func shiftScheduleDate(in *TaskInput, date string) {
 	in.ScheduledDate = &date
 }
 
-func inputInZone(in TaskInput, old Task, from, to string) (TaskInput, error) {
+func inputInZone(in TaskInput, old Task, from, to string, endpoints ...*time.Time) (TaskInput, error) {
+	if len(endpoints) == 2 {
+		old = projectTask(Task{TaskInput: in, ScheduledStartAt: endpoints[0], ScheduledEndAt: endpoints[1]}, from)
+	}
 	if err := Validate(&in, from, time.Time{}, &old); err != nil {
 		return in, err
 	}
@@ -105,4 +108,29 @@ func validateSeriesSpan(in TaskInput) error {
 		return Invalid("A repeating task may span at most 366 days")
 	}
 	return nil
+}
+
+// Exact schedule endpoints disambiguate repeated wall times. They must describe
+// the same local fields supplied by the client, not an unrelated interval.
+func scheduleInstants(in TaskInput, schedule Schedule, zone string, old Task) (*time.Time, *time.Time, error) {
+	a, b := schedule.ScheduledStartAt, schedule.ScheduledEndAt
+	if a == nil && b == nil {
+		return taskInstants(in, zone, &old)
+	}
+	if a == nil || b == nil || !b.After(*a) || a.Year() < 1 || b.Year() > 9999 {
+		return nil, nil, Invalid("Provide both valid schedule instants with end after start")
+	}
+	if a.Second() != 0 || b.Second() != 0 || a.Nanosecond() != 0 || b.Nanosecond() != 0 {
+		return nil, nil, Invalid("Schedule instants must use minute precision")
+	}
+	projected := projectTask(Task{ScheduledStartAt: a, ScheduledEndAt: b}, zone)
+	endDate := in.ScheduledEndDate
+	if endDate == nil {
+		endDate = in.ScheduledDate
+	}
+	if !sameDate(in.ScheduledDate, projected.ScheduledDate) || !sameDate(endDate, projected.ScheduledEndDate) || !sameDate(in.StartTime, projected.StartTime) || !sameDate(in.EndTime, projected.EndTime) {
+		return nil, nil, Invalid("Schedule instants must match the local dates and times in your timezone")
+	}
+	start, end := a.UTC(), b.UTC()
+	return &start, &end, nil
 }

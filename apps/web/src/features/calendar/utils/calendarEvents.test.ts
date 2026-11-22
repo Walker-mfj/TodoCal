@@ -18,7 +18,7 @@ const day = {
   entries: [{ task, groupName: null, groupColor: null }],
 } as Day;
 
-it("projects the same instants in Tokyo and Vietnam and deduplicates the snapshot", () => {
+it("prefers finalized snapshot clocks and history metadata over the live task", () => {
   const options = {
     tasks: [task],
     days: [day],
@@ -35,8 +35,9 @@ it("projects the same instants in Tokyo and Vietnam and deduplicates the snapsho
   expect(
     calendarEvents({ ...options, zone: "Asia/Ho_Chi_Minh" })[0],
   ).toMatchObject({
-    start: "2026-11-22T21:30:00",
-    end: "2026-11-22T23:00:00",
+    start: "2026-11-22T23:30:00",
+    end: "2026-11-23T01:00:00",
+    extendedProps: { historical: true, zone: "Asia/Tokyo" },
   });
 });
 

@@ -108,3 +108,32 @@ func TestSeriesPartialEndEditCrossesOriginMidnight(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestScheduleInstantsDisambiguateFallBackAndValidateLocalFields(t *testing.T) {
+	date, a, b := "2026-11-01", "00:30", "01:30"
+	start := time.Date(2026, 11, 1, 4, 30, 0, 0, time.UTC)
+	end := start.Add(120 * time.Minute)
+	in := TaskInput{Title: "Moved", ScheduledDate: &date, StartTime: &a, EndTime: &b}
+	schedule := Schedule{ScheduledStartAt: &start, ScheduledEndAt: &end}
+	x, y, err := scheduleInstants(in, schedule, "America/New_York", Task{})
+	if err != nil || y.Sub(*x) != 120*time.Minute {
+		t.Fatal("lost later 01:30 offset", x, y, err)
+	}
+	for _, test := range []struct {
+		name   string
+		change func(*Schedule)
+	}{
+		{"one endpoint", func(s *Schedule) { s.ScheduledEndAt = nil }},
+		{"mismatched clock", func(s *Schedule) { v := end.Add(time.Hour); s.ScheduledEndAt = &v }},
+		{"subminute", func(s *Schedule) { v := end.Add(time.Second); s.ScheduledEndAt = &v }},
+		{"reversed", func(s *Schedule) { s.ScheduledEndAt = &start }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := schedule
+			test.change(&candidate)
+			if _, _, e := scheduleInstants(in, candidate, "America/New_York", Task{}); e == nil {
+				t.Fatal("accepted invalid endpoints")
+			}
+		})
+	}
+}

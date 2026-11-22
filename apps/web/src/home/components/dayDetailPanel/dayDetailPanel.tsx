@@ -73,6 +73,7 @@ export function DayDetailPanel({
                 <TaskRow
                   key={e.task.id}
                   task={e.task}
+                  zone={day.data!.timezone}
                   historical
                   groups={
                     e.task.groupId && e.groupName

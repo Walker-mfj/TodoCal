@@ -35,26 +35,41 @@ func materializeSelected(ctx context.Context, tx pgx.Tx, user, zone, from, to st
 	if e != nil {
 		return e
 	}
-	all, e := repository.ListMaterializableSeries(ctx, tx, user, from, to, selected)
+	all, e := repository.ListMaterializableSeries(ctx, tx, user, localdate.Add(from, -2), localdate.Add(to, 2), selected)
 	if e != nil {
 		return e
 	}
 	for _, sr := range all {
-		for date := from; date < to; date = localdate.Add(date, 1) {
+		seriesLoc, err := time.LoadLocation(sr.Timezone)
+		if err != nil {
+			return err
+		}
+		seriesFrom, seriesTo := from, to
+		if sr.Timezone != zone {
+			seriesFrom, seriesTo = localdate.Add(from, -2), localdate.Add(to, 2)
+		}
+		// Reminder horizons only need future starts, not overlapping past starts.
+		if selected == "" {
+			seriesFrom = localdate.Add(seriesFrom, -sr.EndOffset)
+		}
+		if first := localdate.Add(*sr.Task.ScheduledDate, sr.ScheduleOffset); seriesFrom < first {
+			seriesFrom = first
+		}
+		anchor := localdate.Add(*sr.Task.ScheduledDate, sr.ScheduleOffset)
+		if remainder := localdate.Days(anchor, seriesFrom) % sr.IntervalDays; remainder != 0 {
+			seriesFrom = localdate.Add(seriesFrom, sr.IntervalDays-remainder)
+		}
+		for date := seriesFrom; date < seriesTo; date = localdate.Add(date, sr.IntervalDays) {
 			original := localdate.Add(date, -sr.ScheduleOffset)
 			if original < *sr.Task.ScheduledDate || (sr.EndDate != nil && original > *sr.EndDate) || (sr.StoppedAfter != nil && date > *sr.StoppedAfter) || localdate.Days(*sr.Task.ScheduledDate, original)%sr.IntervalDays != 0 {
 				continue
 			}
-			var exists bool
-			e = repository.OccurrenceIsMaterialized(ctx, tx, user, sr.ID, original, date, explicit, &exists)
-			if e != nil {
-				return e
-			}
-			if exists {
-				continue
-			}
 			in := sr.Task
 			in.ScheduledDate = &date
+			if in.StartTime != nil {
+				endDate := localdate.Add(date, sr.EndOffset)
+				in.ScheduledEndDate = &endDate
+			}
 			effective := now
 			if start := localdate.Boundary(date, loc).UTC(); effective.After(start) {
 				effective = start
@@ -62,16 +77,10 @@ func materializeSelected(ctx context.Context, tx pgx.Tx, user, zone, from, to st
 			if effective.Before(sr.CreatedAt) {
 				effective = sr.CreatedAt
 			}
-			invalid := false
-			if in.StartTime != nil {
-				for _, clock := range []string{*in.StartTime + ":00", *in.EndTime + ":00"} {
-					if _, err := localdate.Instant(date, clock, loc); err != nil {
-						invalid = true
-					}
-				}
-			}
+			startAt, endAt, resolveErr := taskInstants(in, sr.Timezone, nil)
+			invalid := resolveErr != nil
 			if sr.Offset != nil {
-				instant, err := localdate.Instant(localdate.Add(date, *sr.Offset), *sr.DeadlineTime, loc)
+				instant, err := localdate.Instant(localdate.Add(date, *sr.Offset), *sr.DeadlineTime, seriesLoc)
 				if err != nil {
 					invalid = true
 				} else {
@@ -86,7 +95,19 @@ func materializeSelected(ctx context.Context, tx pgx.Tx, user, zone, from, to st
 				}
 				continue
 			}
-			t, err := repository.InsertOccurrence(ctx, tx, user, uuid.NewString(), in.Title, in.Description, in.GroupID, in.Priority, date, in.StartTime, in.EndTime, in.Deadline, in.EstimatedPomodoros, effective, sr.ID, original, in.FocusMinutes)
+			reportDate := date
+			if startAt != nil {
+				reportDate = startAt.In(loc).Format("2006-01-02")
+			}
+			var exists bool
+			e = repository.OccurrenceIsMaterialized(ctx, tx, user, sr.ID, original, reportDate, explicit, &exists)
+			if e != nil {
+				return e
+			}
+			if exists {
+				continue
+			}
+			t, err := repository.InsertOccurrence(ctx, tx, user, uuid.NewString(), in.Title, in.Description, in.GroupID, in.Priority, date, in.StartTime, in.EndTime, in.Deadline, in.EstimatedPomodoros, effective, sr.ID, original, in.FocusMinutes, in.ScheduledEndDate, startAt, endAt)
 			if err != nil {
 				return err
 			}

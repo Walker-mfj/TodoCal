@@ -37,18 +37,20 @@ func CalendarCommand(ctx context.Context, tx pgx.Tx, p Principal, zone string, n
 		return nil, e
 	}
 	days := []Day{}
-	live := []Task{}
 	for date := from; date < to; date = localdate.Add(date, 1) {
 		day, e := DayReport(ctx, tx, p.ID, zone, date, now)
 		if e != nil {
 			return nil, e
 		}
 		days = append(days, day)
-		if !day.Finalized {
-			for _, entry := range day.Entries {
-				live = append(live, entry.Task)
-			}
-		}
+	}
+	loc, e := time.LoadLocation(zone)
+	if e != nil {
+		return nil, e
+	}
+	live, e := repository.ListCalendarTasks(ctx, tx, p.ID, from, to, localdate.Boundary(from, loc), localdate.Boundary(to, loc))
+	if e != nil {
+		return nil, e
 	}
 	warnings, e := repository.ListInvalidTimeExceptions(ctx, tx, p.ID, from, to)
 	if e != nil {

@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"focuscalendar/internal/repository"
@@ -12,9 +13,37 @@ import (
 )
 
 func Event(ctx context.Context, tx pgx.Tx, user, zone, kind string, now time.Time, before *Task, after Task) error {
+	if before != nil {
+		var savedZone, savedDate string
+		e := tx.QueryRow(ctx, `SELECT s.timezone,p.date::text FROM daily_plan_entries p JOIN daily_snapshots s ON s.user_id=p.user_id AND s.date=p.date WHERE p.user_id=$1 AND p.task_id=$2 ORDER BY p.date DESC LIMIT 1`, user, after.ID).Scan(&savedZone, &savedDate)
+		if e != nil && !errors.Is(e, pgx.ErrNoRows) {
+			return e
+		}
+		if e == nil {
+			projected := projectTask(after, savedZone)
+			if sameScheduledStart(*before, after) || (projected.ScheduledDate != nil && *projected.ScheduledDate == savedDate) {
+				zone = savedZone
+			}
+		} else if before.DeletedAt != nil && sameScheduledStart(*before, after) {
+			// A deletion removed its plan entry, but the journal still records
+			// that entry's original zone for a later restore.
+			e = tx.QueryRow(ctx, `SELECT timezone FROM task_events WHERE user_id=$1 AND task_id=$2 AND kind='deleted' ORDER BY occurred_at DESC,(after_state->>'revision')::bigint DESC LIMIT 1`, user, after.ID).Scan(&savedZone)
+			if e != nil && !errors.Is(e, pgx.ErrNoRows) {
+				return e
+			}
+			if e == nil {
+				zone = savedZone
+			}
+		}
+	}
 	loc, err := time.LoadLocation(zone)
 	if err != nil {
 		return err
+	}
+	after = projectTask(after, zone)
+	if before != nil {
+		projected := projectTask(*before, zone)
+		before = &projected
 	}
 	var old []byte
 	if before != nil {

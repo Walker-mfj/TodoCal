@@ -3,6 +3,7 @@ import type { Task } from "../../../shared/api/domainTypes";
 /** Calendar wall-clock schedule inputs, independent of the task editor. */
 export type CalendarSlot = {
   scheduledDate: string;
+  scheduledEndDate?: string;
   startTime: string;
   endTime: string;
 };

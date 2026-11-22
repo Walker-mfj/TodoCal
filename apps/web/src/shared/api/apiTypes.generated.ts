@@ -471,7 +471,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description End-exclusive range of 1–93 days. Catch-up finalizes ended days before reading. tasks contains current, editable-date tasks; days includes full historical snapshots and authoritative unfiltered progress. A nonexistent recurring wall time is skipped with a warning, not counted as a missed task. Such future predictions are reevaluated if the account time zone changes. */
+    /** @description End-exclusive range of 1–93 days. Catch-up finalizes ended days before reading. tasks contains current tasks overlapping the range, including timed intervals starting before it; days includes full historical snapshots and authoritative unfiltered progress. A nonexistent recurring wall time is skipped with a warning, not counted as a missed task. Such future predictions use the pinned series timezone and are reevaluated after series schedule edits. */
     get: operations["getCalendar"];
     put?: never;
     post?: never;
@@ -759,6 +759,11 @@ export interface components {
       priority: "low" | "medium" | "high";
       /** Format: date */
       scheduledDate?: string | null;
+      /**
+       * Format: date
+       * @description Local end date for a timed task. Omit to end on the start date.
+       */
+      scheduledEndDate?: string | null;
       startTime?: string | null;
       endTime?: string | null;
       /** Format: date-time */
@@ -790,6 +795,11 @@ export interface components {
       priority: "low" | "medium" | "high";
       /** Format: date */
       scheduledDate?: string | null;
+      /**
+       * Format: date
+       * @description An explicit null resets a timed end to its start date.
+       */
+      scheduledEndDate?: string | null;
       startTime?: string | null;
       endTime?: string | null;
       /** Format: date-time */
@@ -812,6 +822,21 @@ export interface components {
       priority: "low" | "medium" | "high";
       /** Format: date */
       scheduledDate: string | null;
+      /**
+       * Format: date
+       * @description End date of the timed interval in the schedule timezone.
+       */
+      scheduledEndDate?: string | null;
+      /**
+       * Format: date-time
+       * @description Canonical scheduled start instant for a timed task.
+       */
+      scheduledStartAt?: string | null;
+      /**
+       * Format: date-time
+       * @description Canonical scheduled end instant for a timed task.
+       */
+      scheduledEndAt?: string | null;
       startTime: string | null;
       endTime: string | null;
       /** Format: date-time */
@@ -850,6 +875,11 @@ export interface components {
     ScheduleInput: {
       /** Format: date */
       scheduledDate: string | null;
+      /**
+       * Format: date
+       * @description Local end date for a timed task. Omit to end on the start date.
+       */
+      scheduledEndDate?: string | null;
       startTime: string | null;
       endTime: string | null;
       expectedRevision: number;
@@ -943,6 +973,8 @@ export interface components {
       endDate?: string | null;
     };
     RecurrenceSeries: {
+      /** @description IANA timezone pinned when the recurrence series was created. */
+      timezone?: string;
       /**
        * Format: date
        * @description Exclusive original-slot boundary after a following edit/delete.
@@ -1004,6 +1036,7 @@ export interface components {
       from: string;
       /** Format: date */
       to: string;
+      /** @description Current task identities whose schedules overlap the requested range, including timed tasks starting before the range. */
       tasks: components["schemas"]["Task"][];
       days: components["schemas"]["DayReport"][];
       warnings: components["schemas"]["CalendarWarning"][];

@@ -100,12 +100,6 @@ func BeforeZoneChange(ctx context.Context, tx pgx.Tx, user, oldZone, newZone str
 		return e
 	}
 	from, to := now.In(oldLoc).Format("2006-01-02"), now.In(newLoc).Format("2006-01-02")
-	// Future gap exceptions are predictions under the previous zone, unlike
-	// explicit user cancellations. Re-evaluate them without touching history.
-	_, e = repository.ClearInvalidTimeExceptions(ctx, tx, user, to)
-	if e != nil {
-		return e
-	}
 
 	if from >= to {
 		return nil

@@ -10,7 +10,11 @@ import { ValidatedForm } from "../../../../shared/components/validatedForm/valid
 import { useEffect, useRef, useState } from "react";
 import { Repeat2 } from "lucide-react";
 import { apiFetch, errorMessage } from "../../../../shared/api/apiClient";
-import { FieldError, taskPayload } from "../../utils/taskPayload";
+import {
+  FieldError,
+  sameDraftSchedule,
+  taskPayload,
+} from "../../utils/taskPayload";
 import { type Draft } from "../../types/taskTypes";
 import {
   type Task,
@@ -125,6 +129,7 @@ export function TaskEditor({
     if (!ready || !seed || busy || pending) return;
     const schedule = {
       scheduledDate: seed.scheduledDate || "",
+      scheduledEndDate: seed.scheduledEndDate || "",
       startTime: seed.startTime || "",
       endTime: seed.endTime || "",
     };
@@ -148,7 +153,12 @@ export function TaskEditor({
   const change = (key: keyof Draft, value: string | number) => {
     setDraft((d) => ({
       ...d,
-      [key]: value,
+      [key]:
+        key === "scheduledEndDate" && value === d.scheduledDate ? "" : value,
+      ...((key === "startTime" && !value && !d.endTime) ||
+      (key === "endTime" && !value && !d.startTime)
+        ? { scheduledEndDate: "" }
+        : {}),
       ...(key === "cadence" &&
       value === "interval" &&
       d.intervalDays === undefined
@@ -196,7 +206,12 @@ export function TaskEditor({
         onSubmit={(e) => {
           e.preventDefault();
           try {
-            if (!pending) taskPayload(draft, zone);
+            if (!pending)
+              taskPayload(draft, zone, {
+                unchangedSchedule: !!task && sameDraftSchedule(draft, baseline),
+                editing: !!task,
+                previousTask: task,
+              });
             if (task?.seriesId && !pending) setScopePrompt(true);
             else void save();
           } catch (e) {

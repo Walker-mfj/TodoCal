@@ -37,7 +37,7 @@ it("preserves minute-precision times for a Month date move", () => {
     endTime: "10:07",
   });
 });
-it("resizes edges on a quarter-hour grid and rejects midnight crossing", () => {
+it("resizes and moves across midnight on a quarter-hour grid", () => {
   expect(
     scheduleFromDrop(
       task,
@@ -47,10 +47,10 @@ it("resizes edges on a quarter-hour grid and rejects midnight crossing", () => {
       "resize",
     ),
   ).toMatchObject({ startTime: "09:00", endTime: "10:15" });
-  expect(() =>
+  expect(
     scheduleFromDrop(task, "2030-10-20T23:30:00Z", undefined, false, "move"),
-  ).toThrow("midnight");
-  expect(() =>
+  ).toMatchObject({ scheduledEndDate: "2030-10-21", endTime: "00:30" });
+  expect(
     scheduleFromDrop(
       task,
       "2030-10-20T23:30:00Z",
@@ -58,7 +58,7 @@ it("resizes edges on a quarter-hour grid and rejects midnight crossing", () => {
       false,
       "resize",
     ),
-  ).toThrow("midnight");
+  ).toMatchObject({ scheduledEndDate: "2030-10-21", endTime: "00:15" });
 });
 it("resizes only the moved edge, preserving minute precision on the fixed edge", () => {
   expect(
@@ -79,4 +79,49 @@ it("resizes only the moved edge, preserving minute precision on the fixed edge",
       "resize",
     ),
   ).toMatchObject({ startTime: "08:45", endTime: "10:07" });
+});
+
+it("keeps the end-day offset on a Month move", () => {
+  expect(
+    scheduleFromDrop(
+      {
+        scheduledDate: "2030-10-19",
+        scheduledEndDate: "2030-10-21",
+        startTime: "23:00",
+        endTime: "00:15",
+      },
+      "2030-10-22",
+      undefined,
+      true,
+      "month",
+    ),
+  ).toMatchObject({
+    scheduledDate: "2030-10-22",
+    scheduledEndDate: "2030-10-24",
+    startTime: "23:00",
+    endTime: "00:15",
+  });
+});
+
+it("uses elapsed duration when moving across a daylight-saving transition", () => {
+  expect(
+    scheduleFromDrop(
+      {
+        scheduledDate: "2030-03-09",
+        startTime: "01:30",
+        endTime: "02:30",
+        scheduledStartAt: "2030-03-09T06:30:00Z",
+        scheduledEndAt: "2030-03-09T07:30:00Z",
+      },
+      "2030-03-10T01:30:00Z",
+      undefined,
+      false,
+      "move",
+      "America/New_York",
+    ),
+  ).toMatchObject({
+    scheduledDate: "2030-03-10",
+    startTime: "01:30",
+    endTime: "03:30",
+  });
 });

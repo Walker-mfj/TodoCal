@@ -474,3 +474,78 @@ it("restores an uncertain recurring create and retries its exact command", async
   await waitFor(() => expect(execute).toHaveBeenCalledTimes(2));
   expect(execute.mock.calls[1]).toEqual(original);
 });
+
+it("shows the account timezone and submits an overnight end date", async () => {
+  const save = vi.fn().mockResolvedValue({});
+  render(
+    <TaskEditor
+      {...base}
+      execute={save}
+      seed={{
+        title: "Night shift",
+        scheduledDate: "2030-11-22",
+        startTime: "23:30",
+        endTime: "01:00",
+      }}
+    />,
+  );
+  const endDate = screen.getByLabelText("Scheduled end date");
+  expect(endDate).toHaveValue("2030-11-22");
+  expect(screen.getByText(/Times use Asia\/Tokyo/)).toBeVisible();
+  fireEvent.change(endDate, { target: { value: "2030-11-23" } });
+  fireEvent.click(screen.getByRole("button", { name: "Create task" }));
+  await waitFor(() => expect(save).toHaveBeenCalled());
+  expect(save.mock.calls[0][1].body).toMatchObject({
+    scheduledDate: "2030-11-22",
+    scheduledEndDate: "2030-11-23",
+    startTime: "23:30",
+    endTime: "01:00",
+  });
+});
+
+it("preserves an interval through the repeated DST hour during a content-only edit", async () => {
+  const save = vi.fn().mockResolvedValue({});
+  render(
+    <TaskEditor
+      {...base}
+      zone="America/New_York"
+      execute={save}
+      task={{
+        id: "dst-fold",
+        title: "Night shift",
+        description: "",
+        groupId: null,
+        priority: "medium",
+        scheduledDate: "2026-11-01",
+        scheduledStartAt: "2026-11-01T05:45:00Z",
+        scheduledEndAt: "2026-11-01T06:15:00Z",
+        startTime: "01:45",
+        endTime: "01:15",
+        deadline: "2026-11-01T06:30:00Z",
+        estimatedPomodoros: null,
+        status: "incomplete",
+        revision: 1,
+        createdAt: "",
+        updatedAt: "",
+        seriesId: null,
+        originalOccurrenceDate: null,
+      }}
+    />,
+  );
+  expect(screen.getByLabelText("End time")).toHaveValue("01:15");
+  fireEvent.change(screen.getByLabelText("Task title"), {
+    target: { value: "Renamed shift" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+  await waitFor(() => expect(save).toHaveBeenCalled());
+  const body = save.mock.calls[0][1].body;
+  expect(body.title).toBe("Renamed shift");
+  expect(body).not.toHaveProperty("deadline");
+  for (const key of [
+    "scheduledDate",
+    "scheduledEndDate",
+    "startTime",
+    "endTime",
+  ])
+    expect(body).not.toHaveProperty(key);
+});

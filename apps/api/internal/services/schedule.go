@@ -29,6 +29,7 @@ func Reschedule(ctx context.Context, tx pgx.Tx, user, zone, id string, now time.
 	in.ScheduledDate = schedule.ScheduledDate
 	in.StartTime = schedule.StartTime
 	in.EndTime = schedule.EndTime
+	in.ScheduledEndDate = schedule.ScheduledEndDate
 	if err = Validate(&in, zone, now, &old); err != nil {
 		return out, err
 	}
@@ -42,7 +43,7 @@ func Reschedule(ctx context.Context, tx pgx.Tx, user, zone, id string, now time.
 	}
 	out.ServerNow = now.UTC()
 	out.Undo = UndoToken{ID: uuid.NewString(), ExpiresAt: now.Add(10 * time.Second).UTC()}
-	_, err = repository.InsertScheduleUndo(ctx, tx, user, out.Undo.ID, old.ID, old.ScheduledDate, old.StartTime, old.EndTime, out.Task.Revision, now, out.Undo.ExpiresAt)
+	_, err = repository.InsertScheduleUndo(ctx, tx, user, out.Undo.ID, old.ID, old.ScheduledDate, old.StartTime, old.EndTime, out.Task.Revision, now, out.Undo.ExpiresAt, old.ScheduledEndDate, old.ScheduledStartAt, old.ScheduledEndAt)
 	return out, err
 }
 func UndoSchedule(ctx context.Context, tx pgx.Tx, user, zone, id string, now time.Time) (Task, error) {
@@ -52,10 +53,10 @@ func UndoSchedule(ctx context.Context, tx pgx.Tx, user, zone, id string, now tim
 	}
 	var taskID string
 	var revision int64
-	var previous Schedule
+	var previous Task
 	var expires time.Time
 	var consumed *time.Time
-	err = repository.ReadScheduleUndo(ctx, tx, user, parsed.String(), &taskID, &previous.ScheduledDate, &previous.StartTime, &previous.EndTime, &revision, &expires, &consumed)
+	err = repository.ReadScheduleUndo(ctx, tx, user, parsed.String(), &taskID, &previous.ScheduledDate, &previous.StartTime, &previous.EndTime, &revision, &expires, &consumed, &previous.ScheduledEndDate, &previous.ScheduledStartAt, &previous.ScheduledEndAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Task{}, Missing()
 	}
@@ -75,11 +76,13 @@ func UndoSchedule(ctx context.Context, tx pgx.Tx, user, zone, id string, now tim
 	if err = EditableDate(ctx, tx, user, previous.ScheduledDate); err != nil {
 		return Task{}, err
 	}
+	previous = projectTask(previous, zone)
 	in := old.TaskInput
+	in.ScheduledEndDate = previous.ScheduledEndDate
 	in.ScheduledDate = previous.ScheduledDate
 	in.StartTime = previous.StartTime
 	in.EndTime = previous.EndTime
-	restored, err := UpdateTask(ctx, tx, user, zone, now, old, in)
+	restored, err := UpdateTask(ctx, tx, user, zone, now, old, in, previous.ScheduledStartAt, previous.ScheduledEndAt)
 	if err != nil {
 		return Task{}, err
 	}

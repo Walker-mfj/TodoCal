@@ -12,6 +12,7 @@ import { SidebarPanel } from "../../../../shared/components/sidebarPanel/sidebar
 import { useOwnedQuery } from "../../../auth";
 import { type Execute } from "../../../../shared/api/apiClient";
 import { useCommand } from "../../../../shared/hooks/useCommand";
+import { taskSchedule } from "../../../../shared/utils/taskSchedule";
 import { dateLabel, today } from "../../../../shared/utils/dateUtils";
 import { CompletionTimeForm } from "./completionTimeForm";
 import {
@@ -83,6 +84,8 @@ export function TaskDetail({
   const historicalEntry = historicalDay.data?.entries.find(
     (entry) => entry.task.id === task.id,
   );
+  const scheduleZone = historical ? historicalDay.data?.timezone : zone;
+  const schedule = taskSchedule(task, scheduleZone);
   const groupName = historical
     ? historicalDay.isPending
       ? "Loading…"
@@ -94,7 +97,8 @@ export function TaskDetail({
   const [stopped, setStopped] = useState(false);
   const [confirmCompleted, setConfirmCompleted] = useState(false);
   const locked = disabled || command.busy || command.uncertain;
-  const stopDate = today(zone);
+  const seriesZone = series.data?.timezone ?? zone;
+  const stopDate = today(seriesZone);
   const timestamp = (value: string) =>
     DateTime.fromISO(value).setZone(zone).toFormat("MMM d, yyyy HH:mm");
   const remove = () => {
@@ -152,12 +156,22 @@ export function TaskDetail({
         <dd>{groupName}</dd>
         <dt>Scheduled Time</dt>
         <dd>
-          {task.scheduledDate ? dateLabel(task.scheduledDate) : "Unscheduled"}
+          {schedule.scheduledDate
+            ? dateLabel(schedule.scheduledDate)
+            : "Unscheduled"}
           <br />
-          {task.startTime
-            ? `${task.startTime}–${task.endTime}`
-            : "Untimed"} ·{" "}
-          {zone}
+          {schedule.startTime ? (
+            <>
+              {schedule.startTime}–
+              {schedule.scheduledEndDate &&
+                schedule.scheduledEndDate !== schedule.scheduledDate &&
+                `${dateLabel(schedule.scheduledEndDate)} · `}
+              {schedule.endTime}
+              {scheduleZone && ` · ${scheduleZone}`}
+            </>
+          ) : (
+            "Untimed"
+          )}
         </dd>
         <dt>Completed at</dt>
         <dd>
@@ -298,7 +312,7 @@ export function TaskDetail({
             {dateLabel(
               task.originalOccurrenceDate || task.scheduledDate || stopDate,
             )}{" "}
-            ({zone}). Earlier repetitions stay unchanged.
+            ({seriesZone}). Earlier repetitions stay unchanged.
           </p>
           {deletionPreview.isFetching && (
             <p role="status">Checking affected occurrences…</p>

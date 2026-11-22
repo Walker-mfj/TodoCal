@@ -11,13 +11,14 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func endedEntries(ctx context.Context, tx pgx.Tx, user, date string, cutoff time.Time) ([]Entry, error) {
-	list, e := repository.ListHistoricalTaskStates(ctx, tx, user, date, cutoff)
+func endedEntries(ctx context.Context, tx pgx.Tx, user, zone, date string, cutoff time.Time) ([]Entry, error) {
+	list, e := repository.ListHistoricalTaskStates(ctx, tx, user, date, cutoff, zone)
 	if e != nil {
 		return nil, e
 	}
 	entries := []Entry{}
 	for _, t := range list {
+		t = projectTask(t, zone)
 		v, err := enrich(ctx, tx, user, t)
 		if err != nil {
 			return nil, err
@@ -43,7 +44,7 @@ func finalizeAt(ctx context.Context, tx pgx.Tx, user, zone, date string, now, cu
 	if exists {
 		return nil
 	}
-	entries, e := endedEntries(ctx, tx, user, date, cutoff)
+	entries, e := endedEntries(ctx, tx, user, zone, date, cutoff)
 	if e != nil {
 		return e
 	}

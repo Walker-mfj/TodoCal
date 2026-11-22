@@ -48,7 +48,7 @@ export function TaskRecurrenceDetails({
                   : "No end date"}
               </dd>
               <dt>Timezone</dt>
-              <dd>{zone}</dd>
+              <dd>{series.data.timezone ?? zone}</dd>
             </dl>
             <small>
               Each occurrence has its own focus goal and sessions. When editing,

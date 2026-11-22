@@ -3,9 +3,10 @@ package models
 import "time"
 
 type Schedule struct {
-	ScheduledDate *string `json:"scheduledDate"`
-	StartTime     *string `json:"startTime"`
-	EndTime       *string `json:"endTime"`
+	ScheduledDate    *string `json:"scheduledDate"`
+	ScheduledEndDate *string `json:"scheduledEndDate"`
+	StartTime        *string `json:"startTime"`
+	EndTime          *string `json:"endTime"`
 }
 type UndoToken struct {
 	ID        string    `json:"id"`

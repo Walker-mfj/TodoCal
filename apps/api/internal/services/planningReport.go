@@ -118,7 +118,7 @@ func DayReport(ctx context.Context, tx pgx.Tx, user, zone, date string, now time
 // DayAt reconstructs a partial historical comparison without changing its snapshot.
 func DayAt(ctx context.Context, tx pgx.Tx, user, zone, date string, cutoff time.Time) (Day, error) {
 	out := Day{Date: date, Timezone: zone, Finalized: true, Entries: []Entry{}}
-	entries, e := endedEntries(ctx, tx, user, date, cutoff.Add(time.Microsecond))
+	entries, e := endedEntries(ctx, tx, user, zone, date, cutoff.Add(time.Microsecond))
 	if e != nil {
 		return out, e
 	}

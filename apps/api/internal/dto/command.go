@@ -2,6 +2,7 @@ package dto
 
 import (
 	"encoding/json"
+	"focuscalendar/internal/localdate"
 	"focuscalendar/internal/models"
 )
 
@@ -83,6 +84,15 @@ func (c Command) TaskPatch(current models.TaskInput) (out models.TaskPatch, err 
 		return out, err
 	}
 	err = mergePatch(patch, current, &out.Task)
+	// Older clients move the date without sending a separate end date.
+	if _, changed := fields["scheduledDate"]; changed {
+		if _, explicit := fields["scheduledEndDate"]; !explicit && out.Task.ScheduledDate != nil && current.ScheduledDate != nil && current.ScheduledEndDate != nil {
+			if _, e := localdate.Parse(*out.Task.ScheduledDate); e == nil {
+				end := localdate.Add(*out.Task.ScheduledDate, localdate.Days(*current.ScheduledDate, *current.ScheduledEndDate))
+				out.Task.ScheduledEndDate = &end
+			}
+		}
+	}
 	if hasRecurrence {
 		fields["recurrence"] = recurrence
 	}

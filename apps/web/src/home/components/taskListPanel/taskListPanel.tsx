@@ -8,6 +8,7 @@ import { errorMessage } from "../../../shared/api/apiClient";
 import type { Task, Group } from "../../../shared/api/domainTypes";
 export function TaskListPanel({
   tasks,
+  zone,
   allGroups,
   disabled,
   complete,
@@ -23,6 +24,7 @@ export function TaskListPanel({
     isPending: boolean;
     error: unknown;
   };
+  zone: string;
   allGroups: Group[];
   disabled: boolean;
   complete: (task: Task) => void;
@@ -66,6 +68,7 @@ export function TaskListPanel({
           <TaskRow
             key={t.id}
             task={t}
+            zone={zone}
             groups={allGroups}
             disabled={disabled}
             onComplete={complete}

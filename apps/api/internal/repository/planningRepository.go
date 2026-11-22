@@ -15,15 +15,15 @@ func ReadGroupPresentation(ctx context.Context, db DBTX, userID string, groupID 
 }
 
 func ListScheduledTasks(ctx context.Context, db DBTX, userID string, date string) ([]models.Task, error) {
-	rows, err := db.Query(ctx, `SELECT `+TaskColumns+` FROM tasks WHERE user_id=$1 AND scheduled_date=$2 AND deleted_at IS NULL ORDER BY start_time NULLS FIRST,id`, userID, date)
+	rows, err := db.Query(ctx, `SELECT `+TaskColumns+` FROM tasks WHERE user_id=$1 AND task_local_date(tasks)=$2::date AND deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM daily_plan_entries p WHERE p.user_id=tasks.user_id AND p.task_id=tasks.id AND p.date<>$2::date) ORDER BY start_time NULLS FIRST,id`, userID, date)
 	if err != nil {
 		return nil, err
 	}
 	return collect(rows, func(row pgx.Row) (models.Task, error) { return ScanTask(row) })
 }
 
-func ListHistoricalTaskStates(ctx context.Context, db DBTX, userID string, date string, cutoff time.Time) ([]models.Task, error) {
-	rows, err := db.Query(ctx, `WITH latest AS (SELECT DISTINCT ON(task_id) task_id,kind,after_state FROM task_events WHERE user_id=$1 AND (occurred_at<$3 OR historical_adjustment) ORDER BY task_id,occurred_at DESC,(after_state->>'revision')::bigint DESC) SELECT after_state FROM latest WHERE kind<>'deleted' AND after_state->>'scheduledDate'=$2 ORDER BY after_state->>'startTime' NULLS FIRST,task_id`, userID, date, cutoff)
+func ListHistoricalTaskStates(ctx context.Context, db DBTX, userID string, date string, cutoff time.Time, zone string) ([]models.Task, error) {
+	rows, err := db.Query(ctx, `WITH latest AS (SELECT DISTINCT ON(task_id) task_id,kind,after_state FROM task_events WHERE user_id=$1 AND (occurred_at<$3 OR historical_adjustment) ORDER BY task_id,occurred_at DESC,(after_state->>'revision')::bigint DESC) SELECT after_state FROM latest WHERE kind<>'deleted' AND NOT EXISTS(SELECT 1 FROM daily_plan_entries p WHERE p.user_id=$1 AND p.task_id=latest.task_id AND p.date<>$2::date) AND COALESCE(((after_state->>'scheduledStartAt')::timestamptz AT TIME ZONE $4)::date,(after_state->>'scheduledDate')::date)=$2::date ORDER BY after_state->>'startTime' NULLS FIRST,task_id`, userID, date, cutoff, zone)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +52,7 @@ func ReadPlanningCursor(ctx context.Context, db DBTX, userID string, resultThrou
 
 func FindFirstUnsettledDate(ctx context.Context, db DBTX, userID string, today string, next *string, resultFirst **string) error {
 	return db.QueryRow(ctx, `SELECT min(d)::text FROM (
- SELECT (after_state->>'scheduledDate')::date AS d FROM task_events WHERE user_id=$1 AND after_state->>'scheduledDate' IS NOT NULL
+ SELECT COALESCE(((after_state->>'scheduledStartAt')::timestamptz AT TIME ZONE (SELECT timezone FROM settings WHERE user_id=$1))::date,(after_state->>'scheduledDate')::date) AS d FROM task_events WHERE user_id=$1 AND after_state->>'scheduledDate' IS NOT NULL
  UNION SELECT GREATEST(start_date,COALESCE($3::date,start_date)) FROM recurrence_series WHERE user_id=$1 AND (end_date IS NULL OR end_date>=GREATEST(start_date,COALESCE($3::date,start_date))) AND (stopped_after IS NULL OR stopped_after>=GREATEST(start_date,COALESCE($3::date,start_date)))
  ) candidates WHERE d<$2::date AND NOT EXISTS(SELECT 1 FROM daily_snapshots WHERE user_id=$1 AND date=d)`, userID, today, next).Scan(resultFirst)
 }

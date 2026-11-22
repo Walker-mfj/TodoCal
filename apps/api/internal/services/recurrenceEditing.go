@@ -24,10 +24,20 @@ func UpdateFromTask(ctx context.Context, tx pgx.Tx, user, zone string, now time.
 	if sr.Revision != revision {
 		return Task{}, Conflict()
 	}
+	in, err = inputInZone(in, selected, zone, sr.Timezone)
+	if err != nil {
+		return Task{}, err
+	}
+	selected = projectTask(selected, sr.Timezone)
+	fields = seriesScheduleFields(fields, selected.TaskInput, in)
+	zone = sr.Timezone
 	if in.ScheduledDate == nil || selected.ScheduledDate == nil {
 		return Task{}, Invalid("Repeating tasks require a scheduled date")
 	}
 	if err = Validate(&in, zone, now, &selected); err != nil {
+		return Task{}, err
+	}
+	if err = validateSeriesSpan(in); err != nil {
 		return Task{}, err
 	}
 	if err = CheckGroup(ctx, tx, user, in.GroupID); err != nil {
@@ -58,15 +68,16 @@ func UpdateFromTask(ctx context.Context, tx pgx.Tx, user, zone string, now time.
 		clock := d.Format("15:04:05")
 		deadlineOffset, deadlineClock = &n, &clock
 	}
-	affected, err := repository.ListEditableOccurrences(ctx, tx, user, sr.ID, today)
+	affected, err := repository.ListEditableOccurrences(ctx, tx, user, sr.ID, today, zone)
 	if err != nil {
 		return Task{}, err
 	}
 	result := selected
 	for _, old := range affected {
+		old = projectTask(old, zone)
 		next := applyFields(old.TaskInput, in, fields)
 		date := localdate.Add(*old.ScheduledDate, delta)
-		next.ScheduledDate = &date
+		shiftScheduleDate(&next, date)
 		if editsDeadline && deadlineOffset != nil {
 			d, e := localdate.Instant(localdate.Add(date, *deadlineOffset), *deadlineClock, loc)
 			if e != nil {
@@ -97,11 +108,11 @@ func UpdateFromTask(ctx context.Context, tx pgx.Tx, user, zone string, now time.
 	// Validate the merged lazy template independently of occurrence overrides.
 	// Its cadence anchor can be historical, so use the selected effective date.
 	validationDate := localdate.Add(*selected.ScheduledDate, delta)
-	in.ScheduledDate = &validationDate
+	shiftScheduleDate(&in, validationDate)
 	if err = Validate(&in, zone, now, nil); err != nil {
 		return Task{}, err
 	}
-	in.ScheduledDate = &effectiveAnchor
+	shiftScheduleDate(&in, effectiveAnchor)
 	raw, err := json.Marshal(in)
 	if err != nil {
 		return Task{}, err
@@ -132,6 +143,13 @@ func applyFields(base, edited TaskInput, fields map[string]json.RawMessage) Task
 			base.StartTime = edited.StartTime
 		case "endTime":
 			base.EndTime = edited.EndTime
+		case "scheduledEndDate":
+			if edited.ScheduledEndDate == nil {
+				base.ScheduledEndDate = nil
+			} else if base.ScheduledDate != nil && edited.ScheduledDate != nil {
+				end := localdate.Add(*base.ScheduledDate, localdate.Days(*edited.ScheduledDate, *edited.ScheduledEndDate))
+				base.ScheduledEndDate = &end
+			}
 		case "deadline":
 			base.Deadline = edited.Deadline
 		case "focusMinutes":
@@ -141,4 +159,38 @@ func applyFields(base, edited TaskInput, fields map[string]json.RawMessage) Task
 		}
 	}
 	return base
+}
+
+// Account-local changes can also change the end-day offset or clocks in the
+// series zone. Carry those derived changes into both instances and templates.
+func seriesScheduleFields(fields map[string]json.RawMessage, before, after TaskInput) map[string]json.RawMessage {
+	changed := false
+	for _, key := range []string{"scheduledDate", "scheduledEndDate", "startTime", "endTime"} {
+		if _, ok := fields[key]; ok {
+			changed = true
+		}
+	}
+	if !changed {
+		return fields
+	}
+	out := make(map[string]json.RawMessage, len(fields)+3)
+	for k, v := range fields {
+		out[k] = v
+	}
+	if !sameDate(before.StartTime, after.StartTime) {
+		out["startTime"] = nil
+	}
+	if !sameDate(before.EndTime, after.EndTime) {
+		out["endTime"] = nil
+	}
+	span := func(in TaskInput) int {
+		if in.ScheduledDate == nil || in.ScheduledEndDate == nil {
+			return 0
+		}
+		return localdate.Days(*in.ScheduledDate, *in.ScheduledEndDate)
+	}
+	if span(before) != span(after) {
+		out["scheduledEndDate"] = nil
+	}
+	return out
 }

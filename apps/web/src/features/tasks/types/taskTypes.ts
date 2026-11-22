@@ -5,6 +5,7 @@ export type Draft = {
   groupId?: string;
   priority?: Task["priority"];
   scheduledDate?: string;
+  scheduledEndDate?: string;
   startTime?: string;
   endTime?: string;
   deadline?: string;

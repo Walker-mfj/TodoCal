@@ -1,5 +1,11 @@
 import { it, expect, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { SettingsForm } from "./settingsForm";
 const notifications = {
   publicKey: "",
@@ -407,4 +413,36 @@ it("reloads revoked devices on return without replacing unsaved preferences", as
   );
   expect(screen.getByLabelText("Appearance")).toHaveValue("dark");
   expect(screen.getByLabelText("Scheduled task reminders")).toBeChecked();
+});
+
+it("searches timezones, selects by keyboard, and uses the device timezone", async () => {
+  render(
+    <SettingsForm
+      read={read}
+      owner="timezone-picker"
+      settings={settings}
+      execute={vi.fn()}
+      refresh={vi.fn()}
+      disabled={false}
+    />,
+  );
+  const input = await screen.findByRole("combobox", { name: "Timezone" });
+  fireEvent.focus(input);
+  expect(
+    screen.getByRole("option", { name: "Asia/Ho_Chi_Minh" }),
+  ).toBeInTheDocument();
+  fireEvent.change(input, { target: { value: "ho chi" } });
+  fireEvent.keyDown(input, { key: "ArrowDown" });
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(input).toHaveValue("Asia/Ho_Chi_Minh");
+  expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Use device timezone" }));
+  expect(input).toHaveValue(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  fireEvent.focus(input);
+  fireEvent.change(input, { target: { value: "not a timezone" } });
+  expect(
+    within(screen.getByRole("listbox")).queryByRole("option"),
+  ).not.toBeInTheDocument();
+  fireEvent.keyDown(input, { key: "Escape" });
+  expect(input).toHaveValue(Intl.DateTimeFormat().resolvedOptions().timeZone);
 });

@@ -84,7 +84,9 @@ export function TaskDetail({
   const historicalEntry = historicalDay.data?.entries.find(
     (entry) => entry.task.id === task.id,
   );
-  const scheduleZone = historical ? historicalDay.data?.timezone : zone;
+  const scheduleZone = historical
+    ? (historicalEntry?.timezone ?? historicalDay.data?.timezone)
+    : zone;
   const schedule = taskSchedule(task, scheduleZone);
   const groupName = historical
     ? historicalDay.isPending

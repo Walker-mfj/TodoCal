@@ -90,3 +90,13 @@ func ListOverlappingHistoricalDates(ctx context.Context, db DBTX, user, from str
 		return date, err
 	})
 }
+
+// Supplemental contributions are accepted live state, not a reconstruction
+// limited by a midnight that may precede their creation in the former zone.
+func ListUnattributedTasks(ctx context.Context, db DBTX, user, date string) ([]models.Task, error) {
+	rows, err := db.Query(ctx, `SELECT `+TaskColumns+` FROM tasks WHERE user_id=$1 AND task_local_date(tasks)=$2::date AND deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM daily_plan_entries p WHERE p.user_id=tasks.user_id AND p.task_id=tasks.id)`, user, date)
+	if err != nil {
+		return nil, err
+	}
+	return collect(rows, func(row pgx.Row) (models.Task, error) { return ScanTask(row) })
+}

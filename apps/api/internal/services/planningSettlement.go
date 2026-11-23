@@ -139,12 +139,8 @@ func settleReopenedDays(ctx context.Context, tx pgx.Tx, user, zone, today string
 	if err != nil {
 		return err
 	}
-	loc, err := time.LoadLocation(zone)
-	if err != nil {
-		return err
-	}
 	for _, date := range dates {
-		if err := supplementSnapshot(ctx, tx, user, zone, date, localdate.Boundary(localdate.Add(date, 1), loc)); err != nil {
+		if err := supplementSnapshot(ctx, tx, user, zone, date); err != nil {
 			return err
 		}
 	}

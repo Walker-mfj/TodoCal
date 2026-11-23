@@ -42,7 +42,7 @@ func finalizeAt(ctx context.Context, tx pgx.Tx, user, zone, date string, now, cu
 		return e
 	}
 	if exists {
-		return supplementSnapshot(ctx, tx, user, zone, date, cutoff)
+		return supplementSnapshot(ctx, tx, user, zone, date)
 	}
 	entries, e := endedEntries(ctx, tx, user, zone, date, cutoff)
 	if e != nil {
@@ -83,13 +83,17 @@ func finalizeAt(ctx context.Context, tx pgx.Tx, user, zone, date string, now, cu
 
 // Add only previously unattributed contributions; accepted entry payloads stay
 // intact, including when a forward zone jump seals a reopened date early.
-func supplementSnapshot(ctx context.Context, tx pgx.Tx, user, zone, date string, cutoff time.Time) error {
-	entries, err := endedEntries(ctx, tx, user, zone, date, cutoff)
+func supplementSnapshot(ctx context.Context, tx pgx.Tx, user, zone, date string) error {
+	tasks, err := repository.ListUnattributedTasks(ctx, tx, user, date)
 	if err != nil {
 		return err
 	}
 	changed := false
-	for _, entry := range entries {
+	for _, task := range tasks {
+		entry, err := enrich(ctx, tx, user, projectTask(task, zone))
+		if err != nil {
+			return err
+		}
 		entry.Timezone = zone
 		raw, err := json.Marshal(entry)
 		if err != nil {

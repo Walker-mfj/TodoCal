@@ -26,8 +26,8 @@ func ListMaterializableSeries(ctx context.Context, db DBTX, userID string, from 
 	return collect(rows, func(row pgx.Row) (models.Series, error) { return scanMaterializableSeries(row) })
 }
 
-func OccurrenceIsMaterialized(ctx context.Context, db DBTX, userID string, seriesID string, original string, date string, explicit string, resultExists *bool) error {
-	return db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM recurrence_series WHERE user_id=$1 AND id=$2 AND original_cutoff <= $3::date) OR EXISTS(SELECT 1 FROM tasks WHERE user_id=$1 AND series_id=$2 AND original_occurrence_date=$3) OR EXISTS(SELECT 1 FROM recurrence_exceptions WHERE user_id=$1 AND series_id=$2 AND original_occurrence_date=$3) OR ($2::text<>$5 AND EXISTS(SELECT 1 FROM daily_snapshots WHERE user_id=$1 AND date=$4))`, userID, seriesID, original, date, explicit).Scan(resultExists)
+func OccurrenceIsMaterialized(ctx context.Context, db DBTX, userID string, seriesID string, original string, date string, explicit string, startAt *time.Time, zone string, resultExists *bool) error {
+	return db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM recurrence_series WHERE user_id=$1 AND id=$2 AND original_cutoff <= $3::date) OR EXISTS(SELECT 1 FROM tasks WHERE user_id=$1 AND series_id=$2 AND original_occurrence_date=$3) OR EXISTS(SELECT 1 FROM recurrence_exceptions WHERE user_id=$1 AND series_id=$2 AND original_occurrence_date=$3) OR ($2::text<>$5 AND EXISTS(SELECT 1 FROM daily_snapshots WHERE user_id=$1 AND date=$4 AND NOT ($6::timestamptz IS NOT NULL AND $6 >= (($4::date+1)::timestamp AT TIME ZONE timezone) AND $6 < (($4::date+1)::timestamp AT TIME ZONE $7))))`, userID, seriesID, original, date, explicit, startAt, zone).Scan(resultExists)
 }
 
 func InsertInvalidTimeException(ctx context.Context, db DBTX, userID string, seriesID string, date string, now time.Time) (pgconn.CommandTag, error) {

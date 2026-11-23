@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"context"
 	"github.com/google/uuid"
 	"testing"
 	"time"
@@ -157,5 +158,45 @@ func TestStopPreservesOccurrenceFinalizedInAnotherZone(t *testing.T) {
 	day := calendar(t, s, c, "2030-12-01", "2030-12-02")["days"].([]any)[0].(map[string]any)
 	if day["planned"] != float64(1) || day["timezone"] != "Asia/Ho_Chi_Minh" {
 		t.Fatal("stop removed accepted occurrence", day)
+	}
+}
+
+func TestLateCreatedTaskSurvivesRetroactiveSnapshotCutoff(t *testing.T) {
+	s, _ := testServer(t)
+	now := time.Date(2030, 12, 1, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return now }
+	c, csrf := register(t, s, "late-contribution@example.com")
+	object(t, command(s, "PATCH", "/api/v1/settings", map[string]any{"timezone": "Asia/Tokyo", "expectedRevision": 1}, c, csrf, uuid.NewString()), 200)
+	object(t, command(s, "POST", "/api/v1/tasks", map[string]any{"title": "Old plan", "scheduledDate": "2030-12-01"}, c, csrf, uuid.NewString()), 201)
+	now = time.Date(2030, 12, 2, 0, 0, 0, 0, time.UTC)
+	renewTestSession(t, s, c, &csrf)
+	object(t, command(s, "POST", "/api/v1/tasks", map[string]any{"title": "Created after new cutoff", "scheduledDate": "2030-12-02", "startTime": "00:30", "endTime": "01:00"}, c, csrf, uuid.NewString()), 201)
+	object(t, command(s, "PATCH", "/api/v1/settings", map[string]any{"timezone": "Asia/Ho_Chi_Minh", "expectedRevision": 2}, c, csrf, uuid.NewString()), 200)
+	for i := 0; i < 2; i++ {
+		day := calendar(t, s, c, "2030-12-01", "2030-12-02")["days"].([]any)[0].(map[string]any)
+		if day["planned"] != float64(2) {
+			t.Fatal("late contribution excluded by retroactive cutoff", day)
+		}
+	}
+}
+
+func TestLazyOccurrenceCanEnterExtendedFinalizedDay(t *testing.T) {
+	s, pool := testServer(t)
+	now := time.Date(2030, 11, 30, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return now }
+	c, csrf := register(t, s, "lazy-extension@example.com")
+	object(t, command(s, "PATCH", "/api/v1/settings", map[string]any{"timezone": "Asia/Tokyo", "expectedRevision": 1}, c, csrf, uuid.NewString()), 200)
+	object(t, command(s, "POST", "/api/v1/series", map[string]any{"task": map[string]any{"title": "Lazy", "scheduledDate": "2030-12-01", "startTime": "01:30", "endTime": "02:00"}, "cadence": "daily"}, c, csrf, uuid.NewString()), 201)
+	object(t, command(s, "PATCH", "/api/v1/settings", map[string]any{"timezone": "Asia/Ho_Chi_Minh", "expectedRevision": 2}, c, csrf, uuid.NewString()), 200)
+	// Simulate an accepted Tokyo day without materializing its next-day slot.
+	_, err := pool.Exec(context.Background(), `INSERT INTO daily_snapshots(user_id,date,timezone,planned,completed,finalized_at) SELECT id,'2030-12-04','Asia/Tokyo',0,0,'2030-12-04T15:00:00Z' FROM users WHERE email='lazy-extension@example.com'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now = time.Date(2030, 12, 6, 12, 0, 0, 0, time.UTC)
+	renewTestSession(t, s, c, &csrf)
+	day := calendar(t, s, c, "2030-12-04", "2030-12-05")["days"].([]any)[0].(map[string]any)
+	if day["planned"] != float64(1) {
+		t.Fatal("lazy slot suppressed by old snapshot", day)
 	}
 }

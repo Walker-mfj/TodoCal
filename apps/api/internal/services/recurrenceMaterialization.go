@@ -88,7 +88,7 @@ func materializeSelected(ctx context.Context, tx pgx.Tx, user, zone, from, to st
 			// Cutoffs and durable exceptions suppress slots before recording any
 			// invalid-time prediction, including slots transferred to a split series.
 			var exists bool
-			e = repository.OccurrenceIsMaterialized(ctx, tx, user, sr.ID, original, reportDate, explicit, &exists)
+			e = repository.OccurrenceIsMaterialized(ctx, tx, user, sr.ID, original, reportDate, explicit, startAt, zone, &exists)
 			if e != nil {
 				return e
 			}

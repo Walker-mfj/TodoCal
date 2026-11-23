@@ -133,6 +133,7 @@ func TestReopenedDateIncludesAndSettlesNewContributions(t *testing.T) {
 	object(t, command(s, "POST", "/api/v1/tasks", map[string]any{"title": "Original", "scheduledDate": "2030-12-01"}, c, csrf, uuid.NewString()), 201)
 	object(t, command(s, "POST", "/api/v1/tasks", map[string]any{"title": "New contribution", "scheduledDate": "2030-12-02", "startTime": "01:30", "endTime": "01:45"}, c, csrf, uuid.NewString()), 201)
 	now = time.Date(2030, 12, 1, 15, 10, 0, 0, time.UTC)
+	renewTestSession(t, s, c, &csrf)
 	object(t, command(s, "PATCH", "/api/v1/settings", map[string]any{"timezone": "Asia/Ho_Chi_Minh", "expectedRevision": 2}, c, csrf, uuid.NewString()), 200)
 	for i := 0; i < 2; i++ {
 		day := calendar(t, s, c, "2030-12-01", "2030-12-02")["days"].([]any)[0].(map[string]any)
@@ -140,6 +141,7 @@ func TestReopenedDateIncludesAndSettlesNewContributions(t *testing.T) {
 			t.Fatal("lost contribution", day)
 		}
 		now = time.Date(2030, 12, 1, 18, 0, 0, 0, time.UTC)
+		renewTestSession(t, s, c, &csrf)
 	}
 }
 

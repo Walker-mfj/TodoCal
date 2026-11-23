@@ -1,5 +1,6 @@
 """Test E2E runner cleanup with fake tools; never contact Docker/Postgres."""
 import os
+import base64
 from pathlib import Path
 import shutil
 import subprocess
@@ -113,6 +114,34 @@ class RunnerLifecycle(unittest.TestCase):
 
     def test_cleanup_failure_is_not_silent(self):
         self.run_case('drop-fail', 1)
+
+
+class PushIdentity(unittest.TestCase):
+    def test_short_private_scalar_is_padded_and_matches_public_key(self):
+        # Force the leading-zero case instead of relying on random generation.
+        with tempfile.TemporaryDirectory() as folder:
+            preload = Path(folder) / 'short-key.cjs'
+            preload.write_text("""
+const crypto = require('node:crypto');
+const original = crypto.createECDH;
+crypto.createECDH = (...args) => {
+  const key = original(...args);
+  key.setPrivateKey(Buffer.from([1]));
+  key.generateKeys = () => key.getPublicKey();
+  return key;
+};
+""")
+            env = dict(os.environ, NODE_OPTIONS='--require=' + str(preload))
+            result = subprocess.run(
+                ['sh', '-c', '. ./scripts/e2ePushEnv.sh; printf "%s\\n%s\\n" "$VAPID_PRIVATE_KEY" "$VAPID_PUBLIC_KEY"'],
+                cwd=ROOT, env=env, capture_output=True, text=True, check=True)
+            private, public = result.stdout.splitlines()
+            decode = lambda value: base64.urlsafe_b64decode(value + '=' * (-len(value) % 4))
+            self.assertEqual(decode(private), bytes(31) + b'\x01')
+            # Standard P-256 generator: public key for private scalar 1.
+            self.assertEqual(decode(public).hex(),
+                             '046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296'
+                             '4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5')
 
 
 if __name__ == '__main__':

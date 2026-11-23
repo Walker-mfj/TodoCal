@@ -50,11 +50,13 @@ func ReadPlanningCursor(ctx context.Context, db DBTX, userID string, resultThrou
 	return db.QueryRow(ctx, `SELECT caught_up_through::text FROM planning_state WHERE user_id=$1`, userID).Scan(resultThrough)
 }
 
+// The cursor bounds reconstruction for both journal dates and recurrence dates.
+// Unattributed live tasks behind it are settled after reconstruction completes.
 func FindFirstUnsettledDate(ctx context.Context, db DBTX, userID string, today string, next *string, resultFirst **string) error {
 	return db.QueryRow(ctx, `SELECT min(d)::text FROM (
  SELECT COALESCE(((after_state->>'scheduledStartAt')::timestamptz AT TIME ZONE (SELECT timezone FROM settings WHERE user_id=$1))::date,(after_state->>'scheduledDate')::date) AS d FROM task_events WHERE user_id=$1 AND after_state->>'scheduledDate' IS NOT NULL
  UNION SELECT GREATEST(start_date,COALESCE($3::date,start_date)) FROM recurrence_series WHERE user_id=$1 AND (end_date IS NULL OR end_date>=GREATEST(start_date,COALESCE($3::date,start_date))) AND (stopped_after IS NULL OR stopped_after>=GREATEST(start_date,COALESCE($3::date,start_date)))
- ) candidates WHERE d<$2::date AND NOT EXISTS(SELECT 1 FROM daily_snapshots WHERE user_id=$1 AND date=d)`, userID, today, next).Scan(resultFirst)
+ ) candidates WHERE d<$2::date AND ($3::date IS NULL OR d>=$3::date) AND NOT EXISTS(SELECT 1 FROM daily_snapshots WHERE user_id=$1 AND date=d)`, userID, today, next).Scan(resultFirst)
 }
 
 func AdvancePlanningCursor(ctx context.Context, db DBTX, userID string, through string) (pgconn.CommandTag, error) {

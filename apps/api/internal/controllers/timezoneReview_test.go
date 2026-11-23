@@ -2,7 +2,10 @@ package controllers
 
 import (
 	"context"
+	"fmt"
+	"focuscalendar/internal/services"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"testing"
 	"time"
 )
@@ -244,6 +247,72 @@ func TestLiveReopenedOccurrenceRemainsEligibleForSeriesEdits(t *testing.T) {
 			updated := object(t, req(s, "GET", "/api/v1/tasks/"+live["id"].(string), nil, c, ""), 200)
 			if updated["title"] != "Edited live" {
 				t.Fatal("live reopened occurrence skipped", updated)
+			}
+		})
+	}
+}
+
+func TestLateCreatedTaskCatchupBeyondOneBatch(t *testing.T) {
+	for _, recurring := range []bool{false, true} {
+		t.Run(fmt.Sprint(recurring), func(t *testing.T) {
+			s, pool := testServer(t)
+			now := time.Date(2030, 12, 1, 12, 0, 0, 0, time.UTC)
+			s.now = func() time.Time { return now }
+			c, csrf := register(t, s, "long-catchup@example.com")
+			object(t, command(s, "PATCH", "/api/v1/settings", map[string]any{"timezone": "Asia/Tokyo", "expectedRevision": 1}, c, csrf, uuid.NewString()), 200)
+			if recurring {
+				object(t, command(s, "POST", "/api/v1/series", map[string]any{"task": map[string]any{"title": "Catch-up plan", "scheduledDate": "2030-12-03"}, "cadence": "daily"}, c, csrf, uuid.NewString()), 201)
+			}
+			now = time.Date(2030, 12, 2, 0, 0, 0, 0, time.UTC)
+			renewTestSession(t, s, c, &csrf)
+			task := object(t, command(s, "POST", "/api/v1/tasks", map[string]any{"title": "Late contribution", "scheduledDate": "2030-12-02", "startTime": "00:30", "endTime": "01:00"}, c, csrf, uuid.NewString()), 201)
+			object(t, command(s, "PATCH", "/api/v1/settings", map[string]any{"timezone": "Asia/Ho_Chi_Minh", "expectedRevision": 2}, c, csrf, uuid.NewString()), 200)
+			var user string
+			if err := pool.QueryRow(context.Background(), `SELECT user_id FROM tasks WHERE id=$1`, task["id"]).Scan(&user); err != nil {
+				t.Fatal(err)
+			}
+			var exists bool
+			if err := pool.QueryRow(context.Background(), `SELECT EXISTS(SELECT 1 FROM daily_snapshots WHERE user_id=$1 AND date='2030-12-01')`, user).Scan(&exists); err != nil {
+				t.Fatal(err)
+			}
+			if exists {
+				t.Fatal("destination must start without a snapshot")
+			}
+			now = now.AddDate(0, 0, 40)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			batches := 0
+			// Exercise the same transaction loop used by Calendar, Reports and writes.
+			clock := func() time.Time { batches++; return now }
+			for i := 0; i < 2; i++ {
+				err := services.WithTx(ctx, pool, user, clock, func(tx pgx.Tx, zone string, at time.Time) error {
+					day, err := services.DayReport(ctx, tx, user, zone, "2030-12-01", at)
+					if err != nil {
+						return err
+					}
+					if day.Planned != 1 || len(day.Entries) != 1 || day.Entries[0].Task.ID != task["id"] {
+						return fmt.Errorf("lost or duplicate contribution: %+v", day)
+					}
+					if recurring {
+						later, err := services.DayReport(ctx, tx, user, zone, "2031-01-05", at)
+						if err != nil {
+							return err
+						}
+						if later.Planned != 1 {
+							return fmt.Errorf("later batch not reconstructed: %+v", later)
+						}
+					}
+					return nil
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			if batches > 3 {
+				t.Fatalf("catch-up did not advance: %d batches", batches)
+			}
+			if recurring && batches != 3 {
+				t.Fatalf("expected two catch-up batches plus repeat, got %d", batches)
 			}
 		})
 	}

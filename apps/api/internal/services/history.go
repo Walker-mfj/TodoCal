@@ -13,7 +13,7 @@ import (
 
 // Explicit mutations adjust only this task's contribution, preserving other
 // tasks' historical state and the original snapshot timezone.
-func refreshHistorical(ctx context.Context, tx pgx.Tx, user, zone string, now time.Time, before *Task, after Task) error {
+func refreshHistorical(ctx context.Context, tx pgx.Tx, user, zone string, now time.Time, before *Task, after Task, restored map[string]string) error {
 	loc, err := time.LoadLocation(zone)
 	if err != nil {
 		return err
@@ -45,6 +45,11 @@ func refreshHistorical(ctx context.Context, tx pgx.Tx, user, zone string, now ti
 	if e != nil {
 		return e
 	}
+	// Only journaled task attribution can reopen a same-day historical entry.
+	for date := range restored {
+		dates[date] = true
+		attributed[date] = true
+	}
 	if before != nil && sameScheduledStart(*before, after) && len(attributed) > 0 {
 		dates = attributed
 	}
@@ -69,7 +74,9 @@ func refreshHistorical(ctx context.Context, tx pgx.Tx, user, zone string, now ti
 		if err = tx.QueryRow(ctx, `SELECT COALESCE((SELECT task_state->>'timezone' FROM daily_plan_entries WHERE user_id=$1 AND date=$2 AND task_id=$3),timezone) FROM daily_snapshots WHERE user_id=$1 AND date=$2`, user, date, after.ID).Scan(&snapshotZone); err != nil {
 			return err
 		}
-		if !attributed[date] {
+		if savedZone, ok := restored[date]; ok {
+			snapshotZone = savedZone
+		} else if !attributed[date] {
 			snapshotZone = zone
 		}
 		snapshotTask := projectTask(after, snapshotZone)

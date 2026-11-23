@@ -19,6 +19,16 @@ func Event(ctx context.Context, tx pgx.Tx, user, zone, kind string, now time.Tim
 // Automatic lazy materialization only journals the occurrence. Settlement must
 // collect the complete day's states before creating its snapshot.
 func recordTaskEvent(ctx context.Context, tx pgx.Tx, user, zone, kind string, now time.Time, before *Task, after Task, adjustHistory bool) error {
+	var attribution map[string]string
+	var attributionErr error
+	if kind == "deleted" {
+		attribution, attributionErr = deletionAttribution(ctx, tx, user, after.ID)
+	} else if kind == "restored" && before != nil && sameScheduledStart(*before, after) {
+		attribution, attributionErr = restoredAttribution(ctx, tx, user, *before)
+	}
+	if attributionErr != nil {
+		return attributionErr
+	}
 	if before != nil {
 		var savedZone, savedDate string
 		e := tx.QueryRow(ctx, `SELECT COALESCE(p.task_state->>'timezone',s.timezone),p.date::text FROM daily_plan_entries p JOIN daily_snapshots s ON s.user_id=p.user_id AND s.date=p.date WHERE p.user_id=$1 AND p.task_id=$2 ORDER BY p.date DESC LIMIT 1`, user, after.ID).Scan(&savedZone, &savedDate)
@@ -58,11 +68,11 @@ func recordTaskEvent(ctx context.Context, tx pgx.Tx, user, zone, kind string, no
 			return err
 		}
 	}
-	next, err := json.Marshal(after)
+	next, err := json.Marshal(deletionState{Task: after, HistoricalAttribution: attribution})
 	if err != nil {
 		return err
 	}
-	historical := after.ScheduledDate != nil && *after.ScheduledDate < now.In(loc).Format("2006-01-02")
+	historical := len(attribution) > 0 || (after.ScheduledDate != nil && *after.ScheduledDate < now.In(loc).Format("2006-01-02"))
 	if before != nil && before.ScheduledDate != nil && *before.ScheduledDate < now.In(loc).Format("2006-01-02") {
 		historical = true
 	}
@@ -73,7 +83,7 @@ func recordTaskEvent(ctx context.Context, tx pgx.Tx, user, zone, kind string, no
 	if !adjustHistory || kind == "group_cleared" || kind == "series_reparented" {
 		return nil
 	}
-	return refreshHistorical(ctx, tx, user, zone, now, before, after)
+	return refreshHistorical(ctx, tx, user, zone, now, before, after, attribution)
 }
 
 func Exception(ctx context.Context, tx pgx.Tx, user string, t Task, reason string, now time.Time) error {

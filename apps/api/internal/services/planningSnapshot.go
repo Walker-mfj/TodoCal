@@ -42,7 +42,7 @@ func finalizeAt(ctx context.Context, tx pgx.Tx, user, zone, date string, now, cu
 		return e
 	}
 	if exists {
-		return nil
+		return supplementSnapshot(ctx, tx, user, zone, date, cutoff)
 	}
 	entries, e := endedEntries(ctx, tx, user, zone, date, cutoff)
 	if e != nil {
@@ -79,4 +79,30 @@ func finalizeAt(ctx context.Context, tx pgx.Tx, user, zone, date string, now, cu
 		}
 	}
 	return nil
+}
+
+// Add only previously unattributed contributions; accepted entry payloads stay
+// intact, including when a forward zone jump seals a reopened date early.
+func supplementSnapshot(ctx context.Context, tx pgx.Tx, user, zone, date string, cutoff time.Time) error {
+	entries, err := endedEntries(ctx, tx, user, zone, date, cutoff)
+	if err != nil {
+		return err
+	}
+	changed := false
+	for _, entry := range entries {
+		entry.Timezone = zone
+		raw, err := json.Marshal(entry)
+		if err != nil {
+			return err
+		}
+		tag, err := tx.Exec(ctx, `INSERT INTO daily_plan_entries(user_id,date,task_id,task_state) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING`, user, date, entry.Task.ID, raw)
+		if err != nil {
+			return err
+		}
+		changed = changed || tag.RowsAffected() > 0
+	}
+	if changed {
+		_, err = repository.RecountSnapshot(ctx, tx, user, date)
+	}
+	return err
 }

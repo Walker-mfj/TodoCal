@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"time"
 
@@ -145,21 +144,7 @@ func settleReopenedDays(ctx context.Context, tx pgx.Tx, user, zone, today string
 		return err
 	}
 	for _, date := range dates {
-		entries, err := endedEntries(ctx, tx, user, zone, date, localdate.Boundary(localdate.Add(date, 1), loc))
-		if err != nil {
-			return err
-		}
-		for _, entry := range entries {
-			entry.Timezone = zone
-			raw, err := json.Marshal(entry)
-			if err != nil {
-				return err
-			}
-			if _, err = tx.Exec(ctx, `INSERT INTO daily_plan_entries(user_id,date,task_id,task_state) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING`, user, date, entry.Task.ID, raw); err != nil {
-				return err
-			}
-		}
-		if _, err = repository.RecountSnapshot(ctx, tx, user, date); err != nil {
+		if err := supplementSnapshot(ctx, tx, user, zone, date, localdate.Boundary(localdate.Add(date, 1), loc)); err != nil {
 			return err
 		}
 	}

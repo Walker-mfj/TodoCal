@@ -35,13 +35,13 @@ export function calendarEvents({
     ]),
   );
   for (const day of days) {
-    for (const { task, groupColor } of day.entries) {
-      if (day.finalized || !entries.has(task.id)) {
+    for (const { task, groupColor, timezone: entryZone, live } of day.entries) {
+      if ((day.finalized && !live) || !entries.has(task.id)) {
         entries.set(task.id, {
           task,
           groupColor,
-          zone: day.finalized ? day.timezone : zone,
-          historical: day.finalized,
+          zone: entryZone || (day.finalized ? day.timezone : zone),
+          historical: day.finalized && !live,
           date: day.date,
         });
       }

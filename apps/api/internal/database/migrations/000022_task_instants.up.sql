@@ -20,7 +20,12 @@ $$;
 -- represent both endpoints. If no provenance exists, normalize the start with
 -- PostgreSQL's gap rule and preserve the previously positive wall duration.
 WITH legacy AS (
- SELECT t.user_id,t.id,t.scheduled_date+t.start_time AS wall_start,t.scheduled_date+t.end_time AS wall_end,s.timezone,
+ SELECT t.user_id,t.id,t.scheduled_date+t.start_time AS wall_start,t.scheduled_date+t.end_time AS wall_end,COALESCE((SELECT ds.timezone FROM daily_plan_entries p JOIN daily_snapshots ds ON ds.user_id=p.user_id AND ds.date=p.date
+ WHERE p.user_id=t.user_id AND p.task_id=t.id
+ AND p.task_state->'task'->>'scheduledDate'=t.scheduled_date::text
+ AND p.task_state->'task'->>'startTime'=to_char(t.start_time,'HH24:MI')
+ AND p.task_state->'task'->>'endTime'=to_char(t.end_time,'HH24:MI')
+ ORDER BY p.date DESC LIMIT 1),s.timezone) AS timezone,
  (SELECT e.timezone FROM task_events e WHERE e.user_id=t.user_id AND e.task_id=t.id
   AND e.after_state->>'scheduledDate'=t.scheduled_date::text
   AND e.after_state->>'startTime'=to_char(t.start_time,'HH24:MI')

@@ -1026,6 +1026,10 @@ export interface components {
       stoppedAfter: string;
     };
     PlanEntry: {
+      /** @description Timezone of a supplemental entry; otherwise inherit the snapshot timezone. */
+      timezone?: string;
+      /** @description An unfinalized contribution to a reopened reporting date. */
+      live?: boolean;
       task: components["schemas"]["Task"];
       groupName: string | null;
       groupColor: string | null;

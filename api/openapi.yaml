@@ -1812,6 +1812,12 @@ components:
       type: object
       additionalProperties: false
       properties:
+        timezone:
+          type: string
+          description: Timezone of a supplemental entry; otherwise inherit the snapshot timezone.
+        live:
+          type: boolean
+          description: An unfinalized contribution to a reopened reporting date.
         task:
           $ref: '#/components/schemas/Task'
         groupName:

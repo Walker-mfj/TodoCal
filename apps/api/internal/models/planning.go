@@ -1,6 +1,8 @@
 package models
 
 type Entry struct {
+	Timezone   string  `json:"timezone,omitempty"`
+	Live       bool    `json:"live,omitempty"`
 	Task       Task    `json:"task"`
 	GroupName  *string `json:"groupName"`
 	GroupColor *string `json:"groupColor"`

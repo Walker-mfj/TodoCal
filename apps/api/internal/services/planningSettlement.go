@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -57,7 +58,10 @@ func Settle(ctx context.Context, tx pgx.Tx, user, zone string, now time.Time) (b
 	if end < today {
 		return false, nil
 	}
-	return true, Materialize(ctx, tx, user, zone, today, localdate.Add(today, 1), now)
+	if e = Materialize(ctx, tx, user, zone, today, localdate.Add(today, 1), now); e != nil {
+		return false, e
+	}
+	return true, settleReopenedDays(ctx, tx, user, zone, today, now)
 }
 
 func WithTx(ctx context.Context, pool *pgxpool.Pool, user string, now func() time.Time, fn func(pgx.Tx, string, time.Time) error) error {
@@ -110,6 +114,53 @@ func BeforeZoneChange(ctx context.Context, tx pgx.Tx, user, oldZone, newZone str
 	for date := from; date < to; date = localdate.Add(date, 1) {
 		if e = finalizeAt(ctx, tx, user, oldZone, date, now, now.Add(time.Microsecond)); e != nil {
 			return e
+		}
+	}
+	return nil
+}
+
+// Preserve every accepted entry and append only previously unattributed tasks
+// when a reopened date ends in the current account zone.
+func settleReopenedDays(ctx context.Context, tx pgx.Tx, user, zone, today string, now time.Time) error {
+	rows, err := tx.Query(ctx, `SELECT DISTINCT task_local_date(t)::text FROM tasks t JOIN daily_snapshots s ON s.user_id=t.user_id AND s.date=task_local_date(t) WHERE t.user_id=$1 AND t.deleted_at IS NULL AND task_local_date(t)<$2::date AND NOT EXISTS(SELECT 1 FROM daily_plan_entries p WHERE p.user_id=t.user_id AND p.task_id=t.id)`, user, today)
+	if err != nil {
+		return err
+	}
+	var dates []string
+	for rows.Next() {
+		var date string
+		if err = rows.Scan(&date); err != nil {
+			rows.Close()
+			return err
+		}
+		dates = append(dates, date)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	loc, err := time.LoadLocation(zone)
+	if err != nil {
+		return err
+	}
+	for _, date := range dates {
+		entries, err := endedEntries(ctx, tx, user, zone, date, localdate.Boundary(localdate.Add(date, 1), loc))
+		if err != nil {
+			return err
+		}
+		for _, entry := range entries {
+			entry.Timezone = zone
+			raw, err := json.Marshal(entry)
+			if err != nil {
+				return err
+			}
+			if _, err = tx.Exec(ctx, `INSERT INTO daily_plan_entries(user_id,date,task_id,task_state) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING`, user, date, entry.Task.ID, raw); err != nil {
+				return err
+			}
+		}
+		if _, err = repository.RecountSnapshot(ctx, tx, user, date); err != nil {
+			return err
 		}
 	}
 	return nil

@@ -123,3 +123,37 @@ func TestSeriesSchedulePatchPreservesSelectedFallBackInstants(t *testing.T) {
 		})
 	}
 }
+
+func TestReopenedDateIncludesAndSettlesNewContributions(t *testing.T) {
+	s, _ := testServer(t)
+	now := time.Date(2030, 12, 1, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return now }
+	c, csrf := register(t, s, "reopened@example.com")
+	object(t, command(s, "PATCH", "/api/v1/settings", map[string]any{"timezone": "Asia/Tokyo", "expectedRevision": 1}, c, csrf, uuid.NewString()), 200)
+	object(t, command(s, "POST", "/api/v1/tasks", map[string]any{"title": "Original", "scheduledDate": "2030-12-01"}, c, csrf, uuid.NewString()), 201)
+	object(t, command(s, "POST", "/api/v1/tasks", map[string]any{"title": "New contribution", "scheduledDate": "2030-12-02", "startTime": "01:30", "endTime": "01:45"}, c, csrf, uuid.NewString()), 201)
+	now = time.Date(2030, 12, 1, 15, 10, 0, 0, time.UTC)
+	object(t, command(s, "PATCH", "/api/v1/settings", map[string]any{"timezone": "Asia/Ho_Chi_Minh", "expectedRevision": 2}, c, csrf, uuid.NewString()), 200)
+	for i := 0; i < 2; i++ {
+		day := calendar(t, s, c, "2030-12-01", "2030-12-02")["days"].([]any)[0].(map[string]any)
+		if day["planned"] != float64(2) || len(day["entries"].([]any)) != 2 || day["timezone"] != "Asia/Tokyo" {
+			t.Fatal("lost contribution", day)
+		}
+		now = time.Date(2030, 12, 1, 18, 0, 0, 0, time.UTC)
+	}
+}
+
+func TestStopPreservesOccurrenceFinalizedInAnotherZone(t *testing.T) {
+	s, _ := testServer(t)
+	s.now = func() time.Time { return time.Date(2030, 12, 1, 13, 0, 0, 0, time.UTC) }
+	c, csrf := register(t, s, "stop-history-zone@example.com")
+	object(t, command(s, "PATCH", "/api/v1/settings", map[string]any{"timezone": "Asia/Tokyo", "expectedRevision": 1}, c, csrf, uuid.NewString()), 200)
+	sr := object(t, command(s, "POST", "/api/v1/series", map[string]any{"task": map[string]any{"title": "Protected", "scheduledDate": "2030-12-02", "startTime": "00:30", "endTime": "01:00"}, "cadence": "daily"}, c, csrf, uuid.NewString()), 201)
+	object(t, command(s, "PATCH", "/api/v1/settings", map[string]any{"timezone": "Asia/Ho_Chi_Minh", "expectedRevision": 2}, c, csrf, uuid.NewString()), 200)
+	object(t, command(s, "PATCH", "/api/v1/settings", map[string]any{"timezone": "Pacific/Auckland", "expectedRevision": 3}, c, csrf, uuid.NewString()), 200)
+	object(t, command(s, "POST", "/api/v1/series/"+sr["id"].(string)+"/stop", map[string]any{"expectedRevision": 1}, c, csrf, uuid.NewString()), 200)
+	day := calendar(t, s, c, "2030-12-01", "2030-12-02")["days"].([]any)[0].(map[string]any)
+	if day["planned"] != float64(1) || day["timezone"] != "Asia/Ho_Chi_Minh" {
+		t.Fatal("stop removed accepted occurrence", day)
+	}
+}

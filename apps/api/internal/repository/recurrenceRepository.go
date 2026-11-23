@@ -47,7 +47,7 @@ func StopSeries(ctx context.Context, db DBTX, userID string, seriesID string, af
 }
 
 func ListStoppableTasks(ctx context.Context, db DBTX, userID string, seriesID string, after string, zone string) ([]models.Task, error) {
-	rows, err := db.Query(ctx, `SELECT `+TaskColumns+` FROM tasks WHERE user_id=$1 AND series_id=$2 AND (COALESCE((scheduled_start_at AT TIME ZONE $4)::date,scheduled_date)>$3::date OR (scheduled_date IS NULL AND original_occurrence_date>$3::date)) AND status='incomplete' AND deleted_at IS NULL`, userID, seriesID, after, zone)
+	rows, err := db.Query(ctx, `SELECT `+TaskColumns+` FROM tasks WHERE user_id=$1 AND series_id=$2 AND (COALESCE((scheduled_start_at AT TIME ZONE $4)::date,scheduled_date)>$3::date OR (scheduled_date IS NULL AND original_occurrence_date>$3::date)) AND status='incomplete' AND deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM daily_plan_entries p WHERE p.user_id=tasks.user_id AND p.task_id=tasks.id)`, userID, seriesID, after, zone)
 	if err != nil {
 		return nil, err
 	}

@@ -21,7 +21,7 @@ func Event(ctx context.Context, tx pgx.Tx, user, zone, kind string, now time.Tim
 func recordTaskEvent(ctx context.Context, tx pgx.Tx, user, zone, kind string, now time.Time, before *Task, after Task, adjustHistory bool) error {
 	if before != nil {
 		var savedZone, savedDate string
-		e := tx.QueryRow(ctx, `SELECT s.timezone,p.date::text FROM daily_plan_entries p JOIN daily_snapshots s ON s.user_id=p.user_id AND s.date=p.date WHERE p.user_id=$1 AND p.task_id=$2 ORDER BY p.date DESC LIMIT 1`, user, after.ID).Scan(&savedZone, &savedDate)
+		e := tx.QueryRow(ctx, `SELECT COALESCE(p.task_state->>'timezone',s.timezone),p.date::text FROM daily_plan_entries p JOIN daily_snapshots s ON s.user_id=p.user_id AND s.date=p.date WHERE p.user_id=$1 AND p.task_id=$2 ORDER BY p.date DESC LIMIT 1`, user, after.ID).Scan(&savedZone, &savedDate)
 		if e != nil && !errors.Is(e, pgx.ErrNoRows) {
 			return e
 		}

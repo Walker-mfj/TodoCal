@@ -50,6 +50,9 @@ func refreshHistorical(ctx context.Context, tx pgx.Tx, user, zone string, now ti
 	}
 	for date := range dates {
 		if date >= now.In(loc).Format("2006-01-02") {
+			if !attributed[date] {
+				continue
+			}
 			var finalized bool
 			if err = repository.HistoricalSnapshotExists(ctx, tx, user, date, &finalized); err != nil {
 				return err
@@ -63,8 +66,11 @@ func refreshHistorical(ctx context.Context, tx pgx.Tx, user, zone string, now ti
 			return err
 		}
 		snapshotZone := zone
-		if err = tx.QueryRow(ctx, `SELECT timezone FROM daily_snapshots WHERE user_id=$1 AND date=$2`, user, date).Scan(&snapshotZone); err != nil {
+		if err = tx.QueryRow(ctx, `SELECT COALESCE((SELECT task_state->>'timezone' FROM daily_plan_entries WHERE user_id=$1 AND date=$2 AND task_id=$3),timezone) FROM daily_snapshots WHERE user_id=$1 AND date=$2`, user, date, after.ID).Scan(&snapshotZone); err != nil {
 			return err
+		}
+		if !attributed[date] {
+			snapshotZone = zone
 		}
 		snapshotTask := projectTask(after, snapshotZone)
 		_, err = repository.DeleteSnapshotEntry(ctx, tx, user, date, after.ID)
@@ -76,7 +82,7 @@ func refreshHistorical(ctx context.Context, tx pgx.Tx, user, zone string, now ti
 			if e != nil {
 				return e
 			}
-			_, err = repository.InsertHistoricalEntry(ctx, tx, user, date, after.ID, raw, after.GroupID)
+			_, err = repository.InsertHistoricalEntry(ctx, tx, user, date, after.ID, raw, after.GroupID, snapshotZone)
 			if err != nil {
 				return err
 			}

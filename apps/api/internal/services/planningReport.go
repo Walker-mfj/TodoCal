@@ -145,13 +145,18 @@ func DayReport(ctx context.Context, tx pgx.Tx, user, zone, date string, now time
 // DayAt reconstructs a partial historical comparison without changing its snapshot.
 func DayAt(ctx context.Context, tx pgx.Tx, user, zone, date string, cutoff time.Time) (Day, error) {
 	out := Day{Date: date, Timezone: zone, Finalized: true, Entries: []Entry{}}
-	entries, e := endedEntries(ctx, tx, user, zone, date, cutoff.Add(time.Microsecond))
+	states, e := repository.ListComparisonTaskStates(ctx, tx, user, date, zone, cutoff.Add(time.Microsecond))
 	if e != nil {
 		return out, e
 	}
-	out.Entries = entries
-	out.Planned = len(entries)
-	for _, entry := range entries {
+	out.Planned = len(states)
+	for _, state := range states {
+		entry, err := enrich(ctx, tx, user, projectTask(state.Task, state.Timezone))
+		if err != nil {
+			return out, err
+		}
+		entry.Timezone = state.Timezone
+		out.Entries = append(out.Entries, entry)
 		if entry.Task.Status == "complete" {
 			out.Completed++
 		}

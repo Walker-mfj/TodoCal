@@ -70,6 +70,14 @@ export function calendarInteractions({
           );
           return;
         }
+        if (
+          arg.oldEvent.extendedProps.historical &&
+          arg.oldEvent.extendedProps.zone &&
+          arg.oldEvent.extendedProps.zone !== zone
+        ) {
+          arg.revert();
+          return;
+        }
         const task = arg.oldEvent.extendedProps.task as Task;
         const schedule = scheduleFromDrop(
           {
@@ -95,6 +103,14 @@ export function calendarInteractions({
           const { startStr, endStr, allDay } = arg.event;
           arg.revert();
           moveDraft(startStr, endStr || undefined, allDay, "resize");
+          return;
+        }
+        if (
+          arg.oldEvent.extendedProps.historical &&
+          arg.oldEvent.extendedProps.zone &&
+          arg.oldEvent.extendedProps.zone !== zone
+        ) {
+          arg.revert();
           return;
         }
         const task = arg.oldEvent.extendedProps.task as Task;

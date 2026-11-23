@@ -238,6 +238,7 @@ func UpdateFollowing(ctx context.Context, tx pgx.Tx, user, zone string, now time
 				if err != nil {
 					return Task{}, err
 				}
+				old = projectTask(old, zone)
 			}
 		}
 		if old.DeletedAt != nil {

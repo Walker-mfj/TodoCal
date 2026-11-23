@@ -128,3 +128,37 @@ it("also splits a forward-looking wall interval across the repeated hour", () =>
     end: "2026-11-01T01:20:00",
   });
 });
+
+it("disables historical dragging across zones but keeps same-zone and live tasks editable", () => {
+  const options = {
+    days: [day],
+    groups: [],
+    filter: () => true,
+    disabled: false,
+  };
+  expect(
+    calendarEvents({ ...options, zone: "Asia/Ho_Chi_Minh" })[0].editable,
+  ).toBe(false);
+  expect(calendarEvents({ ...options, zone: "Asia/Tokyo" })[0].editable).toBe(
+    true,
+  );
+  expect(
+    calendarEvents({
+      ...options,
+      days: [],
+      tasks: [task],
+      zone: "Asia/Ho_Chi_Minh",
+    })[0].editable,
+  ).toBe(true);
+  const supplemental = {
+    ...day,
+    entries: [{ ...day.entries[0], timezone: "Asia/Ho_Chi_Minh" }],
+  };
+  expect(
+    calendarEvents({
+      ...options,
+      days: [supplemental],
+      zone: "Asia/Ho_Chi_Minh",
+    })[0].editable,
+  ).toBe(true);
+});

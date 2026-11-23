@@ -71,7 +71,7 @@ export function calendarEvents({
           start,
           end,
           allDay: !schedule.startTime,
-          editable: !disabled,
+          editable: !disabled && !(historical && eventZone !== zone),
           classNames: [
             task.status === "complete" ? "event-complete" : "",
             historical ? "event-historical" : "",

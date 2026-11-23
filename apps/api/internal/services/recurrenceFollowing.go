@@ -34,7 +34,7 @@ func followingSeries(ctx context.Context, tx pgx.Tx, user, zone string, now time
 	if *selected.OriginalOccurrenceDate < now.In(seriesLoc).Format("2006-01-02") || (selected.ScheduledDate != nil && *selected.ScheduledDate < now.In(loc).Format("2006-01-02")) {
 		return sr, Invalid("Choose a current or future original occurrence")
 	}
-	finalized, err := repository.TaskHasHistoricalAttribution(ctx, tx, user, selected.ID, selected.ScheduledDate)
+	finalized, err := repository.TaskHasHistoricalAttribution(ctx, tx, user, selected.ID)
 	if err != nil {
 		return sr, err
 	}
@@ -215,7 +215,7 @@ func UpdateFollowing(ctx context.Context, tx pgx.Tx, user, zone string, now time
 			continue
 		}
 		var protected bool
-		err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM focus_sessions WHERE user_id=$1 AND task_id=$2) OR EXISTS(SELECT 1 FROM daily_snapshots WHERE user_id=$1 AND date=$3::date) OR EXISTS(SELECT 1 FROM daily_plan_entries WHERE user_id=$1 AND task_id=$2)`, user, old.ID, old.ScheduledDate).Scan(&protected)
+		err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM focus_sessions WHERE user_id=$1 AND task_id=$2) OR EXISTS(SELECT 1 FROM daily_plan_entries WHERE user_id=$1 AND task_id=$2)`, user, old.ID).Scan(&protected)
 		if err != nil {
 			return Task{}, err
 		}
@@ -329,7 +329,7 @@ func deletableFollowingTasks(ctx context.Context, tx pgx.Tx, user, zone string, 
 		if t.DeletedAt != nil || (t.ScheduledDate != nil && *t.ScheduledDate < today) {
 			continue
 		}
-		finalized, e := repository.TaskHasHistoricalAttribution(ctx, tx, user, t.ID, t.ScheduledDate)
+		finalized, e := repository.TaskHasHistoricalAttribution(ctx, tx, user, t.ID)
 		if e != nil {
 			return nil, e
 		}

@@ -30,7 +30,7 @@ func UpdateFromTask(ctx context.Context, tx pgx.Tx, user, zone string, now time.
 		return Task{}, err
 	}
 	accountToday := now.In(accountLoc).Format("2006-01-02")
-	historical, err := repository.TaskHasHistoricalAttribution(ctx, tx, user, selected.ID, selected.ScheduledDate)
+	historical, err := repository.TaskHasHistoricalAttribution(ctx, tx, user, selected.ID)
 	if err != nil {
 		return Task{}, err
 	}

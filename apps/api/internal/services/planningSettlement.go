@@ -121,7 +121,7 @@ func BeforeZoneChange(ctx context.Context, tx pgx.Tx, user, oldZone, newZone str
 // Preserve every accepted entry and append only previously unattributed tasks
 // when a reopened date ends in the current account zone.
 func settleReopenedDays(ctx context.Context, tx pgx.Tx, user, zone, today string, now time.Time) error {
-	rows, err := tx.Query(ctx, `SELECT DISTINCT task_local_date(t)::text FROM tasks t JOIN daily_snapshots s ON s.user_id=t.user_id AND s.date=task_local_date(t) WHERE t.user_id=$1 AND t.deleted_at IS NULL AND task_local_date(t)<$2::date AND NOT EXISTS(SELECT 1 FROM daily_plan_entries p WHERE p.user_id=t.user_id AND p.task_id=t.id)`, user, today)
+	rows, err := tx.Query(ctx, `SELECT DISTINCT task_local_date(t)::text FROM tasks t WHERE t.user_id=$1 AND t.deleted_at IS NULL AND task_local_date(t)<$2::date AND NOT EXISTS(SELECT 1 FROM daily_plan_entries p WHERE p.user_id=t.user_id AND p.task_id=t.id)`, user, today)
 	if err != nil {
 		return err
 	}
@@ -140,6 +140,9 @@ func settleReopenedDays(ctx context.Context, tx pgx.Tx, user, zone, today string
 		return err
 	}
 	for _, date := range dates {
+		if _, err := repository.EnsureSnapshot(ctx, tx, user, date, zone, now); err != nil {
+			return err
+		}
 		if err := supplementSnapshot(ctx, tx, user, zone, date); err != nil {
 			return err
 		}

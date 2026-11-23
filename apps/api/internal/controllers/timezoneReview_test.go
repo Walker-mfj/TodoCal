@@ -200,3 +200,51 @@ func TestLazyOccurrenceCanEnterExtendedFinalizedDay(t *testing.T) {
 		t.Fatal("lazy slot suppressed by old snapshot", day)
 	}
 }
+
+func TestLateCreatedTaskSettlesIntoPreviouslyEmptyDay(t *testing.T) {
+	s, _ := testServer(t)
+	now := time.Date(2030, 12, 1, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return now }
+	c, csrf := register(t, s, "empty-day-contribution@example.com")
+	object(t, command(s, "PATCH", "/api/v1/settings", map[string]any{"timezone": "Asia/Tokyo", "expectedRevision": 1}, c, csrf, uuid.NewString()), 200)
+	now = time.Date(2030, 12, 2, 0, 0, 0, 0, time.UTC)
+	renewTestSession(t, s, c, &csrf)
+	object(t, command(s, "POST", "/api/v1/tasks", map[string]any{"title": "Created after new cutoff", "scheduledDate": "2030-12-02", "startTime": "00:30", "endTime": "01:00"}, c, csrf, uuid.NewString()), 201)
+	object(t, command(s, "PATCH", "/api/v1/settings", map[string]any{"timezone": "Asia/Ho_Chi_Minh", "expectedRevision": 2}, c, csrf, uuid.NewString()), 200)
+	for i := 0; i < 2; i++ {
+		day := calendar(t, s, c, "2030-12-01", "2030-12-02")["days"].([]any)[0].(map[string]any)
+		if day["planned"] != float64(1) {
+			t.Fatal("late contribution excluded by retroactive cutoff", day)
+		}
+	}
+}
+
+func TestLiveReopenedOccurrenceRemainsEligibleForSeriesEdits(t *testing.T) {
+	for _, scope := range []string{"all", "following", "all-from-future"} {
+		t.Run(scope, func(t *testing.T) {
+			s, _ := testServer(t)
+			now := time.Date(2030, 12, 1, 12, 0, 0, 0, time.UTC)
+			s.now = func() time.Time { return now }
+			c, csrf := register(t, s, "live-series-"+scope+"@example.com")
+			object(t, command(s, "PATCH", "/api/v1/settings", map[string]any{"timezone": "Asia/Tokyo", "expectedRevision": 1}, c, csrf, uuid.NewString()), 200)
+			object(t, command(s, "POST", "/api/v1/tasks", map[string]any{"title": "Old plan", "scheduledDate": "2030-12-01"}, c, csrf, uuid.NewString()), 201)
+			object(t, command(s, "POST", "/api/v1/series", map[string]any{"task": map[string]any{"title": "Live series", "scheduledDate": "2030-12-02", "startTime": "01:30", "endTime": "02:00"}, "cadence": "daily"}, c, csrf, uuid.NewString()), 201)
+			now = time.Date(2030, 12, 1, 15, 10, 0, 0, time.UTC)
+			renewTestSession(t, s, c, &csrf)
+			object(t, command(s, "PATCH", "/api/v1/settings", map[string]any{"timezone": "Asia/Ho_Chi_Minh", "expectedRevision": 2}, c, csrf, uuid.NewString()), 200)
+			items := calendar(t, s, c, "2030-12-01", "2030-12-04")["tasks"].([]any)
+			live := items[0].(map[string]any)
+			selected := live
+			editScope := scope
+			if scope == "all-from-future" {
+				selected = items[1].(map[string]any)
+				editScope = "all"
+			}
+			object(t, command(s, "PATCH", "/api/v1/tasks/"+selected["id"].(string), map[string]any{"title": "Edited live", "scope": editScope, "expectedRevision": selected["revision"], "expectedSeriesRevision": 1}, c, csrf, uuid.NewString()), 200)
+			updated := object(t, req(s, "GET", "/api/v1/tasks/"+live["id"].(string), nil, c, ""), 200)
+			if updated["title"] != "Edited live" {
+				t.Fatal("live reopened occurrence skipped", updated)
+			}
+		})
+	}
+}

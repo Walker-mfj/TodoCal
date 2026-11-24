@@ -4,7 +4,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import deploy
 import registry as gh
@@ -53,14 +53,25 @@ class DeployTests(unittest.TestCase):
             setattr(self, name, p.start())
             self.addCleanup(p.stop)
 
-    def test_unknown_or_changed_migrations_wait_for_exact_approval(self):
+    def test_unknown_or_changed_migrations_deploy_automatically(self):
         for fp in (None, OTHER):
-            self.old["fingerprint"] = fp
-            self.assertEqual(deploy.update(self.client, DIGEST), 3)
-        self.stop_api.assert_not_called()
-        self.write_hold.assert_not_called()
-        with self.assertRaises(gh.DeploymentError):
-            deploy.update(self.client, DIGEST, "sha256:"+"0"*64)
+            with self.subTest(fingerprint=fp):
+                self.old["fingerprint"] = fp
+                order = MagicMock()
+                order.attach_mock(self.write_hold, "hold")
+                order.attach_mock(self.command, "command")
+                order.attach_mock(self.stop_api, "stop")
+                order.attach_mock(self.activate, "activate")
+                order.attach_mock(self.clear_hold, "clear")
+                self.assertEqual(deploy.update(self.client, DIGEST), 0)
+                self.assertEqual(order.mock_calls, [
+                    call.hold("deployment in progress", "old", "new"),
+                    call.command("docker", "tag", "old", deploy.ROLLBACK),
+                    call.stop(),
+                    call.command(str(deploy.ROOT / "backup.sh"), "frequent", timeout=1800),
+                    call.activate("new"),
+                    call.clear(),
+                ])
 
     def test_successful_schema_compatible_deploy(self):
         self.assertEqual(deploy.update(self.client, DIGEST), 0)
@@ -81,7 +92,7 @@ class DeployTests(unittest.TestCase):
         self.old["fingerprint"] = OTHER
         self.activate.side_effect = gh.DeploymentError("not ready")
         with self.assertRaises(gh.DeploymentError):
-            deploy.update(self.client, DIGEST, DIGEST)
+            deploy.update(self.client, DIGEST)
         self.activate.assert_called_once_with("new")
         self.command.assert_any_call(str(deploy.ROOT / "backup.sh"), "frequent", timeout=1800)
         self.clear_hold.assert_not_called()
@@ -90,7 +101,7 @@ class DeployTests(unittest.TestCase):
         self.old["fingerprint"] = OTHER
         self.command.side_effect = [None, gh.DeploymentError("backup failed")]
         with self.assertRaises(gh.DeploymentError):
-            deploy.update(self.client, DIGEST, DIGEST)
+            deploy.update(self.client, DIGEST)
         self.activate.assert_called_once_with("old")
         self.clear_hold.assert_not_called()
 

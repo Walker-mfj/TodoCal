@@ -58,9 +58,9 @@ Non-UI exceptions: `apps/api/internal/services/groupCommands.go:21,28–29` vali
 
 ## 2. Loading UI
 
-Implement exactly one shared, domain-independent public loading component: `LoadingBlock` in `src/shared/components/loadingBlock/loadingBlock.tsx`, with a colocated `loadingBlock.module.css` and tests. Every loading site must use this component, including lazy module fallbacks, inline values, pending buttons, toasts and focus settlement. No feature-local skeleton component, shimmer CSS, spinner implementation or alternative loading primitive. The shared component may use private internal helpers.
+Implement exactly one shared, domain-independent public loading component: `Loading` in `src/shared/components/loading/loading.tsx`, with a colocated `loading.module.css` and tests. Every loading site must use this component, including lazy module fallbacks, inline values, pending buttons, toasts and focus settlement. No feature-local skeleton component, shimmer CSS, spinner implementation or alternative loading primitive. The shared component may use private internal helpers.
 
-### Shared LoadingBlock contract
+### Shared Loading contract
 
 Proposed API (illustrative, finalize types during implementation):
 - `variant`: `text` | `rect` | `circle` | `rows` | `grid` | `indicator`. Default to rect. Indicator is the compact pending presentation, not a separate public component.
@@ -70,17 +70,17 @@ Proposed API (illustrative, finalize types during implementation):
 
 Example usages (not implementation in this PR):
 ```tsx
-<LoadingBlock variant="text" width="8rem" />
-<LoadingBlock variant="circle" width={48} height={48} />
-<LoadingBlock variant="rows" count={5} label="Loading tasks" />
-<LoadingBlock variant="grid" columns={7} label="Loading calendar" />
+<Loading variant="text" width="8rem" />
+<Loading variant="circle" width={48} height={48} />
+<Loading variant="rows" count={5} label="Loading tasks" />
+<Loading variant="grid" columns={7} label="Loading calendar" />
 <button disabled={busy}>
-  {busy && <LoadingBlock variant="indicator" label="Saving changes" />}
+  {busy && <Loading variant="indicator" label="Saving changes" />}
   Save changes
 </button>
 ```
 
-Features may compose several instances of LoadingBlock within their existing layout to match the loaded screen (e.g. a circle and text bars in a progress card). They must not recreate its visual implementation or introduce feature-specific public loading components. Use the same block in Next dynamic loading callbacks and Suspense fallbacks. Keep public feature imports and existing architecture boundaries.
+Features may compose several instances of Loading within their existing layout to match the loaded screen (e.g. a circle and text bars in a progress card). They must not recreate its visual implementation or introduce feature-specific public loading components. Use the same block in Next dynamic loading callbacks and Suspense fallbacks. Keep public feature imports and existing architecture boundaries.
 
 - Skeletons approximate the eventual layout: rows, text bars, chips, circles, card metrics or calendar grid. Reserve dimensions and avoid scroll jumps; no placeholder buttons/links are focusable or clickable. Decorative skeletons are aria-hidden. Set aria-busy on the actual content region while it is pending, and expose one concise screen-reader-only status per region when needed, not one announcement per cell. Respect prefers-reduced-motion; static placeholders must still look correct.
 - Initial data or lazy module loading: show skeleton in the existing shell. When data already exists and is being refreshed, keep it visible rather than resetting to skeleton. If a deletion preview is being revalidated, keep its action blocked until the authoritative response is ready even if previous data is displayed.
@@ -129,7 +129,7 @@ Other matches are not loading UI: state variables in sessionProvider/useOwnedQue
 ## 3. Implementation sequence
 
 1. **Color foundation:** document semantic names and concrete-value bridge. Add tokens/registry, preserve current light/dark values and focus scene. Migrate CSS Modules, then TS/TSX and manifest. Verify arbitrary group colors and calendar rendering.
-2. **Loading primitives:** one shared LoadingBlock (including indicator variant) and accessible status convention; add unit tests. Avoid a new dependency unless existing CSS/React cannot meet requirements.
+2. **Loading primitives:** one shared Loading (including indicator variant) and accessible status convention; add unit tests. Avoid a new dependency unless existing CSS/React cannot meet requirements.
 3. **Feature migration:** session and calendar first, workspace lists/progress, settings/notifications, task detail and deletion preview, then mutations and focus settlement. Review loading versus empty/error branches individually.
 4. **Enforcement:** implement a small deterministic source check in web scripts (or equivalent compatible tooling) following the existing Oxfmt/Oxlint plus architecture-check pattern. Wire into `npm run lint` or a dedicated check invoked by both local Make targets and CI. Add positive/negative fixtures. The documentation rules apply to new/changed code now; mechanical enforcement starts in the implementation PR after baseline violations are removed.
 5. **Verification:** run tests and a fresh tracked-file audit. Remove temporary migration allowlists. Keep only explicit, narrowly scoped exceptions.
@@ -147,15 +147,15 @@ git grep -nE '…|\.\.\.' -- apps/web/src
 These are discovery commands, not sufficient lint rules. Classify results rather than blindly replacing identifiers, anchor fragments, arbitrary group data, test strings, retry labels, logs, checksums or API validators. The full implementation audit should also search every tracked source extension and inspect loading fallbacks that use no obvious keyword.
 
 - Color rule: detect exact 3/4/6/8-digit CSS hex tokens and other fixed color expressions in CSS declaration values, inline styles, CSS strings/template literals, SVG presentation attributes, manifest and library options. Prefer CSS parsing/tokenization and TypeScript AST over blanket regex; distinguish CSS IDs, URLs and unrelated strings. Allow only designated global declarations/registry, generated outputs and explicitly documented non-UI data/standalone asset exceptions. Reject local custom properties that hide raw colors.
-- Loading rule: flag visible text-only loading JSX, dynamic/Suspense text fallbacks and pending labels in recognized branches, including imported string constants where practical. Require shared LoadingBlock usage/composition with accessible status. Flag duplicate feature-local loading animation/placeholder implementations in review; add lint coverage for known bypass patterns. A conservative automated heuristic plus mandatory review is preferable to claiming all React control flow is statically decidable. Allow hidden accessible status strings, retry/error labels and nonvisual logic.
-- Emit actionable file:line diagnostics, rule ID and suggested replacement. Negative tests include CSS gradients/shadows, 4/8-digit alpha, inline SVG/JS colors, local variables and visible loading text; positive tests include tokens, currentColor, transparent, derived colors, group input data, manifest registry, LoadingBlock and screen-reader status. No broad per-directory production bypass.
+- Loading rule: flag visible text-only loading JSX, dynamic/Suspense text fallbacks and pending labels in recognized branches, including imported string constants where practical. Require shared Loading usage/composition with accessible status. Flag duplicate feature-local loading animation/placeholder implementations in review; add lint coverage for known bypass patterns. A conservative automated heuristic plus mandatory review is preferable to claiming all React control flow is statically decidable. Allow hidden accessible status strings, retry/error labels and nonvisual logic.
+- Emit actionable file:line diagnostics, rule ID and suggested replacement. Negative tests include CSS gradients/shadows, 4/8-digit alpha, inline SVG/JS colors, local variables and visible loading text; positive tests include tokens, currentColor, transparent, derived colors, group input data, manifest registry, Loading and screen-reader status. No broad per-directory production bypass.
 
 ## 5. Acceptance and regression checks
 
 - Zero application-owned fixed UI color literals outside approved global declarations/registry or reviewed exceptions; no duplicate palette/default or manifest value. Light/dark and focus scene visual regression checked (calendar now line, event hover/preview, dialog danger hover, toast, invalid forms, sidebar and timer).
-- All listed content-loading sites use shape-matched shared LoadingBlock instances; action/settlement sites use its indicator variant. No independent loading primitive, feature-local loading component, spinner or shimmer styles. No visible text-only transient loading status. No skeleton after resolved empty/error/disabled states. Background refetch retains data. Skeletons are noninteractive and reduced-motion safe.
+- All listed content-loading sites use shape-matched shared Loading instances; action/settlement sites use its indicator variant. No independent loading primitive, feature-local loading component, spinner or shimmer styles. No visible text-only transient loading status. No skeleton after resolved empty/error/disabled states. Background refetch retains data. Skeletons are noninteractive and reduced-motion safe.
 - Test delayed initial requests, lazy module loading, slow/rejected mutations, retries, background refetch, disabled queries, navigation, account switching, offline focus and server completion confirmation. Verify deletion-preview confirmation stays blocked while fetching and recovery toast Undo behavior survives.
 - Verify screen-reader busy/status, keyboard focus/tab order, stable button labels and no layout shifts in desktop/mobile. Update assertions that currently rely on visible loading strings; prefer semantic status/region or specific skeleton test IDs with delayed responses.
-- Extend existing tests in `app/providers.test.tsx`, `features/tasks/components/taskDetail/{historyDetail,taskDetail}.test.tsx`, `features/focus/components/timerPanel/timerTaskSelection.test.tsx`, `features/notifications/components/notificationSettings.test.tsx`, `features/settings/components/settingsForm/settingsForm.test.tsx` as applicable; add calendar lazy/progress and shared LoadingBlock variant tests. Browser regression: existing calendar, focus scene, task UX, settings/session and accessibility suites (Chrome, Firefox, WebKit).
+- Extend existing tests in `app/providers.test.tsx`, `features/tasks/components/taskDetail/{historyDetail,taskDetail}.test.tsx`, `features/focus/components/timerPanel/timerTaskSelection.test.tsx`, `features/notifications/components/notificationSettings.test.tsx`, `features/settings/components/settingsForm/settingsForm.test.tsx` as applicable; add calendar lazy/progress and shared Loading variant tests. Browser regression: existing calendar, focus scene, task UX, settings/session and accessibility suites (Chrome, Firefox, WebKit).
 - Run `cd apps/web && npm run format:check && npm run lint`; from root `make check-web-architecture typecheck test-web build-web`, then `make test-e2e` with test DB only. Run new lint fixtures as part of CI.
 - No API/schema changes or production DB migration; no query policy/command idempotency changes. Implementation PR provides final audit summary and test evidence. This planning PR runs no runtime tests because it changes only Markdown.

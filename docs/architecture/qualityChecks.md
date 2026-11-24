@@ -36,7 +36,7 @@ The default database port remains 55432. Browser suites still share local web/AP
 
 ## UI color and loading rules
 
-These rules are mandatory for new or changed web code and AI-generated changes. Existing violations are tracked in the [global colors and loading skeletons plan](globalColorsLoadingPlan.md); do not introduce new violations while migrating them. `npm run lint` runs `check:ui` and its regression fixtures. The check covers fixed literals and direct loading JSX; computed/imported placeholder strings and unusual CSS syntax still require review.
+These rules are mandatory for new or changed web code and AI-generated changes. Existing violations are tracked in the [global colors and loading skeletons plan](globalColorsLoadingPlan.md); do not introduce new violations while migrating them. `npm run lint` runs `check:ui` and its regression fixtures. The check currently covers fixed literals and direct loading JSX; computed/imported placeholder strings and unusual CSS syntax still require review. UI003/UI004 below are proposed extensions; add mechanical checks where practical in the next implementation pass.
 
 ### UI001 — Global color ownership
 
@@ -49,5 +49,18 @@ These rules are mandatory for new or changed web code and AI-generated changes. 
 - For initial content loading, lazy component imports, Suspense fallbacks and inline values awaiting data, use the shared `Skeleton` at `apps/web/src/shared/components/skeleton/skeleton.tsx`, not visible placeholder text (e.g. Loading…, Opening your workspace…). Compose rectangle/circle instances with appropriate dimensions in the owning layout. Do not define feature-local skeleton primitives, shimmer styles or animations.
 - Keep the shell and dimensions stable; placeholders are decorative, aria-hidden and noninteractive. Mark the actual content region aria-busy and provide one accessible status as appropriate. Respect reduced motion.
 - Keep loaded content visible during background refetch where safe. Distinguish initial loading from empty, error, offline, disabled and uncertain states; preserve deletion-preview confirmation guards.
-- Action-pending and settlement text (e.g. Saving…, Restoring…, Enabling…, Confirming completion…), pending toasts, error/retry labels and accessible status strings are allowed. Keep existing behavior; do not require Skeleton or a spinner for these states. UI002 checks content placeholders, not all loading-related words.
+- Action-pending and settlement text, pending toasts, error/retry labels and accessible status strings are not content placeholders. Do not use Skeleton for these states; follow UI003 for active operations.
 - Review initial, cached refetch, empty and failed states, plus regression checks for existing pending actions. Use existing test/lint commands above. Search changed files for raw colors and loading placeholders; classify matches rather than blindly replacing legitimate data or status text.
+
+### UI003 — Shared action loading indicator
+
+- Use the shared `LoadingIndicator` at `apps/web/src/shared/components/loadingIndicator/loadingIndicator.tsx` once implemented for active mutations, requests initiated by an action, pending toasts and authoritative settlement feedback. Do not create feature-local spinners or animation.
+- Preserve existing pending labels, disabled/retry/error/uncertain/offline behavior and timer digits. Show an indicator only for the actual active operation, not every disabled control or a command waiting for manual retry. Track initiating action identity if necessary. Do not use Skeleton or full-page loading for an action.
+- Use semantic global colors or currentColor; keep geometry stable, respect reduced motion, and use one accessible status. Decorative indicators accompanying text are aria-hidden.
+- Extend the source check for direct, recognizable pending branches and duplicate spinner implementations where practical; review operation identity and indirect branches manually. Existing pending labels are allowed when accompanied by the shared indicator; retry/error text does not require one.
+
+### UI004 — Shared full-page loading
+
+- Reuse `LoadingPage` at `apps/web/src/shared/components/loadingPage/loadingPage.tsx` once implemented for genuine full-page/app bootstrap loading, including session restoration. Compose the shared LoadingIndicator rather than creating a page-specific spinner; use global tokens and one accessible busy/status region.
+- Keep loaded workspace content visible during local navigation, data refetch and mutations. Use local Skeletons for missing content and LoadingIndicator for active actions. No global loading overlay or unnecessary route boundaries.
+- A Next App Router loading.tsx is only justified if an actual asynchronous route transition needs a fallback. If introduced, reuse LoadingPage. Verify resolved sign-in, signed-out, expired, offline and error states; do not flash another account's content. Check page fallback ownership in review.

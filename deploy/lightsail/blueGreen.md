@@ -36,7 +36,7 @@ remote wakes until reconnect or reconciliation, not create another leader.
 Production has adopted Blue-Green; these steps are retained for rebuilding, not a pending proposal.
 
 1. Merge PR and publish the new API. Before changing Compose, use existing
-   single-slot mode and approve this new release (startup script fingerprint
+   single-slot mode and deploy the exact tested digest (startup script fingerprint
    changes). Verify actual revision, readiness, backups and restore.
    Only use an image with label io.todocal.scheduler-lock=v1.
 2. Disable event delivery (LIGHTSAIL_EVENT_DEPLOY=false); ensure no active
@@ -133,18 +133,19 @@ docker compose up or remove-orphans commands.
 
 ## Schema changes
 
-Unknown or changed fingerprints require manual approval; do not approve
-while event delivery is active. Set Worker maintenance and inspect SQL,
-stop API writers, run python3 deploy.py --approve sha256:<exact-tested-digest>.
-The host stops old slot, takes existing off-host backup, runs one explicit
-migration-only container and starts candidate with startup migrations
-disabled. This path is not zero downtime. After migration starts, no automatic
-old-binary rollback; recover forward or use a tested restore plan under
-maintenance. On success verify local and public readiness after returning
-Worker to normal mode (`MAINTENANCE_MODE=false`), then re-enable events. Do not change data semantics incompatibly
-even with identical migration fingerprints. Dispatch CI on main after
-maintenance and event delivery are restored to verify the installed digest
-and release its matching frontend.
+Unknown or changed fingerprints automatically select the offline path.
+The deployer stops the old API and scheduler, requires the existing verified
+off-host backup, runs one explicit migration-only container and starts the
+candidate with startup migrations disabled. No manual approval is needed.
+Keep the Worker in normal mode and leave event delivery enabled for routine
+releases; the Worker reports API unavailability while the old slot is stopped.
+This path is not zero downtime. After migration starts, no automatic
+old-binary rollback; on failure retain the hold, inspect actual migration
+state and recover forward or use a tested restore plan under operator
+maintenance. After local and public readiness, the same CI-triggered workflow
+publishes the matching frontend. Do not change data semantics incompatibly
+even with identical migration fingerprints, or break the old frontend during
+the backend-first handoff.
 
 ## Verification before activation
 

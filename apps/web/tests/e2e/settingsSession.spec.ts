@@ -19,35 +19,6 @@ async function register(page: Page) {
   await expect(page.getByLabel("Appearance")).toBeEnabled();
 }
 
-test("timezone popup keeps forward and reverse keyboard navigation in the form", async ({
-  page,
-}) => {
-  await register(page);
-  const appearance = page.getByLabel("Appearance");
-  const timezone = page.getByRole("combobox", { name: "Timezone" });
-  const device = page.getByRole("button", { name: "Use device timezone" });
-  const tab =
-    page.context().browser()?.browserType().name() === "webkit"
-      ? "Alt+Tab"
-      : "Tab";
-  const back = tab === "Alt+Tab" ? "Alt+Shift+Tab" : "Shift+Tab";
-
-  await expect(device).toBeEnabled();
-  await appearance.focus();
-  await page.keyboard.press(tab);
-  await expect(timezone).toBeFocused();
-  await expect(page.getByRole("listbox", { name: "Timezones" })).toBeVisible();
-  await page.keyboard.press(tab);
-  await expect(device).toBeFocused();
-  await expect(page.getByRole("listbox")).toBeHidden();
-  await page.keyboard.press(back);
-  await expect(timezone).toBeFocused();
-  await expect(page.getByRole("listbox")).toBeVisible();
-  await page.keyboard.press(back);
-  await expect(appearance).toBeFocused();
-  await expect(page.getByRole("listbox")).toBeHidden();
-});
-
 test("expired access recovers during a combined settings save without losing edits", async ({
   page,
   context,

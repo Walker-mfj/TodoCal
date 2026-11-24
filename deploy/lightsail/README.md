@@ -4,8 +4,9 @@ Production uses Lightsail PostgreSQL, Cloudflare Tunnel, private deployment rece
 
 ## Publish
 
-Successful trusted main CI triggers the independent non-cancelling Deploy
-backend workflow. Only the publishing job has contents:read and packages:write.
+Successful trusted main CI triggers the non-cancelling Deploy production
+workflow. Backend publication and delivery precede the frontend job; the
+frontend job only has contents:read.
 It signs into GHCR with the ephemeral GITHUB_TOKEN, builds linux/amd64
 and pushes ghcr.io/walker-mfj/todocal-api:sha-<commit>, then promotes :tested.
 If the API tree and migration fingerprint match the tested image, it reuses
@@ -46,8 +47,10 @@ Changed/unknown migration fingerprint requires approval. Set maintenance and pau
 A changed fingerprint blocks automatic rollback after possible migration.
 Compatible failures before the switch leave the old route active; ambiguous switches retain both slots and the hold for operator recovery. Even identical
 fingerprints do not prove compatible application data semantics; stage changes.
-Frontend deploy remains independent. Do not merge frontend incompatible with
-the live backend.
+Frontend publication requires successful exact-digest delivery. After manual
+approval, turn off maintenance, re-enable event delivery and dispatch CI on
+main to verify the installed backend and publish the matching frontend.
+Keep the old frontend compatible with the new backend during handoff.
 
 A persistent deploy-state/hold.json interlock survives interrupted jobs,
 failed deployments and rollback. Never delete it to bypass checks.

@@ -16,8 +16,8 @@ flowchart TD
         CI["CI"]
         BE["Deploy backend"]
         GHCR["GHCR: tested image digest"]
-        Main --> FE
         Main --> CI --> BE --> GHCR
+        BE -->|Confirmed delivery| FE
     end
     subgraph Edge["Cloudflare"]
         Worker["Worker todocal"]
@@ -129,21 +129,22 @@ Sources: [Worker](../../deploy/cloudflare/worker.mjs), [Nginx](../../deploy/ligh
 [Go router](../../apps/api/internal/router/router.go),
 [command pipeline](../features/10-command-pipeline.md).
 
-## 2. Commit → CI → independent frontend and backend releases
+## 2. Commit → CI → backend-first production release
 
 ```mermaid
 flowchart TD
     PR["PR: CI verifies changes"] --> Merge["Merge / push to main"]
-    Merge --> FE["Deploy frontend"]
     Merge --> CI["Main CI: web, API, lint, integration, browser"]
     FE --> FETest["Install locked dependencies, test web and proxy"]
     FETest --> FEBuild["Build static web, typecheck"]
     FEBuild --> Maps["Upload private source maps to Better Stack"]
     Maps --> Bind["Configure deployment VPC binding"]
-    Bind --> Publish["Wrangler publishes Worker and assets"]
+    Bind --> FEReady{"Still current main and API ready?"}
+    FEReady -->|No| Abort
+    FEReady -->|Yes| Publish["Wrangler publishes Worker and assets"]
     Publish --> WebCheck["Check public website"]
     CI --> CIResult{"Trusted main CI successful?"}
-    CIResult -->|No| NoRelease["No backend release"]
+    CIResult -->|No| NoRelease["No production release"]
     CIResult -->|Yes| BE["Deploy backend: checkout tested SHA"]
     BE --> Current{"Still current main?"}
     Current -->|No| Abort["Superseded: stop publication or delivery"]
@@ -154,23 +155,29 @@ flowchart TD
     Push --> Digest["Resolve exact sha256 digest"]
     Reuse --> Digest
     Digest --> Gate{"Current main and delivery not disabled?"}
-    Gate -->|No| NoEvent["No deployment event"]
+    Gate -->|No| NoEvent["No deployment event or frontend release"]
     Gate -->|Yes| Event["Signed deploy event to Worker"]
+    Event --> Confirm{"Exact digest delivered and public ready?"}
+    Confirm -->|No| Block["No frontend release; recover and dispatch CI"]
+    Confirm -->|Yes| FE["Deploy frontend: same tested SHA"]
 ```
 
-Frontend starts on main push or manual frontend dispatch, independently of
-main CI. Its own tests, build/typecheck and source map upload gate publication.
-Backend starts only after trusted successful main CI from this repository
-(push or workflow_dispatch). The publisher revalidates main during publication;
+Deploy production starts only after trusted successful main CI from this
+repository (push or workflow_dispatch). Frontend runs as a reusable workflow
+only after the exact backend digest has been delivered and readiness checked.
+Its own tests, build/typecheck, source map upload and final main/readiness
+checks also gate publication. The publisher revalidates main during publication;
 superseded revisions stop. GHCR tested is a discovery pointer; the exact digest
 is the deployment identity.
 
 A docs-only main change may reuse the tested digest and still send an event.
 If already running the verified image, the host performs a readiness-checked
 no-op. LIGHTSAIL_EVENT_DEPLOY=false suppresses the event, not image publication;
-unset means enabled under the workflow in this PR. The workflows independently
-serialize their releases, without cancelling an in-flight deployment.
-Frontend/backend rollout is not atomic; keep API changes backward compatible.
+unset means enabled. Disabled delivery, missing digest, deployment failure or
+migration approval pending blocks frontend publication. After approval and
+maintenance recovery, dispatch main CI again. One workflow serializes the
+entire release without cancelling an in-flight deployment. Rollout is not
+atomic; keep API changes backward compatible with existing clients.
 
 Sources: [CI](../../.github/workflows/ci.yml),
 [frontend](../../.github/workflows/deployFrontend.yml),

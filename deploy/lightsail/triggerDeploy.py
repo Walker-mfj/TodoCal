@@ -13,6 +13,7 @@ READY_URL = "https://todocal.digitalhome.workers.dev/api/readyz"
 # Identify the deployment client explicitly; workers.dev rejected the default
 # Python urllib User-Agent with HTTP 403 during the signed status probe.
 USER_AGENT = "TodoCal-Deployment/1.0"
+# Treat legacy needs_approval responses as failures during host-script rollout.
 TERMINAL = {"succeeded", "failed", "needs_approval"}
 
 
@@ -38,7 +39,7 @@ def main():
     request_id = uuid.uuid4().hex
     print(f"Deployment request {request_id}: {digest}", flush=True)
     started = False
-    deadline = time.monotonic() + 45*60
+    deadline = time.monotonic() + 70*60
     while time.monotonic() < deadline:
         try:
             status = call(secret, digest, request_id, "status" if started else "deploy")

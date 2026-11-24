@@ -232,7 +232,7 @@ def handoff(ops, slot, current, target, loaded, compatible, keep_hold=False):
     migration_started = False
     try:
         if not compatible:
-            # Approved schema changes are intentionally offline. The old
+            # Schema changes are intentionally offline. The old
             # API/scheduler is stopped before backup and explicit migration.
             stop(ops, slot)
             ops.command(str(ops.ROOT / "backup.sh"), "frequent", timeout=1800)
@@ -275,9 +275,7 @@ def handoff(ops, slot, current, target, loaded, compatible, keep_hold=False):
     ops.log(f"API active slot: {target}; revision: {loaded['sha']}")
 
 
-def update(ops, client, digest, approved=None):
-    if approved and approved != digest:
-        raise DeploymentError("Approval does not match exact digest")
+def update(ops, client, digest):
     slot, current = preflight(ops)
     if f"{IMAGE}@{digest}" in current["digests"]:
         ops.verify_image(current, digest)
@@ -295,9 +293,8 @@ def update(ops, client, digest, approved=None):
     if loaded["leader"] != "v1":
         raise DeploymentError("Candidate lacks shared-host leader support")
     same = ops.compatible(current, loaded)
-    if not same and not approved:
-        ops.log(f"Manual approval required for unknown or changed migration fingerprint: {digest}")
-        return 3
+    if not same:
+        ops.log(f"Changed or unknown migration fingerprint; automatic offline deployment: {digest}")
     handoff(ops, slot, current, other(slot), loaded, same)
     return 0
 

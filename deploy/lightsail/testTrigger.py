@@ -48,6 +48,7 @@ class TriggerTests(unittest.TestCase):
             self.assertEqual(command.call_count, 2)
             wait.assert_called_once_with(5)
             self.assertEqual(command.call_args.args[0][-2:], ["--deploy", DIGEST])
+            self.assertEqual(command.call_args.kwargs["timeout"], 50*60)
 
     def test_busy_job_deadline_and_nonretryable_failure(self):
         for code in (75, 1, 3):
@@ -56,12 +57,9 @@ class TriggerTests(unittest.TestCase):
                     patch.object(host.time, "monotonic", side_effect=[0, 601]):
                 path = host.record_path(EVENT["id"])
                 host.store(path, {"digest": DIGEST, "status": "queued"})
-                if code == 3:
+                with self.assertRaises(SystemExit):
                     host.job(EVENT["id"])
-                else:
-                    with self.assertRaises(SystemExit):
-                        host.job(EVENT["id"])
-                self.assertEqual(json.loads(path.read_text())["status"], "needs_approval" if code == 3 else "failed")
+                self.assertEqual(json.loads(path.read_text())["status"], "failed")
                 command.assert_called_once()
 
 

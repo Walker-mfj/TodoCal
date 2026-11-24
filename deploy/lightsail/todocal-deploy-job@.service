@@ -11,4 +11,4 @@ User=root
 WorkingDirectory=/opt/todocal
 UMask=0077
 ExecStart=/usr/bin/python3 /opt/todocal/triggerHost.py %i
-TimeoutStartSec=45min
+TimeoutStartSec=65min

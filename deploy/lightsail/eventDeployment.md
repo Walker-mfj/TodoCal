@@ -10,7 +10,7 @@ message over a group-restricted Unix socket. Root systemd verifies the
 signature again, atomically records the random event ID and digest, then
 launches a fixed per-event service. Replays of the same ID return the
 existing state, not a new deployment. The deploy script uses its existing
-host lock, exact tested digest, Docker content verification, hold, migration gate and
+host lock, exact tested digest, Docker content verification, hold, automatic offline migration and
 readiness/rollback logic. Jobs are independent of the API and of the
 HTTP request. A cancelled Actions run cannot cancel an admitted job.
 
@@ -78,11 +78,12 @@ HTTP request. A cancelled Actions run cannot cancel an admitted job.
    even when API files have not changed. Already-installed digests are no-ops
    after readiness verification. This recovers a previously missed delivery.
    On the first merge, if workflow_run did not start, manually run CI on main.
-   On first/changed migration fingerprint, Actions reports needs_approval;
-   review and use python3 deploy.py --approve sha256:<exact-digest> on host.
-   After host readiness, turn off maintenance, re-enable event delivery and
-   dispatch CI on main to verify the already-installed release and publish
-   its matching frontend. A needs_approval result does not publish frontend.
+   On first/changed migration fingerprint, the host automatically stops API
+   writers, requires the verified off-host backup and performs offline migration.
+   After successful backend delivery and public readiness, frontend publishes
+   in the same workflow. No approval or manual maintenance toggle is needed.
+   A legacy needs_approval response still blocks frontend; upgrade the host
+   scripts and systemd unit using the Lightsail README before enabling delivery.
 
 ## Operations
 
@@ -91,12 +92,14 @@ Inspect journalctl -u 'todocal-deploy-job@*.service' and root-owned
 Success means exact digest deployed or already current and public readiness.
 Busy events retry only lock contention every five seconds, for at most ten
 minutes before reporting failure. Superseded digests fail tested-image validation;
-newer events must be delivered separately. Failed or timed-out events need investigation; never blindly restart an
+newer events must be delivered separately. A deploy attempt is bounded by
+50 minutes, systemd by 65 minutes and the CI client by 70 minutes, allowing
+for backup and migration. Failed or timed-out events need investigation; never blindly restart an
 unresolved queued/running/busy job. A host reboot may leave such records; verify
 the deployment hold and actual running revision before retrying with a new
 event. Inspect records before manually cleaning unresolved ones; terminal
 records are pruned after seven days on new requests. Rollback/hold remains
-as described in README. Manual commands --deploy and --approve require exact
+as described in README. Manual command --deploy requires the exact
 tested image digest; no bare polling command remains.
 
 Delivery is enabled by default. Disable it explicitly via LIGHTSAIL_EVENT_DEPLOY=false, including during maintenance. Stop the socket and

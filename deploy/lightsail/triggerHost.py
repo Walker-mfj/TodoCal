@@ -97,10 +97,11 @@ def job(request_id):
     deadline = time.monotonic() + 10*60
     try:
         while True:
+            # Allow the full offline backup budget plus pull, migration and handoff.
             code = subprocess.run([sys.executable, str(ROOT / "deploy.py"), "--deploy", record["digest"]],
-                                  cwd=ROOT, timeout=30*60).returncode
+                                  cwd=ROOT, timeout=50*60).returncode
             if code != 75:
-                result = {0: "succeeded", 3: "needs_approval"}.get(code, "failed")
+                result = "succeeded" if code == 0 else "failed"
                 break
             if time.monotonic() >= deadline:
                 break

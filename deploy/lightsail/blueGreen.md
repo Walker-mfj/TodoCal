@@ -142,7 +142,9 @@ disabled. This path is not zero downtime. After migration starts, no automatic
 old-binary rollback; recover forward or use a tested restore plan under
 maintenance. On success verify local and public readiness after returning
 Worker to normal mode (`MAINTENANCE_MODE=false`), then re-enable events. Do not change data semantics incompatibly
-even with identical migration fingerprints. Frontend deploy remains separate.
+even with identical migration fingerprints. Dispatch CI on main after
+maintenance and event delivery are restored to verify the installed digest
+and release its matching frontend.
 
 ## Verification before activation
 

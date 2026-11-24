@@ -1,4 +1,4 @@
-name: Deploy backend
+name: Deploy production
 
 on:
   workflow_run:
@@ -10,8 +10,9 @@ permissions:
   contents: read
   packages: write
 
-# A newer CI run cannot cancel a deployment already underway. Pending runs
-# may be coalesced by Actions; publish.sh checks the actual main head.
+# Serialize the complete backend/frontend release. Keep the existing group
+# so an in-flight backend deployment is also fenced during the transition.
+# Pending runs may be coalesced; both publishers recheck the main head.
 concurrency:
   group: todocal-backend-production
   cancel-in-progress: false
@@ -26,6 +27,9 @@ jobs:
       (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 65
+    outputs:
+      digest: ${{ steps.image.outputs.digest }}
+      ready: ${{ steps.delivery.outcome == 'success' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,8 +45,21 @@ jobs:
         shell: bash
         run: bash deploy/lightsail/publish.sh
       - name: Trigger private Lightsail deployment and wait for result
+        id: delivery
         if: vars.LIGHTSAIL_EVENT_DEPLOY != 'false' && steps.image.outputs.digest != ''
         env:
           DEPLOY_TRIGGER_SECRET: ${{ secrets.DEPLOY_TRIGGER_SECRET }}
           DEPLOY_DIGEST: ${{ steps.image.outputs.digest }}
         run: python3 deploy/lightsail/triggerDeploy.py
+
+  frontend:
+    needs: publish
+    # A skipped delivery (disabled or superseded) is NOT a confirmed backend.
+    # needs_approval and deployment/readiness failures fail the publish job.
+    if: needs.publish.outputs.ready == 'true' && needs.publish.outputs.digest != ''
+    permissions:
+      contents: read
+    uses: ./.github/workflows/deployFrontend.yml
+    with:
+      tested_sha: ${{ github.event.workflow_run.head_sha }}
+    secrets: inherit

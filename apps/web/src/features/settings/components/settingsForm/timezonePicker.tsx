@@ -109,8 +109,6 @@ export function TimezonePicker({
             <ul
               id={`${id}-list`}
               role="listbox"
-              // Firefox can tab into scrollable elements by default. Keep
-              // DOM focus on the combobox; options use aria-activedescendant.
               tabIndex={-1}
               aria-label="Timezones"
               ref={list}

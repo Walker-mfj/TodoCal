@@ -119,8 +119,8 @@ input:where(.control)[type="datetime-local"] {
   color-scheme: dark;
 }
 :where(.control)[aria-invalid="true"] {
-  border-color: #c74949;
-  outline-color: #c74949;
+  border-color: var(--color-form-controls-border-color-7);
+  outline-color: var(--color-form-controls-outline-color-8);
 }
 input:where(.control):focus-visible {
   outline-offset: -2px;

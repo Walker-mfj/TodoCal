@@ -8,7 +8,7 @@
   border-radius: 50%;
   background: var(--color-accent);
   color: var(--color-on-accent);
-  box-shadow: 0 6px 24px #0003;
+  box-shadow: 0 6px 24px var(--color-floating-focus-box-shadow-71);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -35,13 +35,13 @@
   background: var(--color-accent);
   color: var(--color-on-accent);
   border-color: var(--color-accent);
-  box-shadow: 0 8px 28px #0004;
+  box-shadow: 0 8px 28px var(--color-floating-focus-box-shadow-72);
 }
 .floating-focus:focus-visible {
   background: var(--color-accent);
   color: var(--color-on-accent);
   border-color: var(--color-accent);
-  box-shadow: 0 8px 28px #0004;
+  box-shadow: 0 8px 28px var(--color-floating-focus-box-shadow-72);
 }
 .floating-focus:focus-visible {
   outline: 3px solid var(--color-ink);

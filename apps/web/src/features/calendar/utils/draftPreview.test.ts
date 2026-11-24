@@ -35,3 +35,23 @@ it("supports untimed drafts and avoids misleading previews for invalid or unsche
   ])
     expect(draftEvent({ draft })).toBeNull();
 });
+
+it("previews a timed draft through its selected end date", () => {
+  expect(
+    draftEvent(
+      {
+        draft: {
+          title: "Overnight",
+          scheduledDate: "2026-10-24",
+          scheduledEndDate: "2026-10-25",
+          startTime: "23:00",
+          endTime: "01:00",
+        },
+      },
+      "Asia/Tokyo",
+    ),
+  ).toMatchObject({
+    start: "2026-10-24T23:00:00",
+    end: "2026-10-25T01:00:00",
+  });
+});

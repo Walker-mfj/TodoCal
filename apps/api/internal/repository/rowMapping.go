@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"focuscalendar/internal/localdate"
 	"focuscalendar/internal/models"
 
 	"github.com/jackc/pgx/v5"
@@ -51,12 +52,15 @@ func scanMaterializableSeries(row pgx.Row) (sr models.Series, err error) {
 	var raw []byte
 	var start string
 	var group *string
-	err = row.Scan(&sr.ID, &raw, &group, &start, &sr.Cadence, &sr.IntervalDays, &sr.EndDate, &sr.StoppedAfter, &sr.Offset, &sr.DeadlineTime, &sr.CreatedAt, &sr.ScheduleOffset)
+	err = row.Scan(&sr.ID, &raw, &group, &start, &sr.Cadence, &sr.IntervalDays, &sr.EndDate, &sr.StoppedAfter, &sr.Offset, &sr.DeadlineTime, &sr.CreatedAt, &sr.ScheduleOffset, &sr.Timezone)
 	if err != nil {
 		return
 	}
 	if err = json.Unmarshal(raw, &sr.Task); err != nil {
 		return
+	}
+	if sr.Task.ScheduledDate != nil && sr.Task.ScheduledEndDate != nil {
+		sr.EndOffset = localdate.Days(*sr.Task.ScheduledDate, *sr.Task.ScheduledEndDate)
 	}
 	sr.Task.GroupID = group
 	sr.Task.ScheduledDate = &start

@@ -10,3 +10,11 @@ it("preserves selected intervals and defaults clicks to 30 minutes", () => {
     slotDraft("2026-10-21T09:00:00Z", "2026-10-21T10:30:00Z").endTime,
   ).toBe("10:30");
 });
+
+it("keeps the end date for a midnight slot selection", () => {
+  expect(slotDraft("2026-11-22T23:45:00Z")).toMatchObject({
+    scheduledDate: "2026-11-22",
+    scheduledEndDate: "2026-11-23",
+    endTime: "00:15",
+  });
+});

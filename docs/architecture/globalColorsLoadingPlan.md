@@ -1,6 +1,8 @@
 # Global colors and loading skeletons — implementation plan
 
-Status: proposed; documentation only. No runtime, lint configuration, API or DB changes in this PR.
+Status: implemented on top of PR #57. Shared Skeleton, global colors, and UI source checks are included. No additional API or DB changes.
+
+Validation: frontend unit tests, typecheck, lint/UI fixtures, architecture checks and production build passed. Browser E2E could not run in this environment because Docker is unavailable; visual regression across browsers remains unverified. The source check is conservative: TypeScript AST checks literals and direct JSX placeholders, CSS declarations use a targeted matcher. Imported loading strings and computed control flow still require review. Skeletons are static, so reduced motion requires no animation override.
 
 ## Goals and boundaries
 
@@ -156,4 +158,4 @@ These are discovery commands, not sufficient lint rules. Classify results rather
 - Verify screen-reader busy/status, keyboard focus/tab order, unchanged action-pending labels and no layout shifts in desktop/mobile. Update assertions that currently rely on visible loading strings; prefer semantic status/region or specific skeleton test IDs with delayed responses.
 - Extend existing tests in `app/providers.test.tsx`, `features/tasks/components/taskDetail/{historyDetail,taskDetail}.test.tsx`, `features/focus/components/timerPanel/timerTaskSelection.test.tsx`, `features/notifications/components/notificationSettings.test.tsx`, `features/settings/components/settingsForm/settingsForm.test.tsx` as applicable; add calendar lazy/progress and shared Skeleton tests. Browser regression: existing calendar, focus scene, task UX, settings/session and accessibility suites (Chrome, Firefox, WebKit).
 - Run `cd apps/web && npm run format:check && npm run lint`; from root `make check-web-architecture typecheck test-web build-web`, then `make test-e2e` with test DB only. Run new lint fixtures as part of CI.
-- No API/schema changes or production DB migration; no query policy/command idempotency changes. Implementation PR provides final audit summary and test evidence. This planning PR runs no runtime tests because it changes only Markdown.
+- No API/schema changes or production DB migration; no query policy/command idempotency changes. Implementation PR provides final audit summary and test evidence. See implementation validation above.

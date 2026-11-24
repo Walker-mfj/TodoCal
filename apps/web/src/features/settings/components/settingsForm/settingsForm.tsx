@@ -1,9 +1,11 @@
 "use client";
+import { Skeleton } from "../../../../shared/components/skeleton/skeleton";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { playTimerSound, timerSounds } from "../../../focus";
 import { ContentCard } from "../../../../shared/components/contentCard/contentCard";
 import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./settingsForm.module.css";
+import { TimezonePicker } from "./timezonePicker";
 import {
   NotificationSettings,
   type NotificationState,
@@ -80,7 +82,32 @@ export function SettingsForm(props: Props) {
             </button>
           </>
         ) : (
-          <p role="status">Loading settings…</p>
+          <p role="status">
+            <span
+              role="status"
+              aria-label="Loading settings…"
+              aria-live="polite"
+            >
+              <span
+                style={{
+                  position: "absolute",
+                  width: 1,
+                  height: 1,
+                  overflow: "hidden",
+                  clipPath: "inset(50%)",
+                }}
+                className="sr-only"
+              >
+                Loading settings…
+              </span>
+              {[0, 1, 2, 3].map((row) => (
+                <span key={row} style={{ display: "block", marginBlock: 16 }}>
+                  <Skeleton width="40%" />
+                  <Skeleton width="100%" height={40} />
+                </span>
+              ))}
+            </span>
+          </p>
         )}
       </ContentCard>
     );
@@ -273,32 +300,15 @@ function SettingsEditor({
                 <option value="dark">Dark</option>
               </select>
             </label>
-            <label className={cx("", true)}>
-              Timezone
-              <input
-                required
-                list="timezones"
-                value={draft.timezone}
-                onChange={(e) => field("timezone", e.target.value)}
-                className={cx("", true)}
-              />
-              <datalist id="timezones">
-                {[
-                  "Asia/Tokyo",
-                  "Asia/Ho_Chi_Minh",
-                  "UTC",
-                  "Europe/London",
-                  "America/New_York",
-                  "America/Los_Angeles",
-                  "Australia/Sydney",
-                ].map((z) => (
-                  <option key={z} value={z} />
-                ))}
-              </datalist>
-            </label>
+            <TimezonePicker
+              value={draft.timezone}
+              onChange={(zone) => field("timezone", zone)}
+            />
             <p className={cx("muted")}>
-              Changing timezone can finalize days that have ended. Existing
-              history stays unchanged.
+              Timed tasks and deadlines keep the same actual moments; their
+              displayed dates and times change. Date-only tasks and saved
+              history keep their dates. Changing timezone can finalize days that
+              have ended.
             </p>
           </section>
           <section className={cx("section")}>

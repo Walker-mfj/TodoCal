@@ -29,15 +29,26 @@ func CreateTask(ctx context.Context, tx pgx.Tx, user, zone string, now time.Time
 	if err := EditableDate(ctx, tx, user, in.ScheduledDate); err != nil {
 		return Task{}, err
 	}
-	t, err := repository.InsertTask(ctx, tx, user, uuid.NewString(), in.Title, in.Description, in.GroupID, in.Priority, in.ScheduledDate, in.StartTime, in.EndTime, in.Deadline, in.EstimatedPomodoros, now, in.FocusMinutes)
+	startAt, endAt, err := taskInstants(in, zone, nil)
+	if err != nil {
+		return Task{}, err
+	}
+	t, err := repository.InsertTask(ctx, tx, user, uuid.NewString(), in.Title, in.Description, in.GroupID, in.Priority, in.ScheduledDate, in.StartTime, in.EndTime, in.Deadline, in.EstimatedPomodoros, now, in.FocusMinutes, in.ScheduledEndDate, startAt, endAt)
 	if err != nil {
 		return t, err
 	}
 	return t, Event(ctx, tx, user, zone, "created", now, nil, t)
 }
 
-func UpdateTask(ctx context.Context, tx pgx.Tx, user, zone string, now time.Time, old Task, in TaskInput) (Task, error) {
-	if err := Validate(&in, zone, now, &old); err != nil {
+func UpdateTask(ctx context.Context, tx pgx.Tx, user, zone string, now time.Time, old Task, in TaskInput, endpoints ...*time.Time) (Task, error) {
+	validationPrevious := old
+	if len(endpoints) == 2 {
+		if (endpoints[0] == nil) != (endpoints[1] == nil) || (endpoints[0] != nil && !endpoints[1].After(*endpoints[0])) {
+			return Task{}, Invalid("End must be after start")
+		}
+		validationPrevious = projectTask(Task{TaskInput: in, ScheduledStartAt: endpoints[0], ScheduledEndAt: endpoints[1]}, zone)
+	}
+	if err := Validate(&in, zone, now, &validationPrevious); err != nil {
 		return Task{}, err
 	}
 	if err := CheckGroup(ctx, tx, user, in.GroupID); err != nil {
@@ -48,16 +59,27 @@ func UpdateTask(ctx context.Context, tx pgx.Tx, user, zone string, now time.Time
 			return Task{}, err
 		}
 	}
-	t, err := repository.UpdateTask(ctx, tx, user, old.ID, in.Title, in.Description, in.GroupID, in.Priority, in.ScheduledDate, in.StartTime, in.EndTime, in.Deadline, in.EstimatedPomodoros, now, in.FocusMinutes)
+	startAt, endAt, err := taskInstants(in, zone, &validationPrevious)
+	if len(endpoints) == 2 {
+		startAt, endAt, err = endpoints[0], endpoints[1], nil
+	}
+	if err != nil {
+		return Task{}, err
+	}
+	t, err := repository.UpdateTask(ctx, tx, user, old.ID, in.Title, in.Description, in.GroupID, in.Priority, in.ScheduledDate, in.StartTime, in.EndTime, in.Deadline, in.EstimatedPomodoros, now, in.FocusMinutes, in.ScheduledEndDate, startAt, endAt)
 	if err != nil {
 		return t, err
 	}
-	if !sameDate(old.ScheduledDate, t.ScheduledDate) {
+	if !sameDate(old.ScheduledDate, projectTask(t, zone).ScheduledDate) {
 		if err = Exception(ctx, tx, user, t, "moved", now); err != nil {
 			return t, err
 		}
 	}
-	return t, Event(ctx, tx, user, zone, "updated", now, &old, t)
+	var accountZone string
+	if err = tx.QueryRow(ctx, `SELECT timezone FROM settings WHERE user_id=$1`, user).Scan(&accountZone); err != nil {
+		return t, err
+	}
+	return t, Event(ctx, tx, user, accountZone, "updated", now, &old, t)
 }
 
 func CompleteTask(ctx context.Context, tx pgx.Tx, user, zone string, now time.Time, old Task, complete, move bool, completed ...*time.Time) (Task, error) {

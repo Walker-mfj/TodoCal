@@ -8,7 +8,7 @@ import (
 )
 
 // MaterializeSeriesReminderHorizon bounds a durable batch to one series and at
-// most eight local dates, independent of the account's total series count.
+// a bounded range of local dates, independent of the account's total series count.
 func MaterializeSeriesReminderHorizon(ctx context.Context, tx pgx.Tx, user, zone, series string, now time.Time) error {
 	loc, err := time.LoadLocation(zone)
 	if err != nil {

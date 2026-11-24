@@ -5,6 +5,7 @@ import type {
   DateClickArg,
 } from "@fullcalendar/interaction";
 import type { Task } from "../../../shared/api/domainTypes";
+import { taskSchedule } from "../../../shared/utils/taskSchedule";
 import type { CalendarDraft, CalendarSlot } from "../types/calendarTypes";
 import { scheduleFromDrop, type Schedule } from "./interactions";
 import { slotDraft } from "./slotDraft";
@@ -12,6 +13,7 @@ type Options = {
   draftPreview?: CalendarDraft | null;
   disabled: boolean;
   draftDisabled: boolean;
+  zone?: string;
   onCreate: (slot: CalendarSlot) => void;
   onSchedule: (task: Task, schedule: Schedule) => void;
   onScheduleError: (error: unknown) => void;
@@ -20,6 +22,7 @@ export function calendarInteractions({
   draftPreview,
   disabled,
   draftDisabled,
+  zone = "UTC",
   onCreate,
   onSchedule,
   onScheduleError,
@@ -33,6 +36,8 @@ export function calendarInteractions({
     if (!draftPreview || disabled || draftDisabled) return;
     const schedule = scheduleFromDrop(
       {
+        scheduledDate: draftPreview.draft.scheduledDate,
+        scheduledEndDate: draftPreview.draft.scheduledEndDate,
         startTime: draftPreview.draft.startTime || null,
         endTime: draftPreview.draft.endTime || null,
       },
@@ -40,11 +45,15 @@ export function calendarInteractions({
       end,
       allDay,
       kind,
+      zone,
     );
     onCreate({
       scheduledDate: schedule.scheduledDate || "",
       startTime: schedule.startTime || "",
       endTime: schedule.endTime || "",
+      ...(schedule.scheduledEndDate
+        ? { scheduledEndDate: schedule.scheduledEndDate }
+        : {}),
     });
   };
   return {
@@ -61,13 +70,25 @@ export function calendarInteractions({
           );
           return;
         }
+        if (
+          arg.oldEvent.extendedProps.historical &&
+          arg.oldEvent.extendedProps.zone &&
+          arg.oldEvent.extendedProps.zone !== zone
+        ) {
+          arg.revert();
+          return;
+        }
         const task = arg.oldEvent.extendedProps.task as Task;
         const schedule = scheduleFromDrop(
-          task,
+          {
+            ...task,
+            ...taskSchedule(task, arg.oldEvent.extendedProps.zone ?? zone),
+          },
           arg.event.startStr,
           arg.event.endStr || undefined,
           arg.event.allDay,
           arg.view.type === "dayGridMonth" ? "month" : "move",
+          zone,
         );
         arg.revert();
         onSchedule(task, schedule);
@@ -84,13 +105,25 @@ export function calendarInteractions({
           moveDraft(startStr, endStr || undefined, allDay, "resize");
           return;
         }
+        if (
+          arg.oldEvent.extendedProps.historical &&
+          arg.oldEvent.extendedProps.zone &&
+          arg.oldEvent.extendedProps.zone !== zone
+        ) {
+          arg.revert();
+          return;
+        }
         const task = arg.oldEvent.extendedProps.task as Task;
         const schedule = scheduleFromDrop(
-          task,
+          {
+            ...task,
+            ...taskSchedule(task, arg.oldEvent.extendedProps.zone ?? zone),
+          },
           arg.event.startStr,
           arg.event.endStr || undefined,
           arg.event.allDay,
           "resize",
+          zone,
         );
         arg.revert();
         onSchedule(task, schedule);
@@ -108,6 +141,7 @@ export function calendarInteractions({
           arg.event.endStr || undefined,
           arg.event.allDay,
           arg.view.type === "dayGridMonth" ? "month" : "move",
+          zone,
         );
         arg.revert();
         onSchedule(task, schedule);
@@ -120,11 +154,7 @@ export function calendarInteractions({
       if (!disabled) onCreate(slotDraft(arg.dateStr, undefined, arg.allDay));
     },
     select: (arg: DateSelectArg) => {
-      if (
-        !disabled &&
-        (arg.allDay || arg.startStr.slice(0, 10) === arg.endStr.slice(0, 10))
-      )
-        onCreate(slotDraft(arg.startStr, arg.endStr, arg.allDay));
+      if (!disabled) onCreate(slotDraft(arg.startStr, arg.endStr, arg.allDay));
       arg.view.calendar.unselect();
     },
   };

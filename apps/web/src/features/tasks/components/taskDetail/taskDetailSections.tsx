@@ -1,3 +1,4 @@
+import { Skeleton } from "../../../../shared/components/skeleton/skeleton";
 import { DateTime } from "luxon";
 import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./taskDetailSections.module.css";
@@ -25,7 +26,35 @@ export function TaskRecurrenceDetails({
     <section className={cx("series-summary")}>
       <h3>Repeating task</h3>
       {series.isPending ? (
-        <p>Loading repeat details…</p>
+        <div>
+          <span
+            role="status"
+            aria-label="Loading repeat details…"
+            aria-live="polite"
+          >
+            <span
+              style={{
+                position: "absolute",
+                width: 1,
+                height: 1,
+                overflow: "hidden",
+                clipPath: "inset(50%)",
+              }}
+              className="sr-only"
+            >
+              Loading repeat details…
+            </span>
+            {[0, 1, 2].map((row) => (
+              <span
+                key={row}
+                style={{ display: "flex", gap: 12, marginBlock: 12 }}
+              >
+                <Skeleton width={32} height={32} variant="circle" />
+                <Skeleton width="70%" height={28} />
+              </span>
+            ))}
+          </span>
+        </div>
       ) : series.error ? (
         <p className={cx("error")}>Unable to load repeat details.</p>
       ) : (
@@ -48,7 +77,7 @@ export function TaskRecurrenceDetails({
                   : "No end date"}
               </dd>
               <dt>Timezone</dt>
-              <dd>{zone}</dd>
+              <dd>{series.data.timezone ?? zone}</dd>
             </dl>
             <small>
               Each occurrence has its own focus goal and sessions. When editing,
@@ -79,7 +108,31 @@ export function TaskFocusHistory({
     <section className={cx("series-summary")}>
       <h3>Focus sessions</h3>
       {focus.isPending ? (
-        <p>Loading sessions…</p>
+        <div>
+          <span role="status" aria-label="Loading sessions…" aria-live="polite">
+            <span
+              style={{
+                position: "absolute",
+                width: 1,
+                height: 1,
+                overflow: "hidden",
+                clipPath: "inset(50%)",
+              }}
+              className="sr-only"
+            >
+              Loading sessions…
+            </span>
+            {[0, 1, 2].map((row) => (
+              <span
+                key={row}
+                style={{ display: "flex", gap: 12, marginBlock: 12 }}
+              >
+                <Skeleton width={32} height={32} variant="circle" />
+                <Skeleton width="70%" height={28} />
+              </span>
+            ))}
+          </span>
+        </div>
       ) : focus.error ? (
         <p role="alert">Unable to load sessions.</p>
       ) : !focus.data?.sessions.length ? (

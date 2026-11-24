@@ -37,7 +37,7 @@ func Validate(in *TaskInput, zone string, now time.Time, previous *Task) error {
 	if in.FocusMinutes != nil && (*in.FocusMinutes < 1 || *in.FocusMinutes > 180) {
 		return Invalid("Focus minutes must be between 1 and 180")
 	}
-	loc, err := time.LoadLocation(zone)
+	_, err := time.LoadLocation(zone)
 	if err != nil {
 		return err
 	}
@@ -48,27 +48,13 @@ func Validate(in *TaskInput, zone string, now time.Time, previous *Task) error {
 		}
 
 	}
-	if (in.StartTime == nil) != (in.EndTime == nil) {
-		return Invalid("Provide both start and end times")
+	if in.StartTime == nil && in.EndTime == nil {
+		in.ScheduledEndDate = nil
+	} else if in.ScheduledEndDate == nil {
+		in.ScheduledEndDate = in.ScheduledDate
 	}
-	if in.StartTime != nil {
-		if in.ScheduledDate == nil {
-			return Invalid("Times require a scheduled date")
-		}
-		for _, v := range []string{*in.StartTime, *in.EndTime} {
-			parsed, e := time.Parse("15:04", v)
-			if e != nil || parsed.Format("15:04") != v {
-				return Invalid("Use HH:mm times")
-			}
-			stamp := *in.ScheduledDate + " " + v
-			local, e := time.ParseInLocation("2006-01-02 15:04", stamp, loc)
-			if e != nil || local.Format("2006-01-02 15:04") != stamp {
-				return Invalid("This local time does not exist in your time zone")
-			}
-		}
-		if *in.EndTime <= *in.StartTime {
-			return Invalid("End time must be after start time on the same day")
-		}
+	if _, _, err := taskInstants(*in, zone, previous); err != nil {
+		return err
 	}
 	if in.Deadline != nil {
 		if in.Deadline.Year() < 1 || in.Deadline.Year() > 9999 {

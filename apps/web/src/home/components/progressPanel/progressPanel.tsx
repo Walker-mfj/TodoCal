@@ -1,4 +1,5 @@
 "use client";
+import { Skeleton } from "../../../shared/components/skeleton/skeleton";
 import { bindStyles } from "../../../shared/utils/classNames";
 import styles from "./progressPanel.module.css";
 const cx = bindStyles(styles);
@@ -104,7 +105,24 @@ export function ProgressPanel({
       {report.error ? (
         <p className={cx("error")}>{errorMessage(report.error)}</p>
       ) : report.isPending ? (
-        <p>Loading progress…</p>
+        <div>
+          <span role="status" aria-label="Loading progress…" aria-live="polite">
+            <span
+              style={{
+                position: "absolute",
+                width: 1,
+                height: 1,
+                overflow: "hidden",
+                clipPath: "inset(50%)",
+              }}
+              className="sr-only"
+            >
+              Loading progress…
+            </span>
+            <Skeleton width={80} height={80} variant="circle" />
+            <Skeleton width="70%" height={24} />
+          </span>
+        </div>
       ) : (
         <div className={cx(`report-days ${period}`)}>
           <DayStrip

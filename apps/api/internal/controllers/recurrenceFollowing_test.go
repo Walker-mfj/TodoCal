@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/google/uuid"
 	"testing"
 	"time"
@@ -355,6 +356,17 @@ func TestFollowingDeletionPreviewExcludesUnaffectedCompletedTasks(t *testing.T) 
 	}
 	object(t, command(s, "DELETE", "/api/v1/tasks/"+id(3), map[string]any{"expectedRevision": 1}, c, csrf, uuid.NewString()), 200)
 	_, err = p.Exec(context.Background(), `INSERT INTO daily_snapshots(user_id,date,timezone,planned,completed,finalized_at) SELECT user_id,scheduled_date,'Asia/Tokyo',1,1,$2 FROM tasks WHERE id=$1`, id(4), s.now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A date snapshot alone does not attribute a specific task to history.
+	saved := items[4].(map[string]any)
+	saved["status"] = "complete"
+	raw, err := json.Marshal(map[string]any{"task": saved, "groupName": nil, "groupColor": nil})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = p.Exec(context.Background(), `INSERT INTO daily_plan_entries(user_id,date,task_id,task_state) SELECT user_id,scheduled_date,id,$2::jsonb FROM tasks WHERE id=$1`, id(4), raw)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -452,15 +452,23 @@
   line-height: 1.2;
 }
 .sidebar-brand-accent {
-  color: #0861ce;
-  background: linear-gradient(115deg, #087b91, #1456d9);
+  color: var(--color-workspace-sidebar-color-74);
+  background: linear-gradient(
+    115deg,
+    var(--color-workspace-sidebar-background-75),
+    var(--color-workspace-sidebar-background-76)
+  );
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 [data-mode="dark"] .sidebar-brand-accent {
-  color: #70c4ff;
-  background-image: linear-gradient(115deg, #61e4d3, #7eb5ff);
+  color: var(--color-workspace-sidebar-color-77);
+  background-image: linear-gradient(
+    115deg,
+    var(--color-workspace-sidebar-background-image-78),
+    var(--color-workspace-sidebar-background-image-79)
+  );
 }
 @media (forced-colors: active) {
   .sidebar-brand-accent {

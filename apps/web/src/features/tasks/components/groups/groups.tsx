@@ -1,4 +1,8 @@
 "use client";
+import {
+  groupPalette,
+  defaultGroupColor,
+} from "../../../../shared/constants/colorValues";
 import { ContentCard } from "../../../../shared/components/contentCard/contentCard";
 import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./groups.module.css";
@@ -11,16 +15,7 @@ import { useAccountDraft } from "../../../../shared/hooks/useAccountDraft";
 import { useCommand } from "../../../../shared/hooks/useCommand";
 import type { Execute } from "../../../../shared/api/apiClient";
 import type { Group } from "../../../../shared/api/domainTypes";
-const palette = [
-  ["Blue", "#4169b1"],
-  ["Orange", "#ed7d31"],
-  ["Green", "#278765"],
-  ["Purple", "#8056b3"],
-  ["Rose", "#c84e75"],
-  ["Teal", "#16838c"],
-  ["Gold", "#b58a23"],
-  ["Slate", "#64748b"],
-];
+const palette = groupPalette;
 export function Groups({
   owner,
   groups,
@@ -41,7 +36,7 @@ export function Groups({
   }>(`focus:form:${owner}:groups`, {
     editing: null,
     name: "",
-    color: "#4169b1",
+    color: defaultGroupColor,
   });
   const { editing, name, color } = draft;
   const setEditing = (editing: Group | null) =>

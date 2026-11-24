@@ -134,7 +134,10 @@ export function CalendarEventContent({
                       style={
                         {
                           "--clock-fill": `${fill * 360}deg`,
-                          "--clock-hand": fill > 0.5 ? "#fff" : "currentColor",
+                          "--clock-hand":
+                            fill > 0.5
+                              ? "var(--color-event-clock-hand)"
+                              : "currentColor",
                         } as CSSProperties
                       }
                     />

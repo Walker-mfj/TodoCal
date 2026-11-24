@@ -1,4 +1,5 @@
 "use client";
+import { Skeleton } from "../../../shared/components/skeleton/skeleton";
 import { useEffect, useRef, useState } from "react";
 import { useCommand } from "../../../shared/hooks/useCommand";
 import { errorMessage, type Execute } from "../../../shared/api/apiClient";
@@ -137,7 +138,28 @@ export function NotificationSettings({
         </p>
         <div className={cx("device-status")}>
           {checking ? (
-            <p role="status">Checking this device…</p>
+            <p role="status" style={{ flex: 1, minWidth: 0 }}>
+              <span
+                role="status"
+                aria-label="Checking this device…"
+                aria-live="polite"
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    width: 1,
+                    height: 1,
+                    overflow: "hidden",
+                    clipPath: "inset(50%)",
+                  }}
+                  className="sr-only"
+                >
+                  Checking this device…
+                </span>
+                <Skeleton width="70%" height={20} />
+                <Skeleton width="95%" height={14} />
+              </span>
+            </p>
           ) : currentDevice ? (
             <div>
               <strong>Notifications enabled on this device</strong>
@@ -191,7 +213,11 @@ export function NotificationSettings({
             {error || command.error}
           </p>
         )}
-        {notice && <p role="status">{notice}</p>}
+        {notice && (
+          <p role="status" style={{ flex: 1, minWidth: 0 }}>
+            {notice}
+          </p>
+        )}
         <fieldset className={cx("", true)} disabled={disabled || pending}>
           <legend className={cx("sr-only")}>Reminder types</legend>
           <div className={cx("reminders")}>

@@ -1,8 +1,12 @@
 import { DateTime } from "luxon";
 import type { EventInput } from "@fullcalendar/core";
+import { localScheduleEndpoint } from "../../../shared/utils/taskSchedule";
 import type { CalendarDraft } from "../types/calendarTypes";
 export type { CalendarDraft } from "../types/calendarTypes";
-export function draftEvent(preview?: CalendarDraft | null): EventInput | null {
+export function draftEvent(
+  preview?: CalendarDraft | null,
+  zone = "UTC",
+): EventInput | null {
   if (!preview) return null;
   const { draft } = preview;
   const date = draft.scheduledDate;
@@ -13,20 +17,17 @@ export function draftEvent(preview?: CalendarDraft | null): EventInput | null {
   )
     return null;
   const timed = !!(draft.startTime || draft.endTime);
-  const validTime = (time?: string) =>
-    !!time && /^([01]\d|2[0-3]):[0-5]\d$/.test(time);
-  if (
-    timed &&
-    (!validTime(draft.startTime) ||
-      !validTime(draft.endTime) ||
-      draft.endTime! <= draft.startTime!)
-  )
-    return null;
+  const endDate = draft.scheduledEndDate || date;
+  if (timed) {
+    const from = localScheduleEndpoint(date, draft.startTime || "", zone);
+    const to = localScheduleEndpoint(endDate, draft.endTime || "", zone);
+    if (!from || !to || to <= from) return null;
+  }
   return {
     id: "editor-draft",
     title: draft.title.trim() || "New task",
     start: date + (timed ? `T${draft.startTime}:00` : ""),
-    end: timed ? `${date}T${draft.endTime}:00` : undefined,
+    end: timed ? `${endDate}T${draft.endTime}:00` : undefined,
     allDay: !timed,
     editable: true,
     classNames: ["fc-event-draft"],

@@ -8,7 +8,7 @@
   border-radius: 16px;
   background: var(--color-panel);
   color: var(--color-ink);
-  box-shadow: 0 20px 70px #0003;
+  box-shadow: 0 20px 70px var(--color-dialog-box-shadow-12);
 }
 .app-dialog::backdrop {
   background: var(--color-overlay);
@@ -64,19 +64,19 @@
   flex: 1;
 }
 .app-dialog-actions :global(.dialog-danger) {
-  background: #b42332;
-  border-color: #b42332;
-  color: #fff;
+  background: var(--color-dialog-background-13);
+  border-color: var(--color-dialog-border-color-14);
+  color: var(--color-dialog-color-15);
 }
 .app-dialog-actions :global(.dialog-danger):hover:not(:disabled) {
-  background: #8f1827;
-  border-color: #8f1827;
-  color: #fff;
+  background: var(--color-dialog-background-16);
+  border-color: var(--color-dialog-border-color-17);
+  color: var(--color-dialog-color-15);
 }
 .app-dialog-actions :global(.dialog-danger):focus-visible {
-  background: #8f1827;
-  border-color: #8f1827;
-  color: #fff;
+  background: var(--color-dialog-background-16);
+  border-color: var(--color-dialog-border-color-17);
+  color: var(--color-dialog-color-15);
 }
 @media (max-width: 480px) {
   .app-dialog {

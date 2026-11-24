@@ -1,4 +1,5 @@
 "use client";
+import { Skeleton } from "../../../shared/components/skeleton/skeleton";
 import { bindStyles } from "../../../shared/utils/classNames";
 import styles from "./dayDetailPanel.module.css";
 const cx = bindStyles(styles);
@@ -36,7 +37,31 @@ export function DayDetailPanel({
       onClose={onClose}
     >
       {day.isPending ? (
-        <p>Loading day…</p>
+        <div>
+          <span role="status" aria-label="Loading day…" aria-live="polite">
+            <span
+              style={{
+                position: "absolute",
+                width: 1,
+                height: 1,
+                overflow: "hidden",
+                clipPath: "inset(50%)",
+              }}
+              className="sr-only"
+            >
+              Loading day…
+            </span>
+            {[0, 1, 2].map((row) => (
+              <span
+                key={row}
+                style={{ display: "flex", gap: 12, marginBlock: 12 }}
+              >
+                <Skeleton width={32} height={32} variant="circle" />
+                <Skeleton width="70%" height={28} />
+              </span>
+            ))}
+          </span>
+        </div>
       ) : day.error ? (
         <p className={cx("error")}>{errorMessage(day.error)}</p>
       ) : (
@@ -73,20 +98,23 @@ export function DayDetailPanel({
                 <TaskRow
                   key={e.task.id}
                   task={e.task}
-                  historical
+                  zone={e.timezone ?? day.data!.timezone}
+                  historical={day.data!.finalized && !e.live}
                   groups={
                     e.task.groupId && e.groupName
                       ? [
                           {
                             id: e.task.groupId,
                             name: e.groupName,
-                            color: e.groupColor || "#999",
+                            color:
+                              e.groupColor ||
+                              "var(--color-history-group-fallback)",
                             revision: 1,
                           },
                         ]
                       : []
                   }
-                  onOpen={() => onTask(e.task, day.data!.finalized)}
+                  onOpen={() => onTask(e.task, day.data!.finalized && !e.live)}
                 />
               ))}
             </div>

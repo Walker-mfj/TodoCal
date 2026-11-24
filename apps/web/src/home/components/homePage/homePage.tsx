@@ -112,9 +112,23 @@ function AccountWorkspace() {
   } = useTaskFilters();
   const editingTaskId = panel?.type === "edit" ? panel.task.id : undefined;
   const onDraftChange = useCallback(
-    ({ title, priority, scheduledDate, startTime, endTime }: Draft) => {
+    ({
+      title,
+      priority,
+      scheduledDate,
+      scheduledEndDate,
+      startTime,
+      endTime,
+    }: Draft) => {
       setDraftPreview({
-        draft: { title, priority, scheduledDate, startTime, endTime },
+        draft: {
+          title,
+          priority,
+          scheduledDate,
+          scheduledEndDate,
+          startTime,
+          endTime,
+        },
         taskId: editingTaskId,
       });
     },
@@ -230,10 +244,13 @@ function AccountWorkspace() {
       () => setPanel(null),
     );
   };
-  const openCurrent = async (task: Task) => {
+  const openCurrent = async (
+    task: Task,
+    type: "edit" | "detail" = "detail",
+  ) => {
     try {
       const fresh = await read<Task>(`/tasks/${task.id}`);
-      open({ type: "detail", task: fresh });
+      open({ type, task: fresh });
     } catch (e) {
       setMessage(errorMessage(e));
     }
@@ -454,6 +471,7 @@ function AccountWorkspace() {
           <>
             <DailyProgress
               day={todayReport.data}
+              error={todayReport.error}
               onOpen={(date) => open({ type: "day", date })}
             />
             <TaskFilters
@@ -510,7 +528,11 @@ function AccountWorkspace() {
                   ? draftPreview
                   : null
               }
-              days={calendar.data?.days || []}
+              days={[
+                ...(calendar.data?.days || []),
+                ...(calendar.data?.overlappingHistory || []),
+              ]}
+              tasks={calendar.data?.tasks}
               groups={allGroups}
               today={date}
               timezone={account.settings.timezone}
@@ -544,6 +566,7 @@ function AccountWorkspace() {
         {page === "tasks" && (
           <TaskListPanel
             tasks={tasks}
+            zone={account.settings.timezone}
             allGroups={allGroups}
             disabled={
               !connected ||
@@ -650,7 +673,11 @@ function AccountWorkspace() {
             scheduling.blocked
           }
           onClose={() => setPanel(null)}
-          onEdit={() => open({ type: "edit", task: panel.task })}
+          onEdit={() =>
+            panel.historical
+              ? void openCurrent(panel.task, "edit")
+              : void open({ type: "edit", task: panel.task })
+          }
           onCurrent={() => void openCurrent(panel.task)}
           onComplete={complete}
           onFocus={() => {

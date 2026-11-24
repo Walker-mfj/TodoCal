@@ -1,4 +1,5 @@
 "use client";
+import { Skeleton } from "../../../../shared/components/skeleton/skeleton";
 import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./authScreen.module.css";
 const cx = bindStyles(styles);
@@ -20,7 +21,26 @@ export function AuthScreen() {
   if (loading)
     return (
       <div className={cx("loading")} role="status">
-        Opening your workspace…
+        <span
+          role="status"
+          aria-label="Opening your workspace…"
+          aria-live="polite"
+        >
+          <span
+            style={{
+              position: "absolute",
+              width: 1,
+              height: 1,
+              overflow: "hidden",
+              clipPath: "inset(50%)",
+            }}
+            className="sr-only"
+          >
+            Opening your workspace…
+          </span>
+          <Skeleton width="70%" height={20} />
+          <Skeleton width="95%" height={14} />
+        </span>
       </div>
     );
   return (

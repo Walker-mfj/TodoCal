@@ -1,4 +1,5 @@
 "use client";
+import { Skeleton } from "../../../../shared/components/skeleton/skeleton";
 import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./calendar.module.css";
 const cx = bindStyles(styles);
@@ -31,6 +32,7 @@ export default function Calendar({
   draftPreview,
   draftDisabled = false,
   days,
+  tasks,
   groups,
   today,
   timezone,
@@ -52,6 +54,7 @@ export default function Calendar({
   draftPreview?: CalendarDraft | null;
   draftDisabled?: boolean;
   days: Day[];
+  tasks?: Task[];
   groups: Group[];
   today: string;
   timezone: string;
@@ -87,11 +90,20 @@ export default function Calendar({
     observer.observe(containerRef.current);
     return () => observer.disconnect();
   }, []);
-  const preview = draftEvent(draftPreview);
+  const preview = draftEvent(draftPreview, timezone);
   if (preview) preview.editable = !disabled && !draftDisabled;
   const events = useMemo(
-    () => calendarEvents({ days, groups, filter, disabled, draftPreview }),
-    [days, groups, filter, disabled, draftPreview],
+    () =>
+      calendarEvents({
+        days,
+        tasks,
+        groups,
+        filter,
+        disabled,
+        draftPreview,
+        zone: timezone,
+      }),
+    [days, tasks, groups, filter, disabled, draftPreview, timezone],
   );
   const progress = (date: string) => {
     const day = days.find((d) => d.date === date);
@@ -106,7 +118,7 @@ export default function Calendar({
           tabIndex={-1}
           disabled
         >
-          Loading
+          <Skeleton width={90} height={16} />
         </button>
       );
     }
@@ -145,7 +157,9 @@ export default function Calendar({
         initialDate={today}
         now={currentTime}
         nowIndicator
+        // Event instants and the current time are projected before entering the wall-clock grid.
         timeZone="UTC"
+        nextDayThreshold="00:00:00"
         firstDay={1}
         dayHeaderContent={(arg) => (
           <div>
@@ -209,6 +223,7 @@ export default function Calendar({
           draftPreview,
           disabled,
           draftDisabled,
+          zone: timezone,
           onCreate,
           onSchedule,
           onScheduleError,

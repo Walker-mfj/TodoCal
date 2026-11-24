@@ -12,7 +12,11 @@ import {
   type Execute,
 } from "../../../shared/api/apiClient";
 import { sessionStore } from "../../../shared/utils/sessionStorage";
-import { FieldError, taskPayload } from "../utils/taskPayload";
+import {
+  FieldError,
+  sameDraftSchedule,
+  taskPayload,
+} from "../utils/taskPayload";
 import type { Draft } from "../types/taskTypes";
 import type { Task, RecurrenceRule } from "../../../shared/api/domainTypes";
 import type { Pending } from "./useTaskDraft";
@@ -65,19 +69,49 @@ export function useTaskSave({
     try {
       let command = pending;
       if (!command) {
-        const input = taskPayload(draft, zone);
+        const scheduleUnchanged = !!task && sameDraftSchedule(draft, baseline);
+        const input = taskPayload(draft, zone, {
+          unchangedSchedule: scheduleUnchanged,
+          editing: !!task,
+          previousTask: task,
+        });
+        const {
+          scheduledDate,
+          scheduledEndDate,
+          startTime,
+          endTime,
+          ...content
+        } = input;
         // Following edits are patches: unchanged form values must not overwrite
         // individually customized sibling occurrences.
         const original =
-          task && scope === "following" ? taskPayload(baseline, zone) : null;
+          task && scope === "following"
+            ? taskPayload(baseline, zone, {
+                unchangedSchedule: true,
+                editing: true,
+                previousTask: task,
+              })
+            : null;
         const patch = original
           ? Object.fromEntries(
               Object.entries(input).filter(
                 ([key, value]) =>
-                  value !== original[key as keyof typeof original],
+                  value !== original[key as keyof typeof original] ||
+                  (key === "scheduledEndDate" &&
+                    !!scheduledEndDate &&
+                    scheduledDate !== original.scheduledDate),
               ),
             )
-          : input;
+          : scheduleUnchanged
+            ? content
+            : {
+                ...content,
+                scheduledDate,
+                scheduledEndDate,
+                startTime,
+                endTime,
+              };
+        if (task && draft.deadline === baseline.deadline) delete patch.deadline;
         const repeating = !task && draft.cadence && draft.cadence !== "none";
         command = {
           path: task ? `/tasks/${task.id}` : repeating ? "/series" : "/tasks",
@@ -170,13 +204,15 @@ export function useTaskSave({
                   ? "estimatedPomodoros"
                   : /deadline/i.test(e.message)
                     ? "deadline"
-                    : /end time|both start/i.test(e.message)
-                      ? "endTime"
-                      : /local time|HH:mm/i.test(e.message)
-                        ? "startTime"
-                        : /date|daily plan/i.test(e.message)
-                          ? "scheduledDate"
-                          : null;
+                    : /scheduled end date/i.test(e.message)
+                      ? "scheduledEndDate"
+                      : /end time|end must|both start/i.test(e.message)
+                        ? "endTime"
+                        : /local time|HH:mm/i.test(e.message)
+                          ? "startTime"
+                          : /date|daily plan/i.test(e.message)
+                            ? "scheduledDate"
+                            : null;
         if (field) setFieldError(new FieldError(field, e.message));
         else setError(errorMessage(e));
       } else setError(errorMessage(e));

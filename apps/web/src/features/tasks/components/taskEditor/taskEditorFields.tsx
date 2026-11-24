@@ -122,6 +122,18 @@ export function TaskScheduleFields({
           />
         </label>
       </div>
+      {!!(draft.startTime || draft.endTime) && (
+        <label className={cx("", true)}>
+          Scheduled end date
+          <input
+            type="date"
+            name="scheduledEndDate"
+            value={draft.scheduledEndDate || draft.scheduledDate || ""}
+            onChange={(e) => change("scheduledEndDate", e.target.value)}
+            className={cx("", true)}
+          />
+        </label>
+      )}
       <small>Leave times empty for an untimed task. Times use {zone}.</small>
       <label className={cx("", true)}>
         Deadline (optional)
@@ -188,7 +200,7 @@ export function TaskRecurrenceFields({
                   Repeat until (inclusive)
                   <input
                     type="date"
-                    min={draft.scheduledDate}
+                    min={task ? undefined : draft.scheduledDate}
                     name="endDate"
                     value={draft.endDate ?? seriesRule?.endDate ?? ""}
                     onChange={(e) => {
@@ -199,6 +211,9 @@ export function TaskRecurrenceFields({
                     className={cx("", true)}
                   />
                 </label>
+                {seriesRule?.timezone && (
+                  <small>Repeats in {seriesRule.timezone}.</small>
+                )}
                 <p className={cx("recurrence-summary")}>
                   {recurrenceSummary(
                     draft.cadence || seriesRule?.cadence || "none",

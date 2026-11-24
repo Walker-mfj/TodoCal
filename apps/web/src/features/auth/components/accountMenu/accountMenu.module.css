@@ -37,7 +37,7 @@
   color: var(--color-ink);
   border: 1px solid var(--color-border);
   border-radius: 14px;
-  box-shadow: 0 12px 40px #0003;
+  box-shadow: 0 12px 40px var(--color-account-menu-box-shadow-22);
 }
 .account-popover-heading {
   padding: 12px;

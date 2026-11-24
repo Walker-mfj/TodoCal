@@ -1,4 +1,5 @@
 "use client";
+import { Skeleton } from "../../../shared/components/skeleton/skeleton";
 import { bindStyles } from "../../../shared/utils/classNames";
 import styles from "./taskListPanel.module.css";
 const cx = bindStyles(styles);
@@ -8,6 +9,7 @@ import { errorMessage } from "../../../shared/api/apiClient";
 import type { Task, Group } from "../../../shared/api/domainTypes";
 export function TaskListPanel({
   tasks,
+  zone,
   allGroups,
   disabled,
   complete,
@@ -23,6 +25,7 @@ export function TaskListPanel({
     isPending: boolean;
     error: unknown;
   };
+  zone: string;
   allGroups: Group[];
   disabled: boolean;
   complete: (task: Task) => void;
@@ -58,7 +61,31 @@ export function TaskListPanel({
         </select>
       </div>
       {tasks.isPending ? (
-        <p>Loading tasks…</p>
+        <div>
+          <span role="status" aria-label="Loading tasks…" aria-live="polite">
+            <span
+              style={{
+                position: "absolute",
+                width: 1,
+                height: 1,
+                overflow: "hidden",
+                clipPath: "inset(50%)",
+              }}
+              className="sr-only"
+            >
+              Loading tasks…
+            </span>
+            {[0, 1, 2].map((row) => (
+              <span
+                key={row}
+                style={{ display: "flex", gap: 12, marginBlock: 12 }}
+              >
+                <Skeleton width={32} height={32} variant="circle" />
+                <Skeleton width="70%" height={28} />
+              </span>
+            ))}
+          </span>
+        </div>
       ) : tasks.error ? (
         <p className={cx("error")}>{errorMessage(tasks.error)}</p>
       ) : tasks.data?.items.length ? (
@@ -66,6 +93,7 @@ export function TaskListPanel({
           <TaskRow
             key={t.id}
             task={t}
+            zone={zone}
             groups={allGroups}
             disabled={disabled}
             onComplete={complete}

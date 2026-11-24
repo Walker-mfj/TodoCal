@@ -1,4 +1,5 @@
 "use client";
+import { Skeleton } from "../../../../shared/components/skeleton/skeleton";
 import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./taskDetail.module.css";
 const cx = bindStyles(styles);
@@ -12,6 +13,7 @@ import { SidebarPanel } from "../../../../shared/components/sidebarPanel/sidebar
 import { useOwnedQuery } from "../../../auth";
 import { type Execute } from "../../../../shared/api/apiClient";
 import { useCommand } from "../../../../shared/hooks/useCommand";
+import { taskSchedule } from "../../../../shared/utils/taskSchedule";
 import { dateLabel, today } from "../../../../shared/utils/dateUtils";
 import { CompletionTimeForm } from "./completionTimeForm";
 import {
@@ -83,18 +85,41 @@ export function TaskDetail({
   const historicalEntry = historicalDay.data?.entries.find(
     (entry) => entry.task.id === task.id,
   );
-  const groupName = historical
-    ? historicalDay.isPending
-      ? "Loading…"
-      : historicalDay.error
-        ? "Unable to load historical group"
-        : historicalEntry?.groupName || "No group"
-    : groups.find((group) => group.id === task.groupId)?.name || "No group";
+  const scheduleZone = historical
+    ? (historicalEntry?.timezone ?? historicalDay.data?.timezone)
+    : zone;
+  const schedule = taskSchedule(task, scheduleZone);
+  const groupName = historical ? (
+    historicalDay.isPending ? (
+      <span role="status" aria-label="Loading…" aria-live="polite">
+        <span
+          style={{
+            position: "absolute",
+            width: 1,
+            height: 1,
+            overflow: "hidden",
+            clipPath: "inset(50%)",
+          }}
+          className="sr-only"
+        >
+          Loading…
+        </span>
+        <Skeleton width={80} />
+      </span>
+    ) : historicalDay.error ? (
+      "Unable to load historical group"
+    ) : (
+      historicalEntry?.groupName || "No group"
+    )
+  ) : (
+    groups.find((group) => group.id === task.groupId)?.name || "No group"
+  );
   const command = useCommand(execute);
   const [stopped, setStopped] = useState(false);
   const [confirmCompleted, setConfirmCompleted] = useState(false);
   const locked = disabled || command.busy || command.uncertain;
-  const stopDate = today(zone);
+  const seriesZone = series.data?.timezone ?? zone;
+  const stopDate = today(seriesZone);
   const timestamp = (value: string) =>
     DateTime.fromISO(value).setZone(zone).toFormat("MMM d, yyyy HH:mm");
   const remove = () => {
@@ -152,12 +177,22 @@ export function TaskDetail({
         <dd>{groupName}</dd>
         <dt>Scheduled Time</dt>
         <dd>
-          {task.scheduledDate ? dateLabel(task.scheduledDate) : "Unscheduled"}
+          {schedule.scheduledDate
+            ? dateLabel(schedule.scheduledDate)
+            : "Unscheduled"}
           <br />
-          {task.startTime
-            ? `${task.startTime}–${task.endTime}`
-            : "Untimed"} ·{" "}
-          {zone}
+          {schedule.startTime ? (
+            <>
+              {schedule.startTime}–
+              {schedule.scheduledEndDate &&
+                schedule.scheduledEndDate !== schedule.scheduledDate &&
+                `${dateLabel(schedule.scheduledEndDate)} · `}
+              {schedule.endTime}
+              {scheduleZone && ` · ${scheduleZone}`}
+            </>
+          ) : (
+            "Untimed"
+          )}
         </dd>
         <dt>Completed at</dt>
         <dd>
@@ -171,11 +206,27 @@ export function TaskDetail({
         </dd>
         <dt>Actual Focus Time</dt>
         <dd>
-          {focus.isPending
-            ? "Loading…"
-            : focus.error
-              ? "Unable to load focus time"
-              : `${Math.round(((focus.data?.actualFocusSeconds ?? task.actualFocusSeconds ?? 0) / 60) * 10) / 10} min`}
+          {focus.isPending ? (
+            <span role="status" aria-label="Loading…" aria-live="polite">
+              <span
+                style={{
+                  position: "absolute",
+                  width: 1,
+                  height: 1,
+                  overflow: "hidden",
+                  clipPath: "inset(50%)",
+                }}
+                className="sr-only"
+              >
+                Loading…
+              </span>
+              <Skeleton width={80} />
+            </span>
+          ) : focus.error ? (
+            "Unable to load focus time"
+          ) : (
+            `${Math.round(((focus.data?.actualFocusSeconds ?? task.actualFocusSeconds ?? 0) / 60) * 10) / 10} min`
+          )}
         </dd>
       </dl>
       <small>
@@ -298,10 +349,31 @@ export function TaskDetail({
             {dateLabel(
               task.originalOccurrenceDate || task.scheduledDate || stopDate,
             )}{" "}
-            ({zone}). Earlier repetitions stay unchanged.
+            ({seriesZone}). Earlier repetitions stay unchanged.
           </p>
           {deletionPreview.isFetching && (
-            <p role="status">Checking affected occurrences…</p>
+            <p role="status">
+              <span
+                role="status"
+                aria-label="Checking affected occurrences…"
+                aria-live="polite"
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    width: 1,
+                    height: 1,
+                    overflow: "hidden",
+                    clipPath: "inset(50%)",
+                  }}
+                  className="sr-only"
+                >
+                  Checking affected occurrences…
+                </span>
+                <Skeleton width="70%" height={20} />
+                <Skeleton width="95%" height={14} />
+              </span>
+            </p>
           )}
           {deletionPreview.error && (
             <p role="alert">

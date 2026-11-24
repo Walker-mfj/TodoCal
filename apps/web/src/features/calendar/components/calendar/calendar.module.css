@@ -221,7 +221,7 @@
 }
 .calendar-wrap :global(.fc) :global(.fc-timegrid-now-indicator-line) {
   left: 5px;
-  border-color: #e3342f;
+  border-color: var(--color-calendar-border-color-23);
   border-top-width: 2px;
   pointer-events: none;
 }
@@ -235,7 +235,7 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #e3342f;
+  background: var(--color-calendar-background-24);
 }
 :where(.calendar-wrap) :global(.fc) :global(.fc-timegrid-now-indicator-arrow) {
   display: none;

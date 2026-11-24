@@ -76,3 +76,53 @@ describe("task scheduling", () => {
     ]);
   });
 });
+
+it("submits an explicit next-day end in the account timezone", () => {
+  expect(
+    taskPayload(
+      {
+        title: "Overnight",
+        scheduledDate: "2026-11-22",
+        scheduledEndDate: "2026-11-23",
+        startTime: "23:30",
+        endTime: "01:00",
+      },
+      "Asia/Tokyo",
+    ),
+  ).toMatchObject({ scheduledEndDate: "2026-11-23", endTime: "01:00" });
+});
+
+it("rejects a scheduled endpoint in a daylight-saving gap", () => {
+  expect(() =>
+    taskPayload(
+      {
+        title: "Gap",
+        scheduledDate: "2026-03-08",
+        startTime: "01:45",
+        endTime: "02:15",
+      },
+      "America/New_York",
+    ),
+  ).toThrow("does not exist");
+});
+
+it("preserves the unchanged second-fold endpoint while editing the first", () => {
+  expect(() =>
+    taskPayload(
+      {
+        title: "Fold",
+        scheduledDate: "2026-11-01",
+        startTime: "01:50",
+        endTime: "01:10",
+      },
+      "America/New_York",
+      {
+        editing: true,
+        previousTask: {
+          scheduledStartAt: "2026-11-01T05:00:00Z",
+          scheduledEndAt: "2026-11-01T06:10:00Z",
+        } as import("../../../shared/api/domainTypes").Task,
+      },
+    ),
+  ).not.toThrow();
+});

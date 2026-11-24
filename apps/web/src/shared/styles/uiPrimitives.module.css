@@ -35,10 +35,10 @@
   flex-shrink: 0;
 }
 .danger {
-  color: #b34545;
+  color: var(--color-ui-primitives-color-1);
 }
 [data-mode="dark"] .danger {
-  color: #f0a0a0;
+  color: var(--color-ui-primitives-color-2);
 }
 .error {
   padding: 12px;
@@ -55,9 +55,18 @@
   line-height: 1.6;
 }
 .error {
-  background: color-mix(in srgb, #ba4747 10%, var(--color-panel));
+  background: color-mix(
+    in srgb,
+    var(--color-ui-primitives-background-3) 10%,
+    var(--color-panel)
+  );
   color: var(--color-ink);
-  border: 1px solid color-mix(in srgb, #ba4747 55%, var(--color-border));
+  border: 1px solid
+    color-mix(
+      in srgb,
+      var(--color-ui-primitives-background-3) 55%,
+      var(--color-border)
+    );
 }
 .notice {
   background: var(--color-accent-soft);
@@ -159,7 +168,11 @@
   border-left-width: 4px;
 }
 button.danger:hover:not(:disabled) {
-  background: color-mix(in srgb, #b42332 12%, var(--color-panel));
+  background: color-mix(
+    in srgb,
+    var(--color-ui-primitives-background-5) 12%,
+    var(--color-panel)
+  );
   color: var(--color-ink);
-  border-color: #b42332;
+  border-color: var(--color-ui-primitives-border-color-6);
 }

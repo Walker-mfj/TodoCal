@@ -30,7 +30,11 @@ func Stop(ctx context.Context, tx pgx.Tx, user, zone, id string, now time.Time, 
 	if rev != revision {
 		return nil, Conflict()
 	}
-	loc, e := time.LoadLocation(zone)
+	sr, e := GetSeries(ctx, tx, user, id)
+	if e != nil {
+		return nil, e
+	}
+	loc, e := time.LoadLocation(sr.Timezone)
 	if e != nil {
 		return nil, e
 	}
@@ -42,7 +46,7 @@ func Stop(ctx context.Context, tx pgx.Tx, user, zone, id string, now time.Time, 
 	if e != nil {
 		return nil, e
 	}
-	affected, e := repository.ListStoppableTasks(ctx, tx, user, id, today)
+	affected, e := repository.ListStoppableTasks(ctx, tx, user, id, today, sr.Timezone)
 	if e != nil {
 		return nil, e
 	}

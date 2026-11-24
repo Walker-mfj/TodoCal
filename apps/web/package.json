@@ -12,10 +12,11 @@
     "test:e2e": "playwright test",
     "format": "oxfmt --write src tests scripts *.ts package.json tsconfig.json .oxfmtrc.json .oxlintrc.json",
     "format:check": "oxfmt --check src tests scripts *.ts package.json tsconfig.json .oxfmtrc.json .oxlintrc.json",
-    "lint": "oxlint --deny-warnings src tests scripts *.ts",
+    "lint": "oxlint --deny-warnings src tests scripts *.ts && npm run check:ui",
     "lint:fix": "npm run lint -- --fix",
     "check:architecture": "node scripts/checkArchitecture.mjs && node --test scripts/checkArchitecture.test.mjs",
-    "test:quality-tools": "node scripts/checkQualityTools.mjs"
+    "test:quality-tools": "node scripts/checkQualityTools.mjs",
+    "check:ui": "node scripts/checkUi.mjs && node --test scripts/checkUi.test.mjs"
   },
   "dependencies": {
     "@fullcalendar/core": "6.1.22",

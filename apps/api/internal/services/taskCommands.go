@@ -40,18 +40,26 @@ func EditTaskCommand(ctx context.Context, tx pgx.Tx, p Principal, zone string, n
 		return nil, 0, e
 	}
 	in, scope, seriesRevision, fields := patch.Task, patch.Scope, patch.SeriesRevision, patch.Fields
+	var endpoints []*time.Time
+	if patch.ScheduledStartAt != nil || patch.ScheduledEndAt != nil {
+		a, b, err := scheduleInstants(in, Schedule{ScheduledStartAt: patch.ScheduledStartAt, ScheduledEndAt: patch.ScheduledEndAt}, zone, old)
+		if err != nil {
+			return nil, 0, err
+		}
+		endpoints = []*time.Time{a, b}
+	}
 	if scope == "following" {
-		t, err := UpdateFollowing(ctx, tx, p.ID, zone, now, old, in, seriesRevision, fields)
+		t, err := UpdateFollowing(ctx, tx, p.ID, zone, now, old, in, seriesRevision, fields, endpoints...)
 		return t, models.Updated, err
 	}
 	if scope == "all" {
 		if seriesRevision < 1 {
 			return nil, 0, Invalid("Provide expectedSeriesRevision")
 		}
-		t, err := UpdateFromTask(ctx, tx, p.ID, zone, now, old, in, seriesRevision, fields)
+		t, err := UpdateFromTask(ctx, tx, p.ID, zone, now, old, in, seriesRevision, fields, endpoints...)
 		return t, models.Updated, err
 	}
-	t, e := UpdateTask(ctx, tx, p.ID, zone, now, old, in)
+	t, e := UpdateTask(ctx, tx, p.ID, zone, now, old, in, endpoints...)
 	return t, models.Updated, e
 }
 func CompleteTaskCommand(ctx context.Context, tx pgx.Tx, p Principal, zone string, now time.Time, input CommandInput, params Parameters) (any, models.Outcome, error) {

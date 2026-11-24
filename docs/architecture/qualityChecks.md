@@ -36,7 +36,7 @@ The default database port remains 55432. Browser suites still share local web/AP
 
 ## UI color and loading rules
 
-These rules are mandatory for new or changed web code and AI-generated changes. Existing violations are tracked in the [global colors and loading skeletons plan](globalColorsLoadingPlan.md); do not introduce new violations while migrating them. Mechanical checks are planned there, not enabled by this documentation update.
+These rules are mandatory for new or changed web code and AI-generated changes. Existing violations are tracked in the [global colors and loading skeletons plan](globalColorsLoadingPlan.md); do not introduce new violations while migrating them. `npm run lint` runs `check:ui` and its regression fixtures. The check covers fixed literals and direct loading JSX; computed/imported placeholder strings and unusual CSS syntax still require review.
 
 ### UI001 — Global color ownership
 
@@ -46,7 +46,7 @@ These rules are mandatory for new or changed web code and AI-generated changes. 
 
 ### UI002 — Shared skeleton placeholders
 
-- For initial content loading, lazy component imports, Suspense fallbacks and inline values awaiting data, use the shared `Skeleton` at `apps/web/src/shared/components/skeleton/skeleton.tsx` once implemented, not visible placeholder text (e.g. Loading…, Opening your workspace…). Compose rectangle/circle instances with appropriate dimensions in the owning layout. Do not define feature-local skeleton primitives, shimmer styles or animations.
+- For initial content loading, lazy component imports, Suspense fallbacks and inline values awaiting data, use the shared `Skeleton` at `apps/web/src/shared/components/skeleton/skeleton.tsx`, not visible placeholder text (e.g. Loading…, Opening your workspace…). Compose rectangle/circle instances with appropriate dimensions in the owning layout. Do not define feature-local skeleton primitives, shimmer styles or animations.
 - Keep the shell and dimensions stable; placeholders are decorative, aria-hidden and noninteractive. Mark the actual content region aria-busy and provide one accessible status as appropriate. Respect reduced motion.
 - Keep loaded content visible during background refetch where safe. Distinguish initial loading from empty, error, offline, disabled and uncertain states; preserve deletion-preview confirmation guards.
 - Action-pending and settlement text (e.g. Saving…, Restoring…, Enabling…, Confirming completion…), pending toasts, error/retry labels and accessible status strings are allowed. Keep existing behavior; do not require Skeleton or a spinner for these states. UI002 checks content placeholders, not all loading-related words.

@@ -1,3 +1,4 @@
+import { Skeleton } from "../../../../shared/components/skeleton/skeleton";
 import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./timerTaskPicker.module.css";
 import type { Task } from "../../../../shared/api/domainTypes";
@@ -46,7 +47,26 @@ export function TimerTaskPicker({
         Today’s tasks · {focusDate}. Open another day’s task from Calendar to
         focus on it.
       </small>
-      {choices.isPending && <small>Loading tasks…</small>}
+      {choices.isPending && (
+        <small>
+          <span role="status" aria-label="Loading tasks…" aria-live="polite">
+            <span
+              style={{
+                position: "absolute",
+                width: 1,
+                height: 1,
+                overflow: "hidden",
+                clipPath: "inset(50%)",
+              }}
+              className="sr-only"
+            >
+              Loading tasks…
+            </span>
+            <Skeleton width="70%" height={20} />
+            <Skeleton width="95%" height={14} />
+          </span>
+        </small>
+      )}
       {choices.error && (
         <button
           type="button"

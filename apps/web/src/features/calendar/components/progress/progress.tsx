@@ -1,4 +1,5 @@
 "use client";
+import { Skeleton } from "../../../../shared/components/skeleton/skeleton";
 import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./progress.module.css";
 const cx = bindStyles(styles);
@@ -14,14 +15,37 @@ import { Ring } from "../../../../shared/components/progressRing/progressRing";
 export function DailyProgress({
   day,
   onOpen,
+  error,
 }: {
   day?: Day;
+  error?: unknown;
   onOpen: (date: string) => void;
 }) {
+  if (!day && error)
+    return <section role="alert">Unable to load today’s progress.</section>;
   if (!day)
     return (
-      <section className={cx("progress-hero")} aria-busy="true">
-        Loading today’s progress…
+      <section className={cx("progress-hero")} aria-live="polite">
+        <span
+          role="status"
+          aria-label="Loading today’s progress…"
+          aria-live="polite"
+        >
+          <span
+            style={{
+              position: "absolute",
+              width: 1,
+              height: 1,
+              overflow: "hidden",
+              clipPath: "inset(50%)",
+            }}
+            className="sr-only"
+          >
+            Loading today’s progress…
+          </span>
+          <Skeleton width={80} height={80} variant="circle" />
+          <Skeleton width="70%" height={24} />
+        </span>
       </section>
     );
   const title =

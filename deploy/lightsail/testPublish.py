@@ -62,5 +62,79 @@ else: raise SystemExit(99)
             self.assertEqual(out.read_text(),"digest="+DIGEST+"\n")
 
 
+
+class ReleaseWorkflowTests(unittest.TestCase):
+    """Guard the production workflow wiring and exercise the actual publish step."""
+
+    ROOT = SCRIPT.parents[2]
+
+    def workflows(self):
+        folder = self.ROOT / ".github/workflows"
+        return ((folder / "deployBackend.yml").read_text(),
+                (folder / "deployFrontend.yml").read_text())
+
+    def test_frontend_requires_successful_ci_and_confirmed_delivery(self):
+        backend, frontend = self.workflows()
+        self.assertIn("github.event.workflow_run.conclusion == 'success'", backend)
+        self.assertIn("github.event.workflow_run.head_branch == 'main'", backend)
+        self.assertIn("ready: ${{ steps.delivery.outcome == 'success' }}", backend)
+        self.assertIn("id: delivery\n        if: vars.LIGHTSAIL_EVENT_DEPLOY != 'false' && steps.image.outputs.digest != ''", backend)
+        self.assertIn("needs: publish", backend)
+        self.assertIn("if: needs.publish.outputs.ready == 'true' && needs.publish.outputs.digest != ''", backend)
+        self.assertIn("tested_sha: ${{ github.event.workflow_run.head_sha }}", backend)
+        self.assertIn("on:\n  workflow_call:", frontend)
+        self.assertNotIn("  workflow_dispatch:", frontend)
+        self.assertNotIn("  push:", frontend)
+        self.assertIn("ref: ${{ inputs.tested_sha }}", frontend)
+        self.assertIn("group: todocal-backend-production\n  cancel-in-progress: false", backend)
+
+    def test_frontend_publish_checks_readiness_and_current_main(self):
+        _, frontend = self.workflows()
+        # Exercise the exact shell block used by Actions, including pipefail.
+        step = frontend.split("      - name: Publish frontend\n", 1)[1]
+        shell = step.split("        run: |\n", 1)[1].split("        env:\n", 1)[0]
+        shell = "\n".join(line[10:] for line in shell.splitlines())
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bins = root / "bin"
+            bins.mkdir()
+            commands = {
+                "curl": '#!/bin/sh\nprintf "%s\\n" "$READY_STATUS"\nexit "$CURL_EXIT"\n',
+                "jq": '#!/bin/sh\nread -r status\n[ "$status" = ready ]\n',
+                "gh": '#!/bin/sh\nprintf "%s\\n" "$CURRENT_SHA"\nexit "$GH_EXIT"\n',
+                "npx": '#!/bin/sh\ntouch "$PUBLISH_MARKER"\n',
+            }
+            for name, source in commands.items():
+                path = bins / name
+                path.write_text(source)
+                path.chmod(0o755)
+            marker = root / "published"
+            output = root / "output"
+            base = os.environ | {
+                "PATH": str(bins) + os.pathsep + os.environ["PATH"],
+                "TESTED_SHA": "a" * 40, "CURRENT_SHA": "a" * 40,
+                "READY_STATUS": "ready", "CURL_EXIT": "0", "GH_EXIT": "0",
+                "GITHUB_REPOSITORY": "Walker-mfj/TodoCal",
+                "GITHUB_OUTPUT": str(output), "PUBLISH_MARKER": str(marker),
+            }
+            for changes, success, published in [
+                ({}, True, True),
+                ({"CURRENT_SHA": "b" * 40}, True, False),
+                ({"READY_STATUS": "not-ready"}, False, False),
+                ({"CURL_EXIT": "1"}, False, False),
+                ({"GH_EXIT": "1"}, False, False),
+            ]:
+                with self.subTest(changes=changes):
+                    marker.unlink(missing_ok=True)
+                    output.unlink(missing_ok=True)
+                    result = subprocess.run(["bash", "-eo", "pipefail", "-c", shell],
+                                            env=base | changes, capture_output=True)
+                    self.assertEqual(result.returncode == 0, success, result.stderr)
+                    self.assertEqual(marker.exists(), published)
+                    self.assertEqual(output.exists(), published)
+                    if published:
+                        self.assertEqual(output.read_text(), "published=true\n")
+
+
 if __name__ == "__main__":
     unittest.main()

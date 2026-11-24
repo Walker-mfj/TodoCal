@@ -18,7 +18,7 @@ See [UI005 — Asset ownership](../../../docs/architecture/qualityChecks.md#ui00
 - `icons/`: custom static icons; prefer lucide-react when an equivalent exists. Theme-aware icons use currentColor in inline React SVG, or static SVG masks with a visible color from a global token. Standalone SVG images do not inherit the page's CSS variables.
 - `illustrations/`: static illustrative images; intrinsic palettes are allowed.
 - Use build-managed imports in components and manifest, and relative asset references in CSS. Do not embed authored SVG data URIs or Base64 images.
-- Dynamic SVG driven by component props/state belongs to the owning React component, not this directory.
+- Dynamic SVG whose internal geometry/progress/interaction is driven by component props/state belongs to the owning React component, not this directory. Size, color, visibility and CSS rotation alone do not make a glyph dynamic. Use Lucide for ordinary icons and the shared LoadingIndicator glyph; do not duplicate a library icon in assets.
 
 ## Stable public URLs
 

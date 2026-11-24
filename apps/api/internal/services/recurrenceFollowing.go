@@ -27,11 +27,14 @@ func followingSeries(ctx context.Context, tx pgx.Tx, user, zone string, now time
 	if err != nil {
 		return sr, err
 	}
-	if *selected.OriginalOccurrenceDate < now.In(loc).Format("2006-01-02") || (selected.ScheduledDate != nil && *selected.ScheduledDate < now.In(loc).Format("2006-01-02")) {
+	seriesLoc, err := time.LoadLocation(sr.Timezone)
+	if err != nil {
+		return sr, err
+	}
+	if *selected.OriginalOccurrenceDate < now.In(seriesLoc).Format("2006-01-02") || (selected.ScheduledDate != nil && *selected.ScheduledDate < now.In(loc).Format("2006-01-02")) {
 		return sr, Invalid("Choose a current or future original occurrence")
 	}
-	var finalized bool
-	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM daily_snapshots WHERE user_id=$1 AND date=$2::date)`, user, selected.ScheduledDate).Scan(&finalized)
+	finalized, err := repository.TaskHasHistoricalAttribution(ctx, tx, user, selected.ID)
 	if err != nil {
 		return sr, err
 	}
@@ -58,15 +61,29 @@ func tailTasks(ctx context.Context, tx pgx.Tx, user, id, cutoff string) ([]Task,
 	return out, rows.Err()
 }
 
-func UpdateFollowing(ctx context.Context, tx pgx.Tx, user, zone string, now time.Time, selected Task, in TaskInput, revision int64, fields map[string]json.RawMessage) (Task, error) {
+func UpdateFollowing(ctx context.Context, tx pgx.Tx, user, zone string, now time.Time, selected Task, in TaskInput, revision int64, fields map[string]json.RawMessage, endpoints ...*time.Time) (Task, error) {
 	sr, err := followingSeries(ctx, tx, user, zone, now, selected, revision)
 	if err != nil {
 		return Task{}, err
 	}
+	in, err = inputInZone(in, selected, zone, sr.Timezone, endpoints...)
+	if err != nil {
+		return Task{}, err
+	}
+	selected = projectTask(selected, sr.Timezone)
+	fields = seriesScheduleFields(fields, selected.TaskInput, in)
+	zone = sr.Timezone
 	if in.ScheduledDate == nil || selected.ScheduledDate == nil {
 		return Task{}, Invalid("Repeating tasks require a scheduled date")
 	}
-	if err = Validate(&in, zone, now, &selected); err != nil {
+	validationPrevious := selected
+	if len(endpoints) == 2 {
+		validationPrevious = projectTask(Task{TaskInput: in, ScheduledStartAt: endpoints[0], ScheduledEndAt: endpoints[1]}, zone)
+	}
+	if err = Validate(&in, zone, now, &validationPrevious); err != nil {
+		return Task{}, err
+	}
+	if err = validateSeriesSpan(in); err != nil {
 		return Task{}, err
 	}
 	if err = CheckGroup(ctx, tx, user, in.GroupID); err != nil {
@@ -93,7 +110,7 @@ func UpdateFollowing(ctx context.Context, tx pgx.Tx, user, zone string, now time
 		return Task{}, Invalid("Completed or focused occurrences can only be edited individually")
 	}
 	template := applyFields(sr.Task, in, fields)
-	template.ScheduledDate = in.ScheduledDate
+	shiftScheduleDate(&template, *in.ScheduledDate)
 	if err = Validate(&template, zone, now, nil); err != nil {
 		return Task{}, err
 	}
@@ -136,7 +153,7 @@ func UpdateFollowing(ctx context.Context, tx pgx.Tx, user, zone string, now time
 	if changesRule && rule.EndDate != nil && *rule.EndDate < anchorDate {
 		return Task{}, Invalid("End date must be on or after the tail start date")
 	}
-	template.ScheduledDate = &anchorDate
+	shiftScheduleDate(&template, anchorDate)
 	deadlineOffset, deadlineTime := sr.Offset, sr.DeadlineTime
 	if _, edits := fields["deadline"]; !edits && deadlineOffset != nil {
 		n := *deadlineOffset - delta
@@ -152,7 +169,7 @@ func UpdateFollowing(ctx context.Context, tx pgx.Tx, user, zone string, now time
 		}
 	}
 	raw, _ := json.Marshal(template)
-	_, err = tx.Exec(ctx, `INSERT INTO recurrence_series(user_id,id,template,group_id,start_date,cadence,interval_days,end_date,stopped_after,deadline_offset,deadline_time,created_at,schedule_offset_days,original_cutoff) SELECT user_id,$3,$4,$5,$6,cadence,interval_days,end_date,stopped_after,$7,$8,$9,$10,original_cutoff FROM recurrence_series WHERE user_id=$1 AND id=$2`, user, sr.ID, newID, raw, template.GroupID, cutoff, deadlineOffset, deadlineTime, now, offset)
+	_, err = tx.Exec(ctx, `INSERT INTO recurrence_series(user_id,id,template,group_id,start_date,cadence,interval_days,end_date,stopped_after,deadline_offset,deadline_time,created_at,schedule_offset_days,original_cutoff,timezone) SELECT user_id,$3,$4,$5,$6,cadence,interval_days,end_date,stopped_after,$7,$8,$9,$10,original_cutoff,timezone FROM recurrence_series WHERE user_id=$1 AND id=$2`, user, sr.ID, newID, raw, template.GroupID, cutoff, deadlineOffset, deadlineTime, now, offset)
 	if err != nil {
 		return Task{}, err
 	}
@@ -185,6 +202,7 @@ func UpdateFollowing(ctx context.Context, tx pgx.Tx, user, zone string, now time
 		return Task{}, err
 	}
 	for _, old := range affected {
+		old = projectTask(old, zone)
 		before := old
 		old.SeriesID = &newID
 		old.Revision++
@@ -197,7 +215,7 @@ func UpdateFollowing(ctx context.Context, tx pgx.Tx, user, zone string, now time
 			continue
 		}
 		var protected bool
-		err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM focus_sessions WHERE user_id=$1 AND task_id=$2) OR EXISTS(SELECT 1 FROM daily_snapshots WHERE user_id=$1 AND date=$3::date)`, user, old.ID, old.ScheduledDate).Scan(&protected)
+		err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM focus_sessions WHERE user_id=$1 AND task_id=$2) OR EXISTS(SELECT 1 FROM daily_plan_entries WHERE user_id=$1 AND task_id=$2)`, user, old.ID).Scan(&protected)
 		if err != nil {
 			return Task{}, err
 		}
@@ -220,6 +238,7 @@ func UpdateFollowing(ctx context.Context, tx pgx.Tx, user, zone string, now time
 				if err != nil {
 					return Task{}, err
 				}
+				old = projectTask(old, zone)
 			}
 		}
 		if old.DeletedAt != nil {
@@ -260,7 +279,7 @@ func UpdateFollowing(ctx context.Context, tx pgx.Tx, user, zone string, now time
 		if date < today {
 			return Task{}, Invalid("This and following cannot move repetitions into the past")
 		}
-		next.ScheduledDate = &date
+		shiftScheduleDate(&next, date)
 		if _, ok := fields["deadline"]; ok && deadlineOffset != nil {
 			d, e := localdate.Instant(localdate.Add(date, *deadlineOffset), *deadlineTime, loc)
 			if e != nil {
@@ -268,7 +287,11 @@ func UpdateFollowing(ctx context.Context, tx pgx.Tx, user, zone string, now time
 			}
 			next.Deadline = &d
 		}
-		if _, err = UpdateTask(ctx, tx, user, zone, now, old, next); err != nil {
+		var selectedEndpoints []*time.Time
+		if old.ID == selected.ID {
+			selectedEndpoints = endpoints
+		}
+		if _, err = UpdateTask(ctx, tx, user, zone, now, old, next, selectedEndpoints...); err != nil {
 			return Task{}, err
 		}
 		if restoredFromRule {
@@ -307,9 +330,9 @@ func deletableFollowingTasks(ctx context.Context, tx pgx.Tx, user, zone string, 
 		if t.DeletedAt != nil || (t.ScheduledDate != nil && *t.ScheduledDate < today) {
 			continue
 		}
-		var finalized bool
-		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM daily_snapshots WHERE user_id=$1 AND date=$2::date)`, user, t.ScheduledDate).Scan(&finalized); err != nil {
-			return nil, err
+		finalized, e := repository.TaskHasHistoricalAttribution(ctx, tx, user, t.ID)
+		if e != nil {
+			return nil, e
 		}
 		if !finalized {
 			eligible = append(eligible, t)

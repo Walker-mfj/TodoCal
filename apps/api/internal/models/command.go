@@ -28,8 +28,10 @@ type ScheduleInput struct {
 	Present          map[string]bool `json:"-"`
 }
 type TaskPatch struct {
-	Task           TaskInput
-	Scope          string
-	SeriesRevision int64
-	Fields         map[string]json.RawMessage
+	ScheduledStartAt *time.Time
+	ScheduledEndAt   *time.Time
+	Task             TaskInput
+	Scope            string
+	SeriesRevision   int64
+	Fields           map[string]json.RawMessage
 }

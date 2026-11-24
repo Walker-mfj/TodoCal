@@ -21,8 +21,8 @@ func DeleteSnapshotEntry(ctx context.Context, db DBTX, userID string, date strin
 	return db.Exec(ctx, `DELETE FROM daily_plan_entries WHERE user_id=$1 AND date=$2 AND task_id=$3`, userID, date, taskID)
 }
 
-func InsertHistoricalEntry(ctx context.Context, db DBTX, userID string, date string, taskID string, state []byte, groupID *string) (pgconn.CommandTag, error) {
-	return db.Exec(ctx, `INSERT INTO daily_plan_entries(user_id,date,task_id,task_state) VALUES($1,$2,$3,jsonb_build_object('task',$4::jsonb,'groupName',(SELECT name FROM groups WHERE user_id=$1 AND id=$5),'groupColor',(SELECT color FROM groups WHERE user_id=$1 AND id=$5)))`, userID, date, taskID, state, groupID)
+func InsertHistoricalEntry(ctx context.Context, db DBTX, userID string, date string, taskID string, state []byte, groupID *string, zone string) (pgconn.CommandTag, error) {
+	return db.Exec(ctx, `INSERT INTO daily_plan_entries(user_id,date,task_id,task_state) VALUES($1,$2,$3,jsonb_build_object('timezone',$6::text,'task',$4::jsonb,'groupName',(SELECT name FROM groups WHERE user_id=$1 AND id=$5),'groupColor',(SELECT color FROM groups WHERE user_id=$1 AND id=$5)))`, userID, date, taskID, state, groupID, zone)
 }
 
 func RecountSnapshot(ctx context.Context, db DBTX, userID string, date string) (pgconn.CommandTag, error) {

@@ -1,4 +1,8 @@
 import { DateTime } from "luxon";
+import {
+  localScheduleEndpoint,
+  taskSchedule,
+} from "../../../shared/utils/taskSchedule";
 import type { Draft } from "../types/taskTypes";
 import type { Task } from "../../../shared/api/domainTypes";
 import type { components } from "../../../shared/api/apiTypes.generated";
@@ -14,6 +18,15 @@ export class FieldError extends Error {
 export function taskPayload(
   d: Draft,
   zone: string,
+  {
+    unchangedSchedule = false,
+    editing = false,
+    previousTask,
+  }: {
+    unchangedSchedule?: boolean;
+    editing?: boolean;
+    previousTask?: Task;
+  } = {},
 ): components["schemas"]["TaskInput"] {
   if (!d.title.trim()) throw new FieldError("title", "Add a task title.");
   if (
@@ -26,25 +39,49 @@ export function taskPayload(
       "focusMinutes",
       "Choose a session duration between 1 and 180 minutes.",
     );
-  if (
-    !!d.startTime !== !!d.endTime ||
-    (d.startTime && (!d.scheduledDate || d.startTime >= d.endTime!))
-  )
-    throw new FieldError(
-      !d.scheduledDate
-        ? "scheduledDate"
-        : !d.startTime
-          ? "startTime"
-          : "endTime",
-      "Choose a date and an end time after the start time.",
-    );
+  if (!unchangedSchedule && (d.startTime || d.endTime)) {
+    if (!d.scheduledDate)
+      throw new FieldError(
+        "scheduledDate",
+        "Choose a date for the scheduled time.",
+      );
+    if (!d.startTime || !d.endTime)
+      throw new FieldError(
+        d.startTime ? "endTime" : "startTime",
+        "Choose both a start time and an end time.",
+      );
+    const endDate = d.scheduledEndDate || d.scheduledDate;
+    const previous = previousTask && taskSchedule(previousTask, zone);
+    const start =
+      previousTask?.scheduledStartAt &&
+      previous?.scheduledDate === d.scheduledDate &&
+      previous?.startTime === d.startTime
+        ? DateTime.fromISO(previousTask.scheduledStartAt, { zone })
+        : localScheduleEndpoint(d.scheduledDate, d.startTime, zone);
+    const end =
+      previousTask?.scheduledEndAt &&
+      previous?.scheduledEndDate === endDate &&
+      previous?.endTime === d.endTime
+        ? DateTime.fromISO(previousTask.scheduledEndAt, { zone })
+        : localScheduleEndpoint(endDate, d.endTime, zone);
+    if (!start || !end)
+      throw new FieldError(
+        start ? "endTime" : "startTime",
+        "This scheduled time does not exist in your timezone.",
+      );
+    if (end <= start)
+      throw new FieldError(
+        endDate < d.scheduledDate ? "scheduledEndDate" : "endTime",
+        "Choose an end time after the start time.",
+      );
+  }
   if (d.cadence && d.cadence !== "none") {
     if (!d.scheduledDate)
       throw new FieldError(
         "scheduledDate",
         "Choose a start date for repeating tasks.",
       );
-    if (d.endDate && d.endDate < d.scheduledDate)
+    if (!editing && d.endDate && d.endDate < d.scheduledDate)
       throw new FieldError(
         "endDate",
         "End date must be on or after the start date.",
@@ -80,6 +117,8 @@ export function taskPayload(
     groupId: d.groupId || null,
     priority: d.priority || "medium",
     scheduledDate: d.scheduledDate || null,
+    scheduledEndDate:
+      d.startTime && d.endTime ? d.scheduledEndDate || null : null,
     startTime: d.startTime || null,
     endTime: d.endTime || null,
     deadline,
@@ -91,12 +130,17 @@ export function taskPayload(
 }
 
 export function draftFromTask(task: Task, zone: string): Draft {
+  const schedule = taskSchedule(task, zone);
   return {
     ...task,
     groupId: task.groupId || "",
-    scheduledDate: task.scheduledDate || "",
-    startTime: task.startTime || "",
-    endTime: task.endTime || "",
+    scheduledDate: schedule.scheduledDate || "",
+    scheduledEndDate:
+      schedule.startTime && schedule.scheduledEndDate !== schedule.scheduledDate
+        ? schedule.scheduledEndDate || ""
+        : "",
+    startTime: schedule.startTime || "",
+    endTime: schedule.endTime || "",
     deadline: task.deadline
       ? DateTime.fromISO(task.deadline)
           .setZone(zone)
@@ -105,4 +149,14 @@ export function draftFromTask(task: Task, zone: string): Draft {
     estimatedPomodoros: task.estimatedPomodoros?.toString() || "",
     focusMinutes: task.focusMinutes?.toString() || "",
   };
+}
+
+export function sameDraftSchedule(a: Draft, b: Draft) {
+  return (
+    (a.scheduledDate || "") === (b.scheduledDate || "") &&
+    (a.scheduledEndDate || a.scheduledDate || "") ===
+      (b.scheduledEndDate || b.scheduledDate || "") &&
+    (a.startTime || "") === (b.startTime || "") &&
+    (a.endTime || "") === (b.endTime || "")
+  );
 }

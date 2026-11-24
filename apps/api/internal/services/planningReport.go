@@ -84,6 +84,33 @@ func DayReport(ctx context.Context, tx pgx.Tx, user, zone, date string, now time
 			out.Entries[i].Task.RecurrenceIntervalDays = current.RecurrenceIntervalDays
 			out.Entries[i].Task.Revision = current.Revision
 		}
+		// A backward zone change can reopen a date with an accepted plan.
+		// Unattributed tasks supplement that plan without replacing its entries.
+		loc, err := time.LoadLocation(zone)
+		if err != nil {
+			return out, err
+		}
+		if date >= now.In(loc).Format("2006-01-02") {
+			live, err := liveEntries(ctx, tx, user, date)
+			if err != nil {
+				return out, err
+			}
+			saved := map[string]bool{}
+			for _, entry := range out.Entries {
+				saved[entry.Task.ID] = true
+			}
+			for _, entry := range live {
+				if saved[entry.Task.ID] {
+					continue
+				}
+				entry.Timezone, entry.Live = zone, true
+				out.Entries = append(out.Entries, entry)
+				out.Planned++
+				if entry.Task.Status == "complete" {
+					out.Completed++
+				}
+			}
+		}
 		out.Percentage = percentage(out.Planned, out.Completed)
 		return out, nil
 	}
@@ -118,13 +145,18 @@ func DayReport(ctx context.Context, tx pgx.Tx, user, zone, date string, now time
 // DayAt reconstructs a partial historical comparison without changing its snapshot.
 func DayAt(ctx context.Context, tx pgx.Tx, user, zone, date string, cutoff time.Time) (Day, error) {
 	out := Day{Date: date, Timezone: zone, Finalized: true, Entries: []Entry{}}
-	entries, e := endedEntries(ctx, tx, user, date, cutoff.Add(time.Microsecond))
+	states, e := repository.ListComparisonTaskStates(ctx, tx, user, date, zone, cutoff.Add(time.Microsecond))
 	if e != nil {
 		return out, e
 	}
-	out.Entries = entries
-	out.Planned = len(entries)
-	for _, entry := range entries {
+	out.Planned = len(states)
+	for _, state := range states {
+		entry, err := enrich(ctx, tx, user, projectTask(state.Task, state.Timezone))
+		if err != nil {
+			return out, err
+		}
+		entry.Timezone = state.Timezone
+		out.Entries = append(out.Entries, entry)
 		if entry.Task.Status == "complete" {
 			out.Completed++
 		}

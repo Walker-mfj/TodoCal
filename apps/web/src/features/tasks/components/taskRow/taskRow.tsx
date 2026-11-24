@@ -7,9 +7,11 @@ import { PriorityBadge } from "../../../../shared/components/priorityBadge/prior
 import { useEffect, useRef } from "react";
 import { Draggable } from "@fullcalendar/interaction";
 import { Check, Repeat2, GripVertical } from "lucide-react";
+import { taskSchedule } from "../../../../shared/utils/taskSchedule";
 import type { Task, Group } from "../../../../shared/api/domainTypes";
 export function TaskRow({
   task,
+  zone,
   groups = [],
   historical = false,
   onOpen,
@@ -18,6 +20,7 @@ export function TaskRow({
   draggable = false,
 }: {
   task: Task;
+  zone?: string;
   groups?: Group[];
   historical?: boolean;
   onOpen: () => void;
@@ -38,6 +41,7 @@ export function TaskRow({
     });
     return () => drag.destroy();
   }, [task, draggable, disabled]);
+  const schedule = taskSchedule(task, zone);
   const group = groups.find((g) => g.id === task.groupId);
   return (
     <div
@@ -72,8 +76,16 @@ export function TaskRow({
       <button className={cx("task-open", true)} onClick={onOpen}>
         <strong>{task.title}</strong>
         <span>
-          {task.scheduledDate || "Unscheduled"}
-          {task.startTime ? ` · ${task.startTime}–${task.endTime}` : ""}
+          {schedule.scheduledDate || "Unscheduled"}
+          {schedule.startTime && (
+            <>
+              {" · "}
+              {schedule.startTime}–
+              {schedule.scheduledEndDate !== schedule.scheduledDate &&
+                `${schedule.scheduledEndDate} · `}
+              {schedule.endTime}
+            </>
+          )}
           {group ? ` · ${group.name}` : ""}
         </span>
       </button>

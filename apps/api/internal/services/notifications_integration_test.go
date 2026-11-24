@@ -124,7 +124,7 @@ func TestNotificationDeliveryLifecycle(t *testing.T) {
 	if sender.calls != 6 {
 		t.Fatal("queued push stopped after refresh expiry")
 	}
-	_, e = pool.Exec(ctx, "UPDATE tasks SET start_time='12:00',end_time='12:30' WHERE id=$1", task)
+	_, e = pool.Exec(ctx, "UPDATE tasks SET start_time='12:00',end_time='12:30',scheduled_start_at='2026-11-01T12:00:00Z',scheduled_end_at='2026-11-01T12:30:00Z' WHERE id=$1", task)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -217,15 +217,15 @@ func TestNotificationDeliveryLifecycle(t *testing.T) {
 	}
 	dst := uuid.NewString()
 	_, e = pool.Exec(ctx, `INSERT INTO tasks(user_id,id,title,scheduled_date,start_time,end_time,created_at,updated_at) VALUES($1,$2,'DST','2027-03-14','02:30','03:30',$3,$3)`, p.ID, dst, now)
-	if e != nil {
-		t.Fatal(e)
+	if e == nil {
+		t.Fatal("accepted nonexistent local interval")
 	}
 	var candidates int
 	e = pool.QueryRow(ctx, "SELECT count(*) FROM notification_candidates WHERE event_key LIKE '%'||$1::text||'%'", dst).Scan(&candidates)
 	if e != nil || candidates != 0 {
 		t.Fatalf("DST gap: %d %v", candidates, e)
 	}
-	_, e = pool.Exec(ctx, "UPDATE tasks SET scheduled_date='2026-11-01',start_time='01:30',end_time='02:30' WHERE id=$1", dst)
+	_, e = pool.Exec(ctx, `INSERT INTO tasks(user_id,id,title,scheduled_date,start_time,end_time,created_at,updated_at) VALUES($1,$2,'DST','2026-11-01','01:30','02:30',$3,$3)`, p.ID, dst, now)
 	if e != nil {
 		t.Fatal(e)
 	}

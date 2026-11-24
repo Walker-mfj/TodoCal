@@ -73,7 +73,8 @@ export function DayDetailPanel({
                 <TaskRow
                   key={e.task.id}
                   task={e.task}
-                  historical
+                  zone={e.timezone ?? day.data!.timezone}
+                  historical={day.data!.finalized && !e.live}
                   groups={
                     e.task.groupId && e.groupName
                       ? [
@@ -86,7 +87,7 @@ export function DayDetailPanel({
                         ]
                       : []
                   }
-                  onOpen={() => onTask(e.task, day.data!.finalized)}
+                  onOpen={() => onTask(e.task, day.data!.finalized && !e.live)}
                 />
               ))}
             </div>

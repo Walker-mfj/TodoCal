@@ -8,7 +8,7 @@ const task = {
 it("snaps a timed move to 15 minutes while preserving duration", () => {
   expect(
     scheduleFromDrop(task, "2030-10-20T10:08:00Z", undefined, false, "move"),
-  ).toEqual({
+  ).toMatchObject({
     scheduledDate: "2030-10-20",
     startTime: "10:15",
     endTime: "11:15",
@@ -31,13 +31,13 @@ it("supports external 30 minute drops and clearing time", () => {
 it("preserves minute-precision times for a Month date move", () => {
   expect(
     scheduleFromDrop(task, "2030-10-20", undefined, false, "month"),
-  ).toEqual({
+  ).toMatchObject({
     scheduledDate: "2030-10-20",
     startTime: "09:07",
     endTime: "10:07",
   });
 });
-it("resizes edges on a quarter-hour grid and rejects midnight crossing", () => {
+it("resizes and moves across midnight on a quarter-hour grid", () => {
   expect(
     scheduleFromDrop(
       task,
@@ -47,10 +47,10 @@ it("resizes edges on a quarter-hour grid and rejects midnight crossing", () => {
       "resize",
     ),
   ).toMatchObject({ startTime: "09:00", endTime: "10:15" });
-  expect(() =>
+  expect(
     scheduleFromDrop(task, "2030-10-20T23:30:00Z", undefined, false, "move"),
-  ).toThrow("midnight");
-  expect(() =>
+  ).toMatchObject({ scheduledEndDate: "2030-10-21", endTime: "00:30" });
+  expect(
     scheduleFromDrop(
       task,
       "2030-10-20T23:30:00Z",
@@ -58,7 +58,7 @@ it("resizes edges on a quarter-hour grid and rejects midnight crossing", () => {
       false,
       "resize",
     ),
-  ).toThrow("midnight");
+  ).toMatchObject({ scheduledEndDate: "2030-10-21", endTime: "00:15" });
 });
 it("resizes only the moved edge, preserving minute precision on the fixed edge", () => {
   expect(
@@ -79,4 +79,94 @@ it("resizes only the moved edge, preserving minute precision on the fixed edge",
       "resize",
     ),
   ).toMatchObject({ startTime: "08:45", endTime: "10:07" });
+});
+
+it("keeps the end-day offset on a Month move", () => {
+  expect(
+    scheduleFromDrop(
+      {
+        scheduledDate: "2030-10-19",
+        scheduledEndDate: "2030-10-21",
+        startTime: "23:00",
+        endTime: "00:15",
+      },
+      "2030-10-22",
+      undefined,
+      true,
+      "month",
+    ),
+  ).toMatchObject({
+    scheduledDate: "2030-10-22",
+    scheduledEndDate: "2030-10-24",
+    startTime: "23:00",
+    endTime: "00:15",
+  });
+});
+
+it("uses elapsed duration when moving across a daylight-saving transition", () => {
+  expect(
+    scheduleFromDrop(
+      {
+        scheduledDate: "2030-03-09",
+        startTime: "01:30",
+        endTime: "02:30",
+        scheduledStartAt: "2030-03-09T06:30:00Z",
+        scheduledEndAt: "2030-03-09T07:30:00Z",
+      },
+      "2030-03-10T01:30:00Z",
+      undefined,
+      false,
+      "move",
+      "America/New_York",
+    ),
+  ).toMatchObject({
+    scheduledDate: "2030-03-10",
+    startTime: "01:30",
+    endTime: "03:30",
+  });
+});
+
+it("sends exact instants when a two-hour move ends on the later 01:30", () => {
+  const schedule = scheduleFromDrop(
+    {
+      scheduledDate: "2026-10-31",
+      startTime: "00:30",
+      endTime: "02:30",
+      scheduledStartAt: "2026-10-31T04:30:00Z",
+      scheduledEndAt: "2026-10-31T06:30:00Z",
+    },
+    "2026-11-01T00:30:00Z",
+    undefined,
+    false,
+    "move",
+    "America/New_York",
+  );
+  expect(schedule).toMatchObject({
+    startTime: "00:30",
+    endTime: "01:30",
+    scheduledStartAt: "2026-11-01T04:30:00.000Z",
+    scheduledEndAt: "2026-11-01T06:30:00.000Z",
+  });
+  expect(
+    Date.parse(schedule.scheduledEndAt!) -
+      Date.parse(schedule.scheduledStartAt!),
+  ).toBe(120 * 60000);
+});
+
+it("keeps the later repeated-hour endpoint when resizing only the start", () => {
+  const schedule = scheduleFromDrop(
+    {
+      scheduledDate: "2026-11-01",
+      startTime: "00:30",
+      endTime: "01:30",
+      scheduledStartAt: "2026-11-01T04:30:00Z",
+      scheduledEndAt: "2026-11-01T06:30:00Z",
+    },
+    "2026-11-01T00:45:00Z",
+    "2026-11-01T01:30:00Z",
+    false,
+    "resize",
+    "America/New_York",
+  );
+  expect(schedule.scheduledEndAt).toBe("2026-11-01T06:30:00.000Z");
 });

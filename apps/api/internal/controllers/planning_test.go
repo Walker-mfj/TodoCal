@@ -159,7 +159,7 @@ func TestCalendarUsesOneClockForCatchupAndProjection(t *testing.T) {
 	}
 }
 
-func TestTimezoneChangeReevaluatesFutureDSTException(t *testing.T) {
+func TestTimezoneChangePreservesSeriesDSTException(t *testing.T) {
 	s, _ := testServer(t)
 	s.now = func() time.Time { return atDate("2030-03-09") }
 	c, csrf := register(t, s, "future-gap@example.com")
@@ -168,7 +168,7 @@ func TestTimezoneChangeReevaluatesFutureDSTException(t *testing.T) {
 	calendar(t, s, c, "2030-03-09", "2030-03-11")
 	object(t, command(s, "PATCH", "/api/v1/settings", map[string]any{"timezone": "UTC", "expectedRevision": 2}, c, csrf, uuid.NewString()), 200)
 	out := calendar(t, s, c, "2030-03-09", "2030-03-11")
-	if len(out["tasks"].([]any)) != 2 || len(out["warnings"].([]any)) != 0 {
-		t.Fatal("valid future occurrence stayed cancelled", out)
+	if len(out["tasks"].([]any)) != 1 || len(out["warnings"].([]any)) != 1 {
+		t.Fatal("timezone change altered the fixed-zone DST exception", out)
 	}
 }

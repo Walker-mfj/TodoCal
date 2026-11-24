@@ -26,6 +26,9 @@ func CreateSeries(ctx context.Context, tx pgx.Tx, user, zone string, now time.Ti
 	if err := Validate(&in.Task, zone, now, nil); err != nil {
 		return out, err
 	}
+	if err := validateSeriesSpan(in.Task); err != nil {
+		return out, err
+	}
 	if err := EditableDate(ctx, tx, user, in.Task.ScheduledDate); err != nil {
 		return out, err
 	}
@@ -55,7 +58,7 @@ func CreateSeries(ctx context.Context, tx pgx.Tx, user, zone string, now time.Ti
 			return out, Invalid("End date must be on or after the start date")
 		}
 	}
-	out = Series{SeriesInput: in, ID: uuid.NewString(), Revision: 1, CreatedAt: now}
+	out = Series{SeriesInput: in, ID: uuid.NewString(), Timezone: zone, Revision: 1, CreatedAt: now}
 	if in.Task.Deadline != nil {
 		loc, e := time.LoadLocation(zone)
 		if e != nil {
@@ -71,7 +74,7 @@ func CreateSeries(ctx context.Context, tx pgx.Tx, user, zone string, now time.Ti
 	if e != nil {
 		return out, e
 	}
-	_, e = repository.InsertSeries(ctx, tx, user, out.ID, template, in.Task.GroupID, in.Task.ScheduledDate, in.Cadence, in.IntervalDays, in.EndDate, out.Offset, out.DeadlineTime, now)
+	_, e = repository.InsertSeries(ctx, tx, user, out.ID, template, in.Task.GroupID, in.Task.ScheduledDate, in.Cadence, in.IntervalDays, in.EndDate, out.Offset, out.DeadlineTime, now, zone)
 	if e != nil {
 		return out, e
 	}
@@ -117,7 +120,7 @@ func GetSeries(ctx context.Context, tx pgx.Tx, user, id string) (Series, error) 
 	if err != nil {
 		return out, err
 	}
-	err = tx.QueryRow(ctx, `SELECT original_cutoff::text FROM recurrence_series WHERE user_id=$1 AND id=$2`, user, out.ID).Scan(&out.OriginalCutoff)
+	err = tx.QueryRow(ctx, `SELECT original_cutoff::text,timezone FROM recurrence_series WHERE user_id=$1 AND id=$2`, user, out.ID).Scan(&out.OriginalCutoff, &out.Timezone)
 	if err != nil {
 		return out, err
 	}

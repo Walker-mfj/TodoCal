@@ -83,6 +83,8 @@ it("reverts a persisted drag before sending the authoritative schedule", () => {
     scheduledDate: "2030-03-11",
     startTime: "10:15",
     endTime: "11:15",
+    scheduledStartAt: "2030-03-11T01:15:00.000Z",
+    scheduledEndAt: "2030-03-11T02:15:00.000Z",
   });
   expect(revert.mock.invocationCallOrder[0]).toBeLessThan(
     onSchedule.mock.invocationCallOrder[0],
@@ -123,3 +125,32 @@ it("uses the account wall clock for the current-time indicator", () => {
   expect(capture.props.now).toBeTypeOf("function");
   expect(capture.props.nowIndicator).toBe(true);
 });
+
+it.each(["eventDrop", "eventResize"] as const)(
+  "reverts %s for historical clocks in another timezone without sending a schedule",
+  (handler) => {
+    const { onSchedule, onScheduleError } = calendar({
+      timezone: "Asia/Ho_Chi_Minh",
+    });
+    const revert = vi.fn();
+    (capture.props[handler] as Function)({
+      oldEvent: {
+        extendedProps: {
+          historical: true,
+          zone: "Asia/Tokyo",
+          task: { id: "historical" },
+        },
+      },
+      event: {
+        startStr: "2030-03-10T09:00:00Z",
+        endStr: "2030-03-10T10:30:00Z",
+        allDay: false,
+      },
+      view: { type: "timeGridWeek" },
+      revert,
+    });
+    expect(revert).toHaveBeenCalledOnce();
+    expect(onSchedule).not.toHaveBeenCalled();
+    expect(onScheduleError).not.toHaveBeenCalled();
+  },
+);

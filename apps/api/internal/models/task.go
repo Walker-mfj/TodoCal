@@ -11,6 +11,7 @@ type TaskInput struct {
 	GroupID            *string    `json:"groupId"`
 	Priority           string     `json:"priority"`
 	ScheduledDate      *string    `json:"scheduledDate"`
+	ScheduledEndDate   *string    `json:"scheduledEndDate"`
 	StartTime          *string    `json:"startTime"`
 	EndTime            *string    `json:"endTime"`
 	Deadline           *time.Time `json:"deadline"`
@@ -19,6 +20,8 @@ type TaskInput struct {
 }
 type Task struct {
 	TaskInput
+	ScheduledStartAt       *time.Time `json:"scheduledStartAt"`
+	ScheduledEndAt         *time.Time `json:"scheduledEndAt"`
 	CompletedAt            *time.Time `json:"completedAt"`
 	DeletedAt              *time.Time `json:"deletedAt"`
 	FocusProgress          float64    `json:"focusProgress"`

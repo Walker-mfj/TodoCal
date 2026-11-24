@@ -12,10 +12,9 @@ export function slotDraft(
   return {
     scheduledDate: a.toISODate()!,
     startTime: allDay ? "" : a.toFormat("HH:mm"),
-    endTime: allDay
-      ? ""
-      : b.toISODate() === a.toISODate()
-        ? b.toFormat("HH:mm")
-        : "23:59",
+    endTime: allDay ? "" : b.toFormat("HH:mm"),
+    ...(!allDay && b.toISODate() !== a.toISODate()
+      ? { scheduledEndDate: b.toISODate()! }
+      : {}),
   };
 }

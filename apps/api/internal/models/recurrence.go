@@ -15,11 +15,13 @@ type SeriesInput struct {
 }
 type Series struct {
 	SeriesInput
+	Timezone       string    `json:"timezone"`
 	ID             string    `json:"id"`
 	Revision       int64     `json:"revision"`
 	StoppedAfter   *string   `json:"stoppedAfter"`
 	CreatedAt      time.Time `json:"createdAt"`
 	OriginalCutoff *string   `json:"originalCutoff"`
+	EndOffset      int       `json:"-"`
 	ScheduleOffset int       `json:"-"`
 	Offset         *int      `json:"-"`
 	DeadlineTime   *string   `json:"-"`

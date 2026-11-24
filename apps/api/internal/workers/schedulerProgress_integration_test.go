@@ -211,11 +211,11 @@ func TestTaskScheduleDirtyFields(t *testing.T) {
 		}
 	}
 	update("title='after',description='edited',priority='high',revision=revision+1,updated_at=CURRENT_TIMESTAMP")
-	update("end_time='14:00'")
+	update("end_time='14:00',scheduled_end_at=scheduled_end_at+interval '1 hour'")
 	if calls != 0 {
 		t.Fatal("presentation-only changes woke scheduler")
 	}
-	for i, set := range []string{"scheduled_date=scheduled_date+1", "start_time='12:30'", "deadline=CURRENT_TIMESTAMP+interval '1 day'", "status='complete'", "deleted_at=CURRENT_TIMESTAMP", "deleted_at=NULL"} {
+	for i, set := range []string{"scheduled_date=scheduled_date+1,scheduled_end_date=scheduled_end_date+1,scheduled_start_at=scheduled_start_at+interval '1 day',scheduled_end_at=scheduled_end_at+interval '1 day'", "start_time='12:30',scheduled_start_at=scheduled_start_at+interval '30 minutes'", "deadline=CURRENT_TIMESTAMP+interval '1 day'", "status='complete'", "deleted_at=CURRENT_TIMESTAMP", "deleted_at=NULL"} {
 		update(set)
 		if calls != i+1 {
 			t.Fatalf("schedule change %q missing wake", set)

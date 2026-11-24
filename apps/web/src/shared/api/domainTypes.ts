@@ -13,4 +13,5 @@ export type RecurrenceRule = {
   cadence: "daily" | "weekly" | "interval";
   intervalDays: number;
   endDate: string | null;
+  timezone?: string;
 };

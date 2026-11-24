@@ -10,8 +10,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-func InsertSeries(ctx context.Context, db DBTX, userID string, seriesID string, template []byte, groupID *string, startDate *string, cadence string, intervalDays int, endDate *string, deadlineOffset *int, deadlineTime *string, now time.Time) (pgconn.CommandTag, error) {
-	return db.Exec(ctx, `INSERT INTO recurrence_series(user_id,id,template,group_id,start_date,cadence,interval_days,end_date,deadline_offset,deadline_time,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, userID, seriesID, template, groupID, startDate, cadence, intervalDays, endDate, deadlineOffset, deadlineTime, now)
+func InsertSeries(ctx context.Context, db DBTX, userID string, seriesID string, template []byte, groupID *string, startDate *string, cadence string, intervalDays int, endDate *string, deadlineOffset *int, deadlineTime *string, now time.Time, zone string) (pgconn.CommandTag, error) {
+	return db.Exec(ctx, `INSERT INTO recurrence_series(user_id,id,template,group_id,start_date,cadence,interval_days,end_date,deadline_offset,deadline_time,created_at,timezone) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, userID, seriesID, template, groupID, startDate, cadence, intervalDays, endDate, deadlineOffset, deadlineTime, now, zone)
 }
 
 func ListMaterializableSeries(ctx context.Context, db DBTX, userID string, from string, to string, selected ...string) ([]models.Series, error) {
@@ -19,23 +19,23 @@ func ListMaterializableSeries(ctx context.Context, db DBTX, userID string, from 
 	if len(selected) > 0 && selected[0] != "" {
 		series = selected[0]
 	}
-	rows, err := db.Query(ctx, `SELECT id::text,template,group_id::text,start_date::text,cadence,interval_days,end_date::text,stopped_after::text,deadline_offset,deadline_time,created_at,schedule_offset_days FROM recurrence_series WHERE user_id=$1 AND ($4::uuid IS NULL OR id=$4::uuid) AND start_date+schedule_offset_days<$3::date AND (end_date IS NULL OR end_date+schedule_offset_days>=$2::date) AND (stopped_after IS NULL OR stopped_after>=$2::date)`, userID, from, to, series)
+	rows, err := db.Query(ctx, `SELECT id::text,template,group_id::text,start_date::text,cadence,interval_days,end_date::text,stopped_after::text,deadline_offset,deadline_time,created_at,schedule_offset_days,timezone FROM recurrence_series WHERE user_id=$1 AND ($4::uuid IS NULL OR id=$4::uuid) AND start_date+schedule_offset_days<$3::date AND (end_date IS NULL OR end_date+schedule_offset_days+COALESCE((template->>'scheduledEndDate')::date-(template->>'scheduledDate')::date,0)>=$2::date) AND (stopped_after IS NULL OR stopped_after>=$2::date)`, userID, from, to, series)
 	if err != nil {
 		return nil, err
 	}
 	return collect(rows, func(row pgx.Row) (models.Series, error) { return scanMaterializableSeries(row) })
 }
 
-func OccurrenceIsMaterialized(ctx context.Context, db DBTX, userID string, seriesID string, original string, date string, explicit string, resultExists *bool) error {
-	return db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM recurrence_series WHERE user_id=$1 AND id=$2 AND original_cutoff <= $3::date) OR EXISTS(SELECT 1 FROM tasks WHERE user_id=$1 AND series_id=$2 AND original_occurrence_date=$3) OR EXISTS(SELECT 1 FROM recurrence_exceptions WHERE user_id=$1 AND series_id=$2 AND original_occurrence_date=$3) OR ($2::text<>$5 AND EXISTS(SELECT 1 FROM daily_snapshots WHERE user_id=$1 AND date=$4))`, userID, seriesID, original, date, explicit).Scan(resultExists)
+func OccurrenceIsMaterialized(ctx context.Context, db DBTX, userID string, seriesID string, original string, date string, explicit string, startAt *time.Time, zone string, resultExists *bool) error {
+	return db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM recurrence_series WHERE user_id=$1 AND id=$2 AND original_cutoff <= $3::date) OR EXISTS(SELECT 1 FROM tasks WHERE user_id=$1 AND series_id=$2 AND original_occurrence_date=$3) OR EXISTS(SELECT 1 FROM recurrence_exceptions WHERE user_id=$1 AND series_id=$2 AND original_occurrence_date=$3) OR ($2::text<>$5 AND EXISTS(SELECT 1 FROM daily_snapshots WHERE user_id=$1 AND date=$4 AND NOT ($6::timestamptz IS NOT NULL AND $6 >= (($4::date+1)::timestamp AT TIME ZONE timezone) AND $6 < (($4::date+1)::timestamp AT TIME ZONE $7))))`, userID, seriesID, original, date, explicit, startAt, zone).Scan(resultExists)
 }
 
 func InsertInvalidTimeException(ctx context.Context, db DBTX, userID string, seriesID string, date string, now time.Time) (pgconn.CommandTag, error) {
 	return db.Exec(ctx, `INSERT INTO recurrence_exceptions(user_id,series_id,original_occurrence_date,reason,created_at) VALUES($1,$2,$3,'invalid_local_time',$4) ON CONFLICT DO NOTHING`, userID, seriesID, date, now)
 }
 
-func InsertOccurrence(ctx context.Context, db DBTX, userID string, taskID string, title string, description string, groupID *string, priority string, date string, startTime *string, endTime *string, deadline *time.Time, estimatedPomodoros *int, now time.Time, seriesID string, original string, focusMinutes *int) (models.Task, error) {
-	return ScanTask(db.QueryRow(ctx, `INSERT INTO tasks(user_id,id,title,description,group_id,priority,scheduled_date,start_time,end_time,deadline,estimated_pomodoros,created_at,updated_at,series_id,original_occurrence_date,focus_minutes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12,$13,$14,$15) RETURNING `+TaskColumns, userID, taskID, title, description, groupID, priority, date, startTime, endTime, deadline, estimatedPomodoros, now, seriesID, original, focusMinutes))
+func InsertOccurrence(ctx context.Context, db DBTX, userID string, taskID string, title string, description string, groupID *string, priority string, date string, startTime *string, endTime *string, deadline *time.Time, estimatedPomodoros *int, now time.Time, seriesID string, original string, focusMinutes *int, endDate *string, startAt, endAt *time.Time) (models.Task, error) {
+	return ScanTask(db.QueryRow(ctx, `INSERT INTO tasks(user_id,id,title,description,group_id,priority,scheduled_date,start_time,end_time,deadline,estimated_pomodoros,created_at,updated_at,series_id,original_occurrence_date,focus_minutes,scheduled_end_date,scheduled_start_at,scheduled_end_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12,$13,$14,$15,$16,$17,$18) RETURNING `+TaskColumns, userID, taskID, title, description, groupID, priority, date, startTime, endTime, deadline, estimatedPomodoros, now, seriesID, original, focusMinutes, endDate, startAt, endAt))
 }
 
 func ReadSeriesStopState(ctx context.Context, db DBTX, userID string, seriesID string, resultRev *int64, resultStopped **string) error {
@@ -46,8 +46,8 @@ func StopSeries(ctx context.Context, db DBTX, userID string, seriesID string, af
 	return db.Exec(ctx, `UPDATE recurrence_series SET stopped_after=$3,revision=revision+1 WHERE user_id=$1 AND id=$2`, userID, seriesID, after)
 }
 
-func ListStoppableTasks(ctx context.Context, db DBTX, userID string, seriesID string, after string) ([]models.Task, error) {
-	rows, err := db.Query(ctx, `SELECT `+TaskColumns+` FROM tasks WHERE user_id=$1 AND series_id=$2 AND (scheduled_date>$3::date OR (scheduled_date IS NULL AND original_occurrence_date>$3::date)) AND status='incomplete' AND deleted_at IS NULL`, userID, seriesID, after)
+func ListStoppableTasks(ctx context.Context, db DBTX, userID string, seriesID string, after string, zone string) ([]models.Task, error) {
+	rows, err := db.Query(ctx, `SELECT `+TaskColumns+` FROM tasks WHERE user_id=$1 AND series_id=$2 AND (COALESCE((scheduled_start_at AT TIME ZONE $4)::date,scheduled_date)>$3::date OR (scheduled_date IS NULL AND original_occurrence_date>$3::date)) AND status='incomplete' AND deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM daily_plan_entries p WHERE p.user_id=tasks.user_id AND p.task_id=tasks.id)`, userID, seriesID, after, zone)
 	if err != nil {
 		return nil, err
 	}
@@ -62,8 +62,8 @@ func ReadSeries(ctx context.Context, db DBTX, userID string, seriesID string, re
 	return db.QueryRow(ctx, `SELECT id::text,template,group_id::text,cadence,interval_days,end_date::text,stopped_after::text,revision,created_at,schedule_offset_days,deadline_offset,deadline_time FROM recurrence_series WHERE user_id=$1 AND id=$2`, userID, seriesID).Scan(resultID, resultRaw, resultGroup, resultCadence, resultIntervalDays, resultEndDate, resultStoppedAfter, resultRevision, resultCreatedAt, resultScheduleOffset, resultOffset, resultDeadlineTime)
 }
 
-func ListEditableOccurrences(ctx context.Context, db DBTX, userID string, seriesID string, today string) ([]models.Task, error) {
-	rows, err := db.Query(ctx, `SELECT `+TaskColumns+` FROM tasks WHERE user_id=$1 AND series_id=$2 AND deleted_at IS NULL AND scheduled_date >= $3::date AND NOT EXISTS (SELECT 1 FROM daily_snapshots WHERE user_id=$1 AND date=tasks.scheduled_date)`, userID, seriesID, today)
+func ListEditableOccurrences(ctx context.Context, db DBTX, userID string, seriesID string, today string, zone string) ([]models.Task, error) {
+	rows, err := db.Query(ctx, `SELECT `+TaskColumns+` FROM tasks WHERE user_id=$1 AND series_id=$2 AND deleted_at IS NULL AND COALESCE((scheduled_start_at AT TIME ZONE $4)::date,scheduled_date) >= $3::date AND NOT EXISTS (SELECT 1 FROM daily_plan_entries p WHERE p.user_id=tasks.user_id AND p.task_id=tasks.id)`, userID, seriesID, today, zone)
 	if err != nil {
 		return nil, err
 	}
@@ -88,4 +88,11 @@ func ReadSeriesStopUndo(ctx context.Context, db DBTX, userID string, seriesID st
 
 func ClearSeriesStop(ctx context.Context, db DBTX, userID string, seriesID string) (pgconn.CommandTag, error) {
 	return db.Exec(ctx, `UPDATE recurrence_series SET stopped_after=NULL,stop_undo=NULL,revision=revision+1 WHERE user_id=$1 AND id=$2`, userID, seriesID)
+}
+
+// A task's accepted reporting date can differ from its current local date.
+func TaskHasHistoricalAttribution(ctx context.Context, db DBTX, user, task string) (bool, error) {
+	var historical bool
+	err := db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM daily_plan_entries WHERE user_id=$1 AND task_id=$2)`, user, task).Scan(&historical)
+	return historical, err
 }

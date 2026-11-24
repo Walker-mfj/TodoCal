@@ -13,19 +13,51 @@ import (
 
 // Explicit mutations adjust only this task's contribution, preserving other
 // tasks' historical state and the original snapshot timezone.
-func refreshHistorical(ctx context.Context, tx pgx.Tx, user, zone string, now time.Time, before *Task, after Task) error {
+func refreshHistorical(ctx context.Context, tx pgx.Tx, user, zone string, now time.Time, before *Task, after Task, restored map[string]string) error {
 	loc, err := time.LoadLocation(zone)
 	if err != nil {
 		return err
 	}
 	dates := map[string]bool{}
+	attributed := map[string]bool{}
 	for _, t := range []*Task{before, &after} {
 		if t != nil && t.ScheduledDate != nil {
 			dates[*t.ScheduledDate] = true
 		}
 	}
+	// An edit in another display zone must update the task's original snapshot,
+	// not silently remove its contribution or move historical day attribution.
+	rows, e := tx.Query(ctx, `SELECT date::text FROM daily_plan_entries WHERE user_id=$1 AND task_id=$2`, user, after.ID)
+	if e != nil {
+		return e
+	}
+	for rows.Next() {
+		var date string
+		if e = rows.Scan(&date); e != nil {
+			rows.Close()
+			return e
+		}
+		dates[date] = true
+		attributed[date] = true
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return e
+	}
+	// Only journaled task attribution can reopen a same-day historical entry.
+	for date := range restored {
+		dates[date] = true
+		attributed[date] = true
+	}
+	if before != nil && sameScheduledStart(*before, after) && len(attributed) > 0 {
+		dates = attributed
+	}
 	for date := range dates {
 		if date >= now.In(loc).Format("2006-01-02") {
+			if !attributed[date] {
+				continue
+			}
 			var finalized bool
 			if err = repository.HistoricalSnapshotExists(ctx, tx, user, date, &finalized); err != nil {
 				return err
@@ -38,16 +70,26 @@ func refreshHistorical(ctx context.Context, tx pgx.Tx, user, zone string, now ti
 		if err != nil {
 			return err
 		}
+		snapshotZone := zone
+		if err = tx.QueryRow(ctx, `SELECT COALESCE((SELECT task_state->>'timezone' FROM daily_plan_entries WHERE user_id=$1 AND date=$2 AND task_id=$3),timezone) FROM daily_snapshots WHERE user_id=$1 AND date=$2`, user, date, after.ID).Scan(&snapshotZone); err != nil {
+			return err
+		}
+		if savedZone, ok := restored[date]; ok {
+			snapshotZone = savedZone
+		} else if !attributed[date] {
+			snapshotZone = zone
+		}
+		snapshotTask := projectTask(after, snapshotZone)
 		_, err = repository.DeleteSnapshotEntry(ctx, tx, user, date, after.ID)
 		if err != nil {
 			return err
 		}
-		if after.DeletedAt == nil && after.ScheduledDate != nil && *after.ScheduledDate == date {
-			raw, e := json.Marshal(after)
+		if snapshotTask.DeletedAt == nil && snapshotTask.ScheduledDate != nil && *snapshotTask.ScheduledDate == date {
+			raw, e := json.Marshal(snapshotTask)
 			if e != nil {
 				return e
 			}
-			_, err = repository.InsertHistoricalEntry(ctx, tx, user, date, after.ID, raw, after.GroupID)
+			_, err = repository.InsertHistoricalEntry(ctx, tx, user, date, after.ID, raw, after.GroupID, snapshotZone)
 			if err != nil {
 				return err
 			}

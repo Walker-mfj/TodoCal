@@ -59,6 +59,7 @@ export function useTaskDraft({
             ? {
                 ...parsed.draft,
                 scheduledDate: seed.scheduledDate || "",
+                scheduledEndDate: seed.scheduledEndDate || "",
                 startTime: seed.startTime || "",
                 endTime: seed.endTime || "",
               }

@@ -1,6 +1,6 @@
 import subprocess
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import blueGreen as bg
 from registry import DeploymentError, IMAGE
@@ -45,7 +45,7 @@ class BlueGreenTests(unittest.TestCase):
             self.ops.command.assert_not_called()
             self.ops.clear_hold.assert_not_called()
 
-    def test_migration_requires_explicit_approval(self):
+    def test_migration_automatically_uses_offline_handoff(self):
         digest = "sha256:"+"c"*64
         self.ops.compatible.return_value = False
         self.ops.download_image.return_value = self.candidate
@@ -53,9 +53,61 @@ class BlueGreenTests(unittest.TestCase):
         client.latest.return_value = digest
         with patch.object(bg, "preflight", return_value=("blue", self.current)), \
                 patch.object(bg, "handoff") as handoff:
-            self.assertEqual(bg.update(self.ops, client, digest), 3)
-            handoff.assert_not_called()
+            self.assertEqual(bg.update(self.ops, client, digest), 0)
+            handoff.assert_called_once_with(self.ops, "blue", self.current, "green", self.candidate, False)
         self.ops.download_image.assert_called_once_with(digest)
+
+    def test_offline_handoff_stops_writers_and_backs_up_before_migration(self):
+        with patch.multiple(bg, memory_guard=MagicMock(), start=MagicMock(),
+                            switch=MagicMock(), stop=MagicMock(), compose=MagicMock(),
+                            ready=MagicMock(return_value=True)):
+            order = MagicMock()
+            for name in ("stop", "compose", "start", "switch"):
+                order.attach_mock(getattr(bg, name), name)
+            order.attach_mock(self.ops.command, "command")
+            order.attach_mock(self.ops.clear_hold, "clear")
+            bg.handoff(self.ops, "blue", self.current, "green", self.candidate, False)
+            self.assertEqual(order.mock_calls, [
+                call.stop(self.ops, "blue"),
+                call.command(str(self.ops.ROOT / "backup.sh"), "frequent", timeout=1800),
+                call.command("docker", "tag", "new", bg.slot_image("green")),
+                call.compose(self.ops, "run", "--rm", "--no-deps", "--entrypoint",
+                             "/usr/local/bin/todocal-api", "api-green", "-migrate", timeout=180),
+                call.start(self.ops, "green", "new"),
+                call.switch(self.ops, "green"),
+                call.command("docker", "tag", "old", bg.ROLLBACK_IMAGE),
+                call.clear(),
+            ])
+            bg.memory_guard.assert_not_called()
+
+    def test_offline_backup_failure_restores_old_before_migration(self):
+        self.ops.command.side_effect = DeploymentError("backup failed")
+        with patch.multiple(bg, start=MagicMock(), switch=MagicMock(),
+                            stop=MagicMock(), compose=MagicMock()):
+            with self.assertRaises(DeploymentError):
+                bg.handoff(self.ops, "blue", self.current, "green", self.candidate, False)
+            bg.start.assert_called_once_with(self.ops, "blue", "old")
+            bg.compose.assert_not_called()
+            bg.switch.assert_not_called()
+            self.ops.clear_hold.assert_not_called()
+
+    def test_offline_migration_failure_never_restarts_old(self):
+        with patch.multiple(bg, start=MagicMock(), switch=MagicMock(),
+                            stop=MagicMock(), compose=MagicMock(side_effect=DeploymentError("migration failed"))):
+            with self.assertRaises(DeploymentError):
+                bg.handoff(self.ops, "blue", self.current, "green", self.candidate, False)
+            bg.start.assert_not_called()
+            bg.switch.assert_not_called()
+            self.ops.clear_hold.assert_not_called()
+
+    def test_offline_candidate_failure_after_migration_never_restarts_old(self):
+        with patch.multiple(bg, start=MagicMock(side_effect=DeploymentError("not ready")),
+                            switch=MagicMock(), stop=MagicMock(), compose=MagicMock()):
+            with self.assertRaises(DeploymentError):
+                bg.handoff(self.ops, "blue", self.current, "green", self.candidate, False)
+            bg.start.assert_called_once_with(self.ops, "green", "new")
+            bg.switch.assert_not_called()
+            self.ops.clear_hold.assert_not_called()
 
     def test_superseded_digest_never_switches(self):
         digest = "sha256:"+"c"*64

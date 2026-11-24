@@ -61,20 +61,28 @@ HTTP request. A cancelled Actions run cannot cancel an admitted job.
    todocal-deploy (host deploy-receiver, port 8080, existing named tunnel).
    Set repository Actions variable DEPLOY_VPC_SERVICE_ID to its real UUID.
    Frontend deploy workflow adds the binding to its temporary Wrangler config.
-   Do not use the existing API service ID. Run Deploy frontend on main
-   and verify both bindings, maintenance disabled (MAINTENANCE_MODE unset or false) and readiness.
+   Do not use the existing API service ID. For initial provisioning only,
+   an owner must bootstrap the Worker from a successful main CI checkout
+   using the build, test, source-map and binding-configuration commands in
+   deployFrontend.yml before Wrangler publication. Keep automatic delivery
+   disabled and prevent concurrent releases. Verify both bindings and the
+   deployment route before enabling delivery. This manual bootstrap is not
+   an alternative routine frontend release path.
 6. Confirm unsigned POST /api/internal/deploy gets 401, no job started.
    Make the GHCR package public and verify anonymous access first (README).
    Remove the LIGHTSAIL_EVENT_DEPLOY override (or set true) only after installation.
-   Run CI via workflow_dispatch on main. The separate Deploy backend workflow
-   runs on successful trusted main CI completion and is not cancelled by newer CI.
+   Run CI via workflow_dispatch on main. Deploy production runs on successful
+   trusted main CI completion and serializes backend and frontend publication
+   without cancelling an in-flight release.
    Every successful current-main CI run delivers the latest matching tested digest,
    even when API files have not changed. Already-installed digests are no-ops
    after readiness verification. This recovers a previously missed delivery.
    On the first merge, if workflow_run did not start, manually run CI on main.
    On first/changed migration fingerprint, Actions reports needs_approval;
    review and use python3 deploy.py --approve sha256:<exact-digest> on host.
-   Then rerun CI manually to verify the already-installed release.
+   After host readiness, turn off maintenance, re-enable event delivery and
+   dispatch CI on main to verify the already-installed release and publish
+   its matching frontend. A needs_approval result does not publish frontend.
 
 ## Operations
 

@@ -1,13 +1,13 @@
 # Global colors and loading skeletons — implementation plan
 
-Status: implemented on top of PR #57. Shared Skeleton, global colors, and UI source checks are included. No additional API or DB changes.
+Status: partially implemented on top of PR #57. Shared Skeleton, global colors, and UI source checks are included; the action indicator and full-page loading extension below is proposed and not yet implemented. No additional API or DB changes.
 
 Validation: frontend unit tests, typecheck, lint/UI fixtures, architecture checks and production build passed. Browser E2E could not run in this environment because Docker is unavailable; visual regression across browsers remains unverified. The source check is conservative: TypeScript AST checks literals and direct JSX placeholders, CSS declarations use a targeted matcher. Imported loading strings and computed control flow still require review. Skeletons are static, so reduced motion requires no animation override.
 
 ## Goals and boundaries
 
 - All application-owned fixed UI colors live in the global color system. Components must consume semantic tokens rather than literals.
-- Replace visible text-only content-loading placeholders with layout-shaped skeletons using one shared Skeleton component. Preserve existing action-pending and focus-settlement text, controls and behavior; changing them is outside this migration.
+- Replace visible text-only content-loading placeholders with layout-shaped skeletons using one shared Skeleton component. Use a separate shared LoadingIndicator for active operations and authoritative settlement, preserving existing labels and behavior. Use a shared LoadingPage composition only when the entire app/page is genuinely unavailable.
 - Preserve current light/dark appearance, user-selected group colors, existing query/command behavior, focus timing, accessibility, and deployment contracts. Do not introduce new lazy imports or network delays merely to display a skeleton.
 
 ## Audit baseline
@@ -83,7 +83,7 @@ Compose instances within the feature's existing layout to approximate rows, card
 - Reserve dimensions and avoid layout/scroll shifts. Do not show fake interactive controls. Use the same primitive for lazy module fallbacks and initial data loading.
 - Keep already loaded content visible during background refetch where safe. Keep deletion-preview actions blocked while the authoritative preview is being checked, even if a previous preview remains visible.
 - Only use skeletons where content is genuinely unavailable and expected to arrive. Distinguish initial loading from resolved empty, error, disabled, offline and uncertain states; do not leave a skeleton indefinitely for absent or disabled queries.
-- Preserve existing mutation pending labels, toast feedback, disabled controls, retries, focus digits and authoritative settlement states. Do not introduce a spinner or replace these statuses as part of this migration. A skeleton is not an action-pending indicator.
+- Preserve existing mutation pending labels, toast feedback, disabled controls, retries, focus digits and authoritative settlement states. Add the separate shared LoadingIndicator described below; a Skeleton is not an action-pending indicator.
 - Keep accessible loading announcements even when visible placeholder text is removed. Preserve feature import boundaries.
 
 ### Initial content / module loading inventory
@@ -108,31 +108,62 @@ Paths relative to `apps/web/src/`.
 
 15 transient content-loading sites in 12 distinct files (13 table entries, two refer to taskDetail.tsx); some entries contain more than one state. Preserve accessible labels even when no loading text is visible.
 
-### Action/settlement pending inventory — unchanged (out of scope)
+### Shared LoadingIndicator — proposed extension
 
-These nine statuses describe an operation in progress, not missing content. Keep all existing visible text, controls, timing, disabled/retry/confirmation behavior and accessibility unchanged. No spinner or Skeleton conversion is required.
+Implement one reusable `LoadingIndicator` in `src/shared/components/loadingIndicator/` (component, CSS Module, unit tests). Keep it separate from Skeleton: the spinner indicates active work, not missing content. Do not introduce a dependency, a global request counter, or a feature-local spinner.
 
-| File | Line(s) / current text | Decision |
+- Minimal API: `size?: number` (pixels, default 16), optional accessible `label` for standalone use. Use currentColor or a global semantic token and shared animation; use a static recognizable glyph under prefers-reduced-motion. No hardcoded colors.
+- A decorative indicator is aria-hidden when accompanied by visible text or an existing status region. Standalone indicator requires an accessible status. Never create nested live regions or change the accessible name of an icon-only action unintentionally.
+- Keep action-specific pending text (Saving…, Restoring…, etc.) beside the indicator where it already exists. Reserve icon/label space so the button or toast does not jump; preserve existing disabled logic, focus, error, retry, uncertain-command and offline behavior. The indicator never starts a request or controls the button.
+- Show it only for the actual in-flight action, not merely because a control is disabled or an uncertain command awaits retry. If a shared command busy flag locks multiple unrelated controls, track the initiating action locally or reuse existing action identity; do not show spinners on every disabled button. For timer settlement, show it only under the existing online, unpaused, zero-remaining confirmation condition and preserve timer digits.
+- Stop on success, error, cancellation, offline transition as appropriate, or uncertain state; do not spin indefinitely while waiting for manual retry. Background fetches with usable cached content must not trigger page loading or unrelated button indicators.
+
+Illustrative usage (proposed):
+
+```tsx
+<button disabled={busy} aria-busy={busy || undefined}>
+  {busy && <LoadingIndicator />}
+  {busy ? "Saving…" : "Save changes"}
+</button>
+```
+
+### Action/settlement pending inventory
+
+Confirmed against PR #58 head `e2e643ce08f111a35e96feb26d910b8b367b45d4`; paths relative to `apps/web/src/`. Preserve the labels listed here and add the shared indicator beside them.
+
+| File | Current head line / status | Placement |
 | --- | --- | --- |
-| features/auth/components/authScreen/authScreen.tsx | 129 Please wait… | Keep unchanged |
-| features/calendar/components/scheduleScopeDialog/scheduleScopeDialog.tsx | 43 Saving… | Keep unchanged |
-| features/focus/components/timerBar/timerBar.tsx | 39 Confirming completion… | Keep unchanged |
-| features/focus/components/timerPanel/timerClock.tsx | 41 Confirming completion… | Keep unchanged |
-| features/notifications/components/notificationSettings.tsx | 167 Enabling… | Keep unchanged |
-| features/settings/components/settingsForm/settingsForm.tsx | 469 Saving… | Keep unchanged |
-| features/tasks/components/recoveryToast/recoveryToast.tsx | 51 Restoring… | Keep unchanged |
-| features/tasks/components/taskEditor/taskEditor.tsx | 274 Saving… | Keep unchanged |
-| home/components/homePage/homePage.tsx | 297 Saving calendar change… | Keep unchanged |
+| features/auth/components/authScreen/authScreen.tsx | 149 Please wait… | active sign-in/register submit |
+| features/calendar/components/scheduleScopeDialog/scheduleScopeDialog.tsx | 43 Saving… | actual submitting scope action, not both buttons |
+| features/focus/components/timerBar/timerBar.tsx | 39 Confirming completion… | inline timer status |
+| features/focus/components/timerPanel/timerClock.tsx | 41 Confirming completion… | inline clock status |
+| features/notifications/components/notificationSettings.tsx | 189 Enabling… | device enable action |
+| features/settings/components/settingsForm/settingsForm.tsx | 479 Saving… | active settings save |
+| features/tasks/components/recoveryToast/recoveryToast.tsx | 51 Restoring… | Undo/restore action |
+| features/tasks/components/taskEditor/taskEditor.tsx | 289 Saving… | create/edit submit |
+| home/components/homePage/homePage.tsx | 314 Saving calendar change… | existing pending toast; retain indefinite duration while busy |
 
-Other matches are not loading UI: state variables in sessionProvider/useOwnedQuery/useCommand, disabled conditions (e.g. homePage:536), search/description input placeholders, daylight-saving wording, error/retry messages (Retry loading tasks/settings), offline estimates and uncertain save guidance. Preserve those behaviors and texts. Audit any future Suspense/Next loading.tsx fallback the same way; do not add a redundant route-level loading boundary just for this migration.
+Also audit pending operations that currently expose only a disabled control: group create/edit/delete (groups.tsx:64–192), task completion/deletion (taskDetail.tsx:120–330, completionTimeForm.tsx:51–57, taskRow.tsx:66), calendar undo and recurrence scope selection, focus start/pause/resume/end (timerBar.tsx:43–51, timerPanel.tsx:181–211), notification revoke/test actions (notificationSettings.tsx:79–88,334–347), settings recovery and workspace retry actions. Inspect actual command/handler ownership first: add the indicator only to the initiating visible control or its existing status region if an active operation is observable. Do not invent pending state for synchronous actions; shared disabled flags alone are not evidence that a particular action is running. Record final file/line inventory and any exceptions in the implementation PR.
+
+### Full-page loading — proposed extension
+
+Current route audit at the same head: `src/app/page.tsx:1–3` renders HomePage; `src/app/layout.tsx` wraps providers; `homePage.tsx:65–66` returns AuthScreen during session restoration or when signed out; `authScreen.tsx:21–45` currently renders two skeleton bars while restoring the session. There is no tracked Next App Router `loading.tsx`, other page route, or dedicated LoadingPage component. Calendar's dynamic fallback is local to the Calendar, not a full-page loading state.
+
+- Implement a shared presentational `LoadingPage` in `src/shared/components/loadingPage/` (component, CSS Module, tests) as a centered, responsive viewport-sized shell composing the shared LoadingIndicator and one concise accessible status, optionally a shared Skeleton composition if the future page layout is actually known. Minimal optional `label` (e.g. Opening your workspace…). Reuse existing global background/text/spacing tokens, not feature imports or fixed colors; no duplicate spinner or animation.
+- Replace only the current initial session-restoration fallback with LoadingPage at the HomePage composition boundary (or the existing AuthScreen loading branch, with exactly one owner). Do not flash sign-in, workspace or stale account data. The unauthenticated branch must still show the login/register screen after restoration resolves; session error/expiry/offline outcomes must remain explicit. Do not use LoadingPage during routine session renewal or background refetch.
+- Add an App Router `loading.tsx` or other route-level Suspense fallback only if a real asynchronous route transition exists that needs it; currently no such boundary is necessary. Any future full-page fallback should reuse LoadingPage. Keep the workspace shell visible for local navigation, Calendar chunk loading, settings/data fetching and mutations; continue to use local Skeletons or LoadingIndicator there.
+- Page loading must not be a global overlay for every network request, block already usable content, cause double announcements, or conceal error/empty states. Use an actual busy region and one status; ensure mobile viewport sizing, light/dark rendering and reduced-motion behavior.
+
+Other matches are not loading UI: nonvisual state variables, disabled conditions, search/description input placeholders, daylight-saving wording, error/retry messages, offline estimates and uncertain save guidance. Preserve these behaviors and texts.
 
 ## 3. Implementation sequence
 
 1. **Color foundation:** document semantic names and concrete-value bridge. Add tokens/registry, preserve current light/dark values and focus scene. Migrate CSS Modules, then TS/TSX and manifest. Verify arbitrary group colors and calendar rendering.
 2. **Skeleton primitive:** implement the single shared rectangle/circle Skeleton and accessible region convention; add unit tests. No new dependency.
-3. **Feature migration:** session and calendar first, workspace lists/progress, settings/notifications, task detail and deletion preview. Review loading versus empty/error branches individually. Leave mutation and focus-settlement UI unchanged.
-4. **Enforcement:** implement a small deterministic source check in web scripts (or equivalent compatible tooling) following the existing Oxfmt/Oxlint plus architecture-check pattern. Wire into `npm run lint` or a dedicated check invoked by both local Make targets and CI. Add positive/negative fixtures. The documentation rules apply to new/changed code now; mechanical enforcement starts in the implementation PR after baseline violations are removed.
-5. **Verification:** run tests and a fresh tracked-file audit. Remove temporary migration allowlists. Keep only explicit, narrowly scoped exceptions.
+3. **Feature migration:** session and calendar first, workspace lists/progress, settings/notifications, task detail and deletion preview. Review loading versus empty/error branches individually. Retain local skeletons; migrate full-page bootstrap separately.
+4. **Loading indicator and page:** implement the two small shared components, migrate the confirmed pending sites and the session-restoration page; audit disabled-only actions for actual in-flight ownership. Preserve all operation labels and semantics.
+5. **Enforcement:** implement a small deterministic source check in web scripts (or equivalent compatible tooling) following the existing Oxfmt/Oxlint plus architecture-check pattern. Wire into `npm run lint` or a dedicated check invoked by both local Make targets and CI. Add positive/negative fixtures. The documentation rules apply to new/changed code now; mechanical enforcement starts in the implementation PR after baseline violations are removed.
+6. **Verification:** run tests and a fresh tracked-file audit. Remove temporary migration allowlists. Keep only explicit, narrowly scoped exceptions.
 
 ## 4. Lint and review strategy
 
@@ -147,15 +178,17 @@ git grep -nE '…|\.\.\.' -- apps/web/src
 These are discovery commands, not sufficient lint rules. Classify results rather than blindly replacing identifiers, anchor fragments, arbitrary group data, test strings, retry labels, logs, checksums or API validators. The full implementation audit should also search every tracked source extension and inspect loading fallbacks that use no obvious keyword.
 
 - Color rule: detect exact 3/4/6/8-digit CSS hex tokens and other fixed color expressions in CSS declaration values, inline styles, CSS strings/template literals, SVG presentation attributes, manifest and library options. Prefer CSS parsing/tokenization and TypeScript AST over blanket regex; distinguish CSS IDs, URLs and unrelated strings. Allow only designated global declarations/registry, generated outputs and explicitly documented non-UI data/standalone asset exceptions. Reject local custom properties that hide raw colors.
-- Placeholder rule: flag visible text-only content-loading JSX and dynamic/Suspense text fallbacks in recognized branches, including imported string constants where practical. Require shared Skeleton usage/composition with accessible status. Flag duplicate feature-local skeleton animation/placeholder implementations in review; add lint coverage for known bypass patterns. A conservative automated heuristic plus mandatory review is preferable to claiming all React control flow is statically decidable. Explicitly allow action-pending labels, settlement text, pending toasts, hidden accessible status strings, retry/error labels and nonvisual logic. Do not flag a button or toast merely for displaying Saving…, Restoring… or another operation status.
-- Emit actionable file:line diagnostics, rule ID and suggested replacement. Negative tests include CSS gradients/shadows, 4/8-digit alpha, inline SVG/JS colors, local variables and visible content-loading placeholder text; positive tests include tokens, currentColor, transparent, derived colors, group input data, manifest registry, shared Skeleton, unchanged mutation/settlement text and screen-reader status. No broad per-directory production bypass.
+- Placeholder rule: flag visible text-only content-loading JSX and dynamic/Suspense text fallbacks in recognized branches, including imported string constants where practical. Require shared Skeleton usage/composition with accessible status. Flag duplicate feature-local skeleton animation/placeholder implementations in review; add lint coverage for known bypass patterns. A conservative automated heuristic plus mandatory review is preferable to claiming all React control flow is statically decidable. Allow operation labels, settlement text and pending toast text alongside LoadingIndicator. Enforce shared indicator use for direct, recognizable in-flight UI branches (UI003); use review for indirect command identity and page boundaries. Do not flag error/retry labels, uncertain/offline states, hidden accessible statuses or nonvisual logic. Flag feature-local spinner/animation duplication; require full-page fallback to reuse LoadingPage (UI004), with route placement enforced by review where static checks cannot infer it.
+- Emit actionable file:line diagnostics, rule ID and suggested replacement. Negative tests include CSS gradients/shadows, 4/8-digit alpha, inline SVG/JS colors, local variables and visible content-loading placeholder text; positive tests include tokens, currentColor, transparent, derived colors, group input data, manifest registry, shared Skeleton, LoadingIndicator with operation text, LoadingPage, uncertain/retry labels without a spinner, and screen-reader status. No broad per-directory production bypass.
 
 ## 5. Acceptance and regression checks
 
 - Zero application-owned fixed UI color literals outside approved global declarations/registry or reviewed exceptions; no duplicate palette/default or manifest value. Light/dark and focus scene visual regression checked (calendar now line, event hover/preview, dialog danger hover, toast, invalid forms, sidebar and timer).
-- All 15 listed content-loading sites use shape-matched shared Skeleton instances. No duplicate skeleton primitive or feature-local skeleton/shimmer styles. No visible text-only content-loading placeholder. All nine action/settlement pending sites remain unchanged. No skeleton after resolved empty/error/disabled states. Background refetch retains data. Skeletons are noninteractive and reduced-motion safe.
+- All 15 listed content-loading sites use shape-matched shared Skeleton instances. No duplicate skeleton primitive or feature-local skeleton/shimmer styles. No visible text-only content-loading placeholder. All nine confirmed action/settlement pending sites use LoadingIndicator while keeping existing labels and behavior; audit additional disabled-only operations, with no indicator on unrelated disabled controls. No skeleton after resolved empty/error/disabled states. Background refetch retains data. Skeletons are noninteractive and reduced-motion safe.
+- Initial session restoration uses LoadingPage; no full-page loading for background refresh, local navigation, lazy Calendar or mutations. No redundant Next loading.tsx unless justified by a real route boundary.
+- Test shared indicator sizing, accessibility, reduced motion and stopped states; verify only initiating actions show an indicator, including both success and failure/uncertain/retry paths. Test LoadingPage for delayed session restore, signed-out, expired/offline/error and signed-in outcomes without flashing the wrong screen.
 - Test delayed initial requests, lazy module loading, slow/rejected mutations, retries, background refetch, disabled queries, navigation, account switching, offline focus and server completion confirmation. Verify deletion-preview confirmation stays blocked while fetching and recovery toast Undo behavior survives.
 - Verify screen-reader busy/status, keyboard focus/tab order, unchanged action-pending labels and no layout shifts in desktop/mobile. Update assertions that currently rely on visible loading strings; prefer semantic status/region or specific skeleton test IDs with delayed responses.
-- Extend existing tests in `app/providers.test.tsx`, `features/tasks/components/taskDetail/{historyDetail,taskDetail}.test.tsx`, `features/focus/components/timerPanel/timerTaskSelection.test.tsx`, `features/notifications/components/notificationSettings.test.tsx`, `features/settings/components/settingsForm/settingsForm.test.tsx` as applicable; add calendar lazy/progress and shared Skeleton tests. Browser regression: existing calendar, focus scene, task UX, settings/session and accessibility suites (Chrome, Firefox, WebKit).
+- Extend existing tests in `app/providers.test.tsx`, `features/tasks/components/taskDetail/{historyDetail,taskDetail}.test.tsx`, `features/focus/components/timerPanel/timerTaskSelection.test.tsx`, `features/notifications/components/notificationSettings.test.tsx`, `features/settings/components/settingsForm/settingsForm.test.tsx` as applicable; add calendar lazy/progress and shared Skeleton, LoadingIndicator and LoadingPage tests. Browser regression: existing calendar, focus scene, task UX, settings/session and accessibility suites (Chrome, Firefox, WebKit).
 - Run `cd apps/web && npm run format:check && npm run lint`; from root `make check-web-architecture typecheck test-web build-web`, then `make test-e2e` with test DB only. Run new lint fixtures as part of CI.
-- No API/schema changes or production DB migration; no query policy/command idempotency changes. Implementation PR provides final audit summary and test evidence. See implementation validation above.
+- No API/schema changes or production DB migration; no query policy/command idempotency changes. Implementation PR provides final audit summary and test evidence. Previous validation above covers the initial implementation only; rerun all checks after the proposed extension.

@@ -1,21 +1,23 @@
 name: Deploy frontend
 
 on:
-  push:
-    branches: [main]
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      tested_sha:
+        description: Exact main commit that passed CI and backend delivery
+        required: true
+        type: string
 
 permissions:
   contents: read
 
-# Finish an in-flight deployment before publishing a newer revision.
+# Keep the old frontend lock during transition from independent deployments.
 concurrency:
   group: todocal-frontend-production
   cancel-in-progress: false
 
 jobs:
   deploy:
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
@@ -24,7 +26,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.tested_sha }}
           persist-credentials: false
+      - name: Verify tested checkout
+        env:
+          TESTED_SHA: ${{ inputs.tested_sha }}
+        shell: bash
+        run: |
+          [[ "$TESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$(git rev-parse HEAD)" == "$TESTED_SHA" ]]
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -60,10 +70,23 @@ jobs:
           DEPLOY_VPC_SERVICE_ID: ${{ vars.DEPLOY_VPC_SERVICE_ID }}
         run: python3 deploy/cloudflare/configureDeployBinding.py
       - name: Publish frontend
+        id: publish
         working-directory: deploy/cloudflare
-        run: npx --no-install wrangler deploy
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --retry 3 --max-time 30 https://todocal.digitalhome.workers.dev/api/readyz | jq -e '.status == "ready"' >/dev/null
+          current=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          if [[ "$current" != "$TESTED_SHA" ]]; then
+            echo 'Main advanced; newer CI owns frontend publication.'
+            exit 0
+          fi
+          npx --no-install wrangler deploy
+          echo 'published=true' >> "$GITHUB_OUTPUT"
         env:
+          GH_TOKEN: ${{ github.token }}
+          TESTED_SHA: ${{ inputs.tested_sha }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: 8cf9e69ea0ad681889782c541601c0d1
       - name: Check deployed website
+        if: steps.publish.outputs.published == 'true'
         run: curl --fail --silent --show-error --retry 3 --max-time 30 https://todocal.digitalhome.workers.dev/ | grep -q TodoCal

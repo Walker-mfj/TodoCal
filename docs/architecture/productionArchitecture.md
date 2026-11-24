@@ -16,8 +16,8 @@ flowchart TD
         CI["CI"]
         BE["Deploy backend"]
         GHCR["GHCR: tested image digest"]
-        Main --> FE
         Main --> CI --> BE --> GHCR
+        BE -->|Confirmed delivery| FE
     end
     subgraph Edge["Cloudflare"]
         Worker["Worker todocal"]
@@ -129,21 +129,22 @@ Sources: [Worker](../../deploy/cloudflare/worker.mjs), [Nginx](../../deploy/ligh
 [Go router](../../apps/api/internal/router/router.go),
 [command pipeline](../features/10-command-pipeline.md).
 
-## 2. Commit → CI → independent frontend and backend releases
+## 2. Commit → CI → backend-first production release
 
 ```mermaid
 flowchart TD
     PR["PR: CI verifies changes"] --> Merge["Merge / push to main"]
-    Merge --> FE["Deploy frontend"]
     Merge --> CI["Main CI: web, API, lint, integration, browser"]
     FE --> FETest["Install locked dependencies, test web and proxy"]
     FETest --> FEBuild["Build static web, typecheck"]
     FEBuild --> Maps["Upload private source maps to Better Stack"]
     Maps --> Bind["Configure deployment VPC binding"]
-    Bind --> Publish["Wrangler publishes Worker and assets"]
+    Bind --> FEReady{"Still current main and API ready?"}
+    FEReady -->|No| Abort
+    FEReady -->|Yes| Publish["Wrangler publishes Worker and assets"]
     Publish --> WebCheck["Check public website"]
     CI --> CIResult{"Trusted main CI successful?"}
-    CIResult -->|No| NoRelease["No backend release"]
+    CIResult -->|No| NoRelease["No production release"]
     CIResult -->|Yes| BE["Deploy backend: checkout tested SHA"]
     BE --> Current{"Still current main?"}
     Current -->|No| Abort["Superseded: stop publication or delivery"]
@@ -154,23 +155,30 @@ flowchart TD
     Push --> Digest["Resolve exact sha256 digest"]
     Reuse --> Digest
     Digest --> Gate{"Current main and delivery not disabled?"}
-    Gate -->|No| NoEvent["No deployment event"]
+    Gate -->|No| NoEvent["No deployment event or frontend release"]
     Gate -->|Yes| Event["Signed deploy event to Worker"]
+    Event --> Confirm{"Exact digest delivered and public ready?"}
+    Confirm -->|No| Block["No frontend release; recover and dispatch CI"]
+    Confirm -->|Yes| FE["Deploy frontend: same tested SHA"]
 ```
 
-Frontend starts on main push or manual frontend dispatch, independently of
-main CI. Its own tests, build/typecheck and source map upload gate publication.
-Backend starts only after trusted successful main CI from this repository
-(push or workflow_dispatch). The publisher revalidates main during publication;
+Deploy production starts only after trusted successful main CI from this
+repository (push or workflow_dispatch). Frontend runs as a reusable workflow
+only after the exact backend digest has been delivered and readiness checked.
+Its own tests, build/typecheck, source map upload and final main/readiness
+checks also gate publication. The publisher revalidates main during publication;
 superseded revisions stop. GHCR tested is a discovery pointer; the exact digest
 is the deployment identity.
 
 A docs-only main change may reuse the tested digest and still send an event.
 If already running the verified image, the host performs a readiness-checked
 no-op. LIGHTSAIL_EVENT_DEPLOY=false suppresses the event, not image publication;
-unset means enabled under the workflow in this PR. The workflows independently
-serialize their releases, without cancelling an in-flight deployment.
-Frontend/backend rollout is not atomic; keep API changes backward compatible.
+unset means enabled. Disabled delivery, missing digest or deployment failure
+blocks frontend publication. Changed migration fingerprints trigger automatic
+offline migration before frontend publication. After failure recovery,
+dispatch main CI again. One workflow serializes the
+entire release without cancelling an in-flight deployment. Rollout is not
+atomic; keep API changes backward compatible with existing clients.
 
 Sources: [CI](../../.github/workflows/ci.yml),
 [frontend](../../.github/workflows/deployFrontend.yml),
@@ -226,7 +234,7 @@ sequenceDiagram
     alt succeeded
         G->>W: GET /api/readyz
         W-->>G: Require 200 and status ready
-    else failed, needs_approval or timeout
+    else failed, legacy needs_approval or timeout
         G->>G: Fail workflow, inspect host state
     end
 ```
@@ -322,7 +330,7 @@ and the hold for inspection. Never blindly restart or stop either slot.
 
 Sources: [implementation](../../deploy/lightsail/blueGreen.py), [runbook](../../deploy/lightsail/blueGreen.md).
 
-## 5. Migration approval, rollback and recovery
+## 5. Automatic migration, rollback and recovery
 
 ```mermaid
 flowchart TD
@@ -331,18 +339,13 @@ flowchart TD
     Equal -->|Yes| Noop["Readiness-checked no-op"]
     Equal -->|No| Compatible{"Known equal migration fingerprint?"}
     Compatible -->|Yes| Handoff["Compatible Blue-Green handoff"]
-    Compatible -->|No| Approved{"Exact digest manually approved?"}
-    Approved -->|No| Approval["needs_approval, leave active API unchanged"]
-    Approval --> Operator["Inspect SQL / restore evidence, pause events, set maintenance"]
-    Operator --> Manual["deploy.py --approve exact digest"]
-    Manual --> Verify
-    Approved -->|Yes| Stop["Stop old API and scheduler"]
+    Compatible -->|No| Stop["Stop old API and scheduler"]
     Stop --> Backup["Require off-host backup success"]
     Backup --> Migrate["One migration-only container"]
     Migrate --> Start["Start candidate, startup migrations disabled"]
     Start --> Switch["Verify candidate, switch proxy, final readiness"]
     Switch --> Finish["Pin previous image, clear hold"]
-    Finish --> Public["Operator restores vpc, verifies public readiness, re-enables events"]
+    Finish --> Public["Public readiness, then frontend publication"]
     Handoff --> Success{"Successful handoff?"}
     Success -->|Yes| Forward["Pin previous image, clear hold"]
     Success -->|No| Hold["Keep hold, inspect route and slots"]
@@ -354,12 +357,13 @@ flowchart TD
 ```
 
 Fingerprint covers migrations, migrate.go, start.sh, go.mod and go.sum.
-Unknown or different fingerprint requires human approval even when SQL is
-unchanged. Approval is bound to the current tested digest. Pause delivery,
-fence writes in maintenance, verify recovery and review SQL first. The host
-stops the old API, takes an off-host backup, runs one explicit migration and
-starts the new API. Do not automatically restart the old binary after migration
-may have started. This path entails downtime.
+Unknown or different fingerprint automatically selects offline deployment,
+even when SQL is unchanged. The host stops the old API and scheduler, requires
+a verified off-host backup, runs one explicit migration and starts the new API.
+The normal Worker reports unavailable during the outage; the deployment event
+route remains available for status checks. No automatic old-binary restart
+after migration may have started. This path entails downtime. If it fails,
+retain the hold and recover explicitly; never bypass backup or schema checks.
 
 ```mermaid
 flowchart TD
@@ -466,7 +470,7 @@ flowchart TD
 ```
 
 Backup script/timers and S3 are host-managed, not generated by this repository.
-The deployer explicitly calls backup.sh frequent before an approved incompatible
+The deployer explicitly calls backup.sh frequent before an automatic offline
 migration. Verify cadence, upload, checksum and isolated restore on the host.
 A successful heartbeat alone is not recovery evidence. Never restore a rehearsal
 into the production volume.

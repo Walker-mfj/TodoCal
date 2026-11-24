@@ -10,7 +10,7 @@ message over a group-restricted Unix socket. Root systemd verifies the
 signature again, atomically records the random event ID and digest, then
 launches a fixed per-event service. Replays of the same ID return the
 existing state, not a new deployment. The deploy script uses its existing
-host lock, exact tested digest, Docker content verification, hold, migration gate and
+host lock, exact tested digest, Docker content verification, hold, automatic offline migration and
 readiness/rollback logic. Jobs are independent of the API and of the
 HTTP request. A cancelled Actions run cannot cancel an admitted job.
 
@@ -61,20 +61,29 @@ HTTP request. A cancelled Actions run cannot cancel an admitted job.
    todocal-deploy (host deploy-receiver, port 8080, existing named tunnel).
    Set repository Actions variable DEPLOY_VPC_SERVICE_ID to its real UUID.
    Frontend deploy workflow adds the binding to its temporary Wrangler config.
-   Do not use the existing API service ID. Run Deploy frontend on main
-   and verify both bindings, maintenance disabled (MAINTENANCE_MODE unset or false) and readiness.
+   Do not use the existing API service ID. For initial provisioning only,
+   an owner must bootstrap the Worker from a successful main CI checkout
+   using the build, test, source-map and binding-configuration commands in
+   deployFrontend.yml before Wrangler publication. Keep automatic delivery
+   disabled and prevent concurrent releases. Verify both bindings and the
+   deployment route before enabling delivery. This manual bootstrap is not
+   an alternative routine frontend release path.
 6. Confirm unsigned POST /api/internal/deploy gets 401, no job started.
    Make the GHCR package public and verify anonymous access first (README).
    Remove the LIGHTSAIL_EVENT_DEPLOY override (or set true) only after installation.
-   Run CI via workflow_dispatch on main. The separate Deploy backend workflow
-   runs on successful trusted main CI completion and is not cancelled by newer CI.
+   Run CI via workflow_dispatch on main. Deploy production runs on successful
+   trusted main CI completion and serializes backend and frontend publication
+   without cancelling an in-flight release.
    Every successful current-main CI run delivers the latest matching tested digest,
    even when API files have not changed. Already-installed digests are no-ops
    after readiness verification. This recovers a previously missed delivery.
    On the first merge, if workflow_run did not start, manually run CI on main.
-   On first/changed migration fingerprint, Actions reports needs_approval;
-   review and use python3 deploy.py --approve sha256:<exact-digest> on host.
-   Then rerun CI manually to verify the already-installed release.
+   On first/changed migration fingerprint, the host automatically stops API
+   writers, requires the verified off-host backup and performs offline migration.
+   After successful backend delivery and public readiness, frontend publishes
+   in the same workflow. No approval or manual maintenance toggle is needed.
+   A legacy needs_approval response still blocks frontend; upgrade the host
+   scripts and systemd unit using the Lightsail README before enabling delivery.
 
 ## Operations
 
@@ -83,12 +92,14 @@ Inspect journalctl -u 'todocal-deploy-job@*.service' and root-owned
 Success means exact digest deployed or already current and public readiness.
 Busy events retry only lock contention every five seconds, for at most ten
 minutes before reporting failure. Superseded digests fail tested-image validation;
-newer events must be delivered separately. Failed or timed-out events need investigation; never blindly restart an
+newer events must be delivered separately. A deploy attempt is bounded by
+50 minutes, systemd by 65 minutes and the CI client by 70 minutes, allowing
+for backup and migration. Failed or timed-out events need investigation; never blindly restart an
 unresolved queued/running/busy job. A host reboot may leave such records; verify
 the deployment hold and actual running revision before retrying with a new
 event. Inspect records before manually cleaning unresolved ones; terminal
 records are pruned after seven days on new requests. Rollback/hold remains
-as described in README. Manual commands --deploy and --approve require exact
+as described in README. Manual command --deploy requires the exact
 tested image digest; no bare polling command remains.
 
 Delivery is enabled by default. Disable it explicitly via LIGHTSAIL_EVENT_DEPLOY=false, including during maintenance. Stop the socket and

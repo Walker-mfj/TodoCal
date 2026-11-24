@@ -109,6 +109,7 @@ export function TimezonePicker({
             <ul
               id={`${id}-list`}
               role="listbox"
+              tabIndex={-1}
               aria-label="Timezones"
               ref={list}
               className={cx("options")}

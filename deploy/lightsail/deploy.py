@@ -166,7 +166,7 @@ def download_image(digest):
     if not DIGEST.fullmatch(digest):
         raise DeploymentError("Invalid image digest")
     ref = f"{IMAGE}@{digest}"
-    # Reuse a previously pulled candidate, including awaiting approval.
+    # Reuse a previously pulled candidate.
     try:
         loaded = image(ref)
     except subprocess.CalledProcessError:
@@ -178,9 +178,7 @@ def download_image(digest):
     return loaded
 
 
-def update(client, digest, approved=None):
-    if approved and digest != approved:
-        raise DeploymentError("Approval must match the current tested digest exactly")
+def update(client, digest):
     current = preflight()
     if not ready(wait=30):
         raise DeploymentError("Current API is not ready; recover it before deploying")
@@ -197,9 +195,8 @@ def update(client, digest, approved=None):
         log("API already at tested digest.")
         return 0
     same = compatible(current, loaded)
-    if not same and not approved:
-        log(f'Manual approval required for unknown or changed migration fingerprint: {digest}')
-        return 3
+    if not same:
+        log(f'Changed or unknown migration fingerprint; automatic offline deployment: {digest}')
     write_hold("deployment in progress", current["id"], loaded["id"])
     command("docker", "tag", current["id"], ROLLBACK)
     switched = False
@@ -248,7 +245,6 @@ def main():
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--deploy", metavar="DIGEST")
     mode.add_argument("--check", action="store_true")
-    mode.add_argument("--approve", metavar="DIGEST")
     mode.add_argument("--rollback", action="store_true")
     mode.add_argument("--resume", action="store_true")
     args = parser.parse_args()
@@ -263,7 +259,7 @@ def main():
             if args.deploy:
                 log("Deployment host busy; retry the exact release")
                 return 75
-            if args.approve or args.rollback or args.resume:
+            if args.rollback or args.resume:
                 raise DeploymentError("Another deployment operation is running")
             log("Deployment operation already running.")
             return
@@ -287,7 +283,7 @@ def main():
                 rollback()
             return
         if HOLD.exists() and not args.check:
-            if args.approve or args.deploy:
+            if args.deploy:
                 raise DeploymentError("Deployment on hold; investigate before --resume")
             log("Deployment on hold; operator action required.")
             return
@@ -296,12 +292,12 @@ def main():
         if args.check:
             log(f"Public GHCR tested digest: {digest}")
             return
-        expected = args.deploy or args.approve
+        expected = args.deploy
         if not DIGEST.fullmatch(expected) or digest != expected:
             raise DeploymentError("Requested digest is not the exact current tested image")
         if blue:
-            return blueGreen.update(sys.modules[__name__], client, digest, args.approve)
-        return update(client, digest, args.approve)
+            return blueGreen.update(sys.modules[__name__], client, digest)
+        return update(client, digest)
 
 
 if __name__ == "__main__":

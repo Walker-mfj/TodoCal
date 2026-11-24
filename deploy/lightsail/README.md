@@ -4,8 +4,9 @@ Production uses Lightsail PostgreSQL, Cloudflare Tunnel, private deployment rece
 
 ## Publish
 
-Successful trusted main CI triggers the independent non-cancelling Deploy
-backend workflow. Only the publishing job has contents:read and packages:write.
+Successful trusted main CI triggers the non-cancelling Deploy production
+workflow. Backend publication and delivery precede the frontend job; the
+frontend job only has contents:read.
 It signs into GHCR with the ephemeral GITHUB_TOKEN, builds linux/amd64
 and pushes ghcr.io/walker-mfj/todocal-api:sha-<commit>, then promotes :tested.
 If the API tree and migration fingerprint match the tested image, it reuses
@@ -32,8 +33,17 @@ CI success triggers publication and delivery. A matching existing digest is a re
 
 ## Migration, rollback, failure
 
+One-time upgrade from the approval-based deployer: pause event delivery, wait
+for all active deployment jobs to finish, and install reviewed `deploy.py`,
+`blueGreen.py`, `triggerHost.py` and `todocal-deploy-job@.service` from the
+new main revision in their existing root-owned locations. Run
+`systemctl daemon-reload`. Verify the existing hold and active slot before
+re-enabling delivery, then dispatch CI on main. Do not overwrite scripts or
+units during an active deployment. The legacy `--approve` option is removed;
+`--deploy` still requires the exact current tested digest.
+
 The host resolves the fixed public :tested manifest by anonymous HTTPS,
-validates its digest, pulls only the approved/signed exact digest using Docker
+validates its digest, pulls only the requested/signed exact digest using Docker
 and validates local RepoDigests, revision/source/migration labels and architecture.
 It rechecks tested after pulling, while holding the host deploy lock.
 The candidate is pulled before evaluating migration compatibility; this only
@@ -42,12 +52,13 @@ tag. Existing image IDs/digests are checked for no-op with readiness.
 An already-installed image is not restarted. If registry resolution fails,
 no production mutation is attempted. A digest protects content, not authorship.
 
-Changed/unknown migration fingerprint requires approval. Set maintenance and pause event delivery before approving. In Blue-Green mode, stop the old writer, require the off-host backup, run one migration-only container, then start the candidate with implicit migrations disabled.
+Changed/unknown migration fingerprints automatically choose the offline path. In Blue-Green mode, the deployer stops the old writer, requires the off-host backup, runs one migration-only container, then starts the candidate with implicit migrations disabled. The existing Worker returns unavailable while the API is down; leave normal routing and event delivery enabled for routine automatic migration.
 A changed fingerprint blocks automatic rollback after possible migration.
 Compatible failures before the switch leave the old route active; ambiguous switches retain both slots and the hold for operator recovery. Even identical
 fingerprints do not prove compatible application data semantics; stage changes.
-Frontend deploy remains independent. Do not merge frontend incompatible with
-the live backend.
+Frontend publication requires successful exact-digest delivery and follows
+a successful automatic migration in the same workflow.
+Keep the old frontend compatible with the new backend during handoff.
 
 A persistent deploy-state/hold.json interlock survives interrupted jobs,
 failed deployments and rollback. Never delete it to bypass checks.

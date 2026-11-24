@@ -6,7 +6,7 @@ on:
       tested_sha:
         description: Exact main commit that passed CI and backend delivery
         required: true
-        type: string:
+        type: string
 
 permissions:
   contents: read
@@ -75,7 +75,8 @@ jobs:
         shell: bash
         run: |
           curl --fail --silent --show-error --retry 3 --max-time 30 https://todocal.digitalhome.workers.dev/api/readyz | jq -e '.status == "ready"' >/dev/null
-          if [[ "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)" != "$TESTED_SHA" ]]; then
+          current=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          if [[ "$current" != "$TESTED_SHA" ]]; then
             echo 'Main advanced; newer CI owns frontend publication.'
             exit 0
           fi

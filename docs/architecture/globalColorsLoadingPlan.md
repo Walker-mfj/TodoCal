@@ -1,6 +1,6 @@
 # Global colors and loading skeletons — implementation plan
 
-Status: implemented on top of PR #57, including the action indicator and initial session-restoration page.
+Status: color/loading implementation completed on top of PR #57, including the action indicator and initial session-restoration page. UI005 asset ownership follow-up below is planned; its code migration and automated check are not yet implemented.
 
 Validation: 44 frontend test files / 176 tests, typecheck, lint (UI001–UI004 fixtures), and architecture checks pass. Browser E2E remains unverified: Docker is unavailable, and the installed Chromium cannot launch because this environment denies its socket operation. The source checker handles direct syntax; imported/computed strings and indirect request ownership still require review.
 
@@ -69,7 +69,7 @@ Already centralized: `shared/styles/tokens.css:74–87` contains 12 priority hex
 | features/tasks/components/groups/groups.tsx | 15–22 `#4169b1`, `#ed7d31`, `#278765`, `#8056b3`, `#c84e75`, `#16838c`, `#b58a23`, `#64748b`; 44 `#4169b1` | shared group palette and default reference |
 | home/components/dayDetailPanel/dayDetailPanel.tsx | 83 `#999` | ungrouped history marker token; preserve actual groupColor |
 
-Non-UI exceptions: `apps/api/internal/services/groupCommands.go:21,28–29` validates six-digit hex, and `apps/api/internal/models/group.go:5` stores color as a string. Retain these. Example test-data exception: `features/tasks/components/taskDetail/historyDetail.test.tsx:37` uses `#123456` as historical group data. Do not alter fixtures that deliberately assert arbitrary persisted values. Binary branding assets/icons are out of the runtime token check; editable SVG application icons, if introduced, must use tokens/currentColor; standalone fixed branding assets must be documented. Audit any production HTML/CSS embedded in deployment scripts too; if it cannot import the application CSS, generate or import the standalone shared value rather than duplicating literals.
+Non-UI exceptions: `apps/api/internal/services/groupCommands.go:21,28–29` validates six-digit hex, and `apps/api/internal/models/group.go:5` stores color as a string. Retain these. Example test-data exception: `features/tasks/components/taskDetail/historyDetail.test.tsx:37` uses `#123456` as historical group data. Do not alter fixtures that deliberately assert arbitrary persisted values. Intrinsic branding/illustration colors are allowed in documented assets; theme-aware UI icons and dynamic SVG use tokens/currentColor or a static SVG mask with token-driven visible color. Opaque stencil paint inside a mask is not a UI palette color. See UI005 below. Audit any production HTML/CSS embedded in deployment scripts too; if it cannot import the application CSS, generate or import the standalone shared value rather than duplicating literals.
 
 ## 2. Loading placeholders
 
@@ -227,3 +227,21 @@ Paths relative to `apps/web/src`; lines identify render sites at this implementa
 | features/tasks/components/taskRow/taskRow.tsx | 73 |
 | home/components/homePage/homePage.tsx | 317 |
 | shared/components/loadingPage/loadingPage.tsx | 11 |
+
+## UI005 follow-up — asset ownership (planned)
+
+Normative rules: [UI005](qualityChecks.md#ui005--asset-ownership), `apps/web/AGENTS.md`, and `apps/web/assets/README.md`.
+
+Audit of head `d54c25632c09f19ac751b03a96dcd4d77fba84ad`:
+- `src/shared/styles/formControls.module.css:137–143`: select chevron is an authored SVG data URI with encoded stroke `%23687588` (hex #687588). Extract to `assets/icons/chevronDown.svg` and render with a token-colored CSS mask on an appropriate wrapper/pseudo-element, or use an existing Lucide icon if the component structure supports it. Preserve select geometry, focus, keyboard interaction, pointer events, disabled/invalid styling, light/dark and forced-colors behavior. Do not rely on currentColor inside an externally loaded SVG image inheriting the page's color. Verify the chosen implementation on all supported browsers.
+- Existing `assets/brand/` PNGs and `assets/icons/androidChrome*.png` imports remain in place. Manifest imports generate valid public URLs; no move or copy to public is needed. Keep `src/app/favicon.ico` and `src/app/apple-icon.png` in their Next metadata locations.
+- Keep `public/sw.js` as the stable service worker URL. No other current public file was found at this head. New images/SVGs default to assets; use public only for an actual stable URL contract, with documented consumers and caching/versioning.
+- Keep dynamic SVG in the owning React component (timer, progress ring, loading indicator). Prefer existing Lucide for ordinary icons. No new SVG import library required.
+
+Implementation and enforcement:
+1. Audit tracked production sources for `data:image/`, encoded and Base64 image literals, static inline SVG and asset files outside designated locations; classify dynamic SVG, framework/generated resources, test fixtures and runtime/user data separately. Review the CSS/TS asset references and deployment pipeline for both normal and static export builds.
+2. Migrate the select icon and any other confirmed authored embedded static assets. Keep all assets under one owner, with no duplicates. Update assets README for additions and legitimate exceptions.
+3. Extend `scripts/checkUi.mjs` and `checkUi.test.mjs` with UI005 diagnostics for authored image data URI literals (including URL-encoded SVG and Base64) in CSS/JS/TS/JSX; handle quoted CSS URLs and semicolons within data URIs rather than relying solely on the existing declaration matcher. Add positive fixtures for imported asset URLs, external SVG masks, dynamic inline SVG, Lucide and legitimate non-image data. Negative fixtures include current select SVG URI and Base64 image. Manual review remains necessary to classify static inline SVG and actual public URL requirements; do not claim exhaustive static analysis.
+4. Update UI001 exceptions to permit intrinsic brand/illustration colors and stencil-only mask paint, not fixed theme-aware icon colors. Check all affected build modes and CI, and verify generated asset URLs, service worker registration, manifest/icon requests, and select rendering. Report any remaining documented exception.
+
+No backend, database or service worker behavior changes are required. Previous validation applies to the earlier implementation; rerun lint fixtures, format, typecheck, architecture, unit tests and normal/static frontend builds after the UI005 implementation.

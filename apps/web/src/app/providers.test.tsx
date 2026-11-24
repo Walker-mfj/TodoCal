@@ -186,3 +186,28 @@ it("normalizes canceled reads without marking the session offline", async () => 
   await waitFor(() => expect(isCancelledError(canceled)).toBe(true));
   expect(screen.getByText("Connected")).toBeInTheDocument();
 });
+
+it("uses one bootstrap loading page until session restore resolves, then exposes offline login", async () => {
+  let reject!: (reason: Error) => void;
+  vi.spyOn(globalThis, "fetch").mockImplementation(
+    () =>
+      new Promise<Response>((_, r) => {
+        reject = r;
+      }),
+  );
+  const { container } = render(
+    <Providers>
+      <Harness />
+    </Providers>,
+  );
+  expect(screen.getAllByRole("status")).toHaveLength(1);
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "Opening your workspace…",
+  );
+  expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
+  expect(screen.queryByLabelText("Email")).toBeNull();
+  reject(new Error("offline"));
+  await screen.findByLabelText("Email");
+  expect(screen.queryByText("Opening your workspace…")).toBeNull();
+  expect(screen.getByText(/Connection unavailable/)).toBeInTheDocument();
+});

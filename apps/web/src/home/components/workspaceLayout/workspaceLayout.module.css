@@ -109,7 +109,7 @@
     width: min(360px, 90vw);
     height: 100dvh;
     z-index: 15;
-    box-shadow: -8px 0 32px var(--color-workspace-layout-box-shadow-80);
+    box-shadow: -8px 0 32px var(--color-shadow-soft);
   }
 }
 @media (max-width: 1000px) {

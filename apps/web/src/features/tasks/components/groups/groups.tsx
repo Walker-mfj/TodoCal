@@ -1,4 +1,8 @@
 "use client";
+import { LoadingIndicator } from "../../../../shared/components/loadingIndicator/loadingIndicator";
+
+import { usePendingAction } from "../../../../shared/hooks/usePendingAction";
+
 import {
   groupPalette,
   defaultGroupColor,
@@ -44,6 +48,10 @@ export function Groups({
   const setName = (name: string) => setDraft((d) => ({ ...d, name }));
   const setColor = (color: string) => setDraft((d) => ({ ...d, color }));
   const command = useCommand(execute, `focus:command:${owner}:groups`);
+  const actions = usePendingAction();
+  const runCommand = (...args: Parameters<typeof command.run>) =>
+    actions.run(`${args[1]}:${args[0]}`, () => command.run(...args));
+
   const clear = () => {
     setEditing(null);
     setName("");
@@ -86,7 +94,7 @@ export function Groups({
                     },
                   )
                 )
-                  void command.run(
+                  void runCommand(
                     `/groups/${g.id}`,
                     "DELETE",
                     { expectedRevision: g.revision },
@@ -94,6 +102,9 @@ export function Groups({
                   );
               }}
             >
+              {actions.pending === `DELETE:/groups/${g.id}` && (
+                <LoadingIndicator />
+              )}
               Delete
             </button>
           </div>
@@ -103,7 +114,7 @@ export function Groups({
       <ValidatedForm
         onSubmit={(e) => {
           e.preventDefault();
-          void command.run(
+          void runCommand(
             editing ? `/groups/${editing.id}` : "/groups",
             editing ? "PATCH" : "POST",
             {
@@ -191,6 +202,9 @@ export function Groups({
           className={cx("primary", true)}
           disabled={disabled || command.busy || !ready}
         >
+          {actions.pending && !actions.pending.startsWith("DELETE:") && (
+            <LoadingIndicator />
+          )}
           {command.uncertain
             ? "Retry request"
             : editing

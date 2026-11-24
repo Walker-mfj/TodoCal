@@ -1,0 +1,17 @@
+.indicator {
+  display: inline-block;
+  flex-shrink: 0;
+  vertical-align: middle;
+  margin-inline-end: 0.35em;
+  animation: rotate 0.8s linear infinite;
+}
+@keyframes rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .indicator {
+    animation: none;
+  }
+}

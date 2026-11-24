@@ -1,4 +1,6 @@
 "use client";
+import { LoadingRegion } from "../../../shared/components/loadingRegion/loadingRegion";
+
 import { Skeleton } from "../../../shared/components/skeleton/skeleton";
 import { bindStyles } from "../../../shared/utils/classNames";
 import styles from "./taskListPanel.module.css";
@@ -62,19 +64,7 @@ export function TaskListPanel({
       </div>
       {tasks.isPending ? (
         <div>
-          <span role="status" aria-label="Loading tasks…" aria-live="polite">
-            <span
-              style={{
-                position: "absolute",
-                width: 1,
-                height: 1,
-                overflow: "hidden",
-                clipPath: "inset(50%)",
-              }}
-              className="sr-only"
-            >
-              Loading tasks…
-            </span>
+          <LoadingRegion label="Loading tasks…">
             {[0, 1, 2].map((row) => (
               <span
                 key={row}
@@ -84,7 +74,7 @@ export function TaskListPanel({
                 <Skeleton width="70%" height={28} />
               </span>
             ))}
-          </span>
+          </LoadingRegion>
         </div>
       ) : tasks.error ? (
         <p className={cx("error")}>{errorMessage(tasks.error)}</p>

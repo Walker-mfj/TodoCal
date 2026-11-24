@@ -1,4 +1,6 @@
 "use client";
+import { LoadingIndicator } from "../../../../shared/components/loadingIndicator/loadingIndicator";
+
 import { bindStyles } from "../../../../shared/utils/classNames";
 const cx = bindStyles();
 
@@ -47,11 +49,16 @@ export function RecoveryToast({
         onClick={restore}
         className={cx("", true)}
       >
-        {command.busy
-          ? "Restoring…"
-          : command.uncertain
-            ? "Retry restore"
-            : "Undo"}
+        {command.busy ? (
+          <>
+            <LoadingIndicator />
+            Restoring…
+          </>
+        ) : command.uncertain ? (
+          "Retry restore"
+        ) : (
+          "Undo"
+        )}
       </button>
       {command.error && <p>{command.error}</p>}
     </ToastNotice>

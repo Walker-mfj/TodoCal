@@ -2,6 +2,8 @@
 import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./taskRow.module.css";
 const cx = bindStyles(styles);
+import { usePendingAction } from "../../../../shared/hooks/usePendingAction";
+import { LoadingIndicator } from "../../../../shared/components/loadingIndicator/loadingIndicator";
 
 import { PriorityBadge } from "../../../../shared/components/priorityBadge/priorityBadge";
 import { useEffect, useRef } from "react";
@@ -28,6 +30,7 @@ export function TaskRow({
   disabled?: boolean;
   draggable?: boolean;
 }) {
+  const actions = usePendingAction();
   const element = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!draggable || disabled || !element.current) return;
@@ -64,9 +67,13 @@ export function TaskRow({
           className={cx("complete-button", true)}
           aria-label={`${task.status === "complete" ? "Reopen" : "Complete"} ${task.title}`}
           disabled={disabled}
-          onClick={() => onComplete(task)}
+          onClick={() => void actions.run("complete", () => onComplete(task))}
         >
-          {task.status === "complete" && <Check size={14} />}
+          {actions.pending === "complete" ? (
+            <LoadingIndicator size={14} />
+          ) : (
+            task.status === "complete" && <Check size={14} />
+          )}
         </button>
       ) : (
         <span className={cx("task-status")}>

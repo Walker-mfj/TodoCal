@@ -1,4 +1,8 @@
 "use client";
+import { LoadingIndicator } from "../../../../shared/components/loadingIndicator/loadingIndicator";
+
+import { usePendingAction } from "../../../../shared/hooks/usePendingAction";
+
 import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./timerPanel.module.css";
 const cx = bindStyles(styles);
@@ -25,6 +29,7 @@ export function TimerPanel({
   onClose: () => void;
   onFree: () => void;
 }) {
+  const actions = usePendingAction();
   const focusDate = today(settings.timezone);
   const choices = useFocusTasks(focusDate);
   const [selectedId, setSelectedId] = useState(task?.id || "");
@@ -174,6 +179,7 @@ export function TimerPanel({
           ratio={ratio}
           active={active}
           connected={focus.connected}
+          settlementPending={focus.query.isFetching}
         />
         <div className={cx("focus-actions")}>
           <button
@@ -184,11 +190,18 @@ export function TimerPanel({
               (!!active && seconds === 0)
             }
             onClick={() =>
-              active
-                ? focus.change(active.status === "paused" ? "resume" : "pause")
-                : focus.start(kind, selectedTask?.id, minutes)
+              void actions.run("primary", () =>
+                active
+                  ? focus.change(
+                      active.status === "paused" ? "resume" : "pause",
+                    )
+                  : focus.start(kind, selectedTask?.id, minutes),
+              )
             }
           >
+            {actions.pending === "primary" && focus.connected && (
+              <LoadingIndicator />
+            )}
             {active
               ? active.status === "paused"
                 ? "Resume"
@@ -198,9 +211,12 @@ export function TimerPanel({
           {active && (
             <button
               disabled={focus.blocked}
-              onClick={() => focus.change("end")}
+              onClick={() => void actions.run("end", () => focus.change("end"))}
               className={cx("", true)}
             >
+              {actions.pending === "end" && focus.connected && (
+                <LoadingIndicator />
+              )}
               End session
             </button>
           )}
@@ -209,17 +225,25 @@ export function TimerPanel({
         {focus.command.uncertain && (
           <button
             disabled={!focus.connected || focus.command.busy}
-            onClick={focus.retry}
+            onClick={() => void actions.run("retry", focus.retry)}
             className={cx("", true)}
           >
+            {actions.pending === "retry" && focus.connected && (
+              <LoadingIndicator />
+            )}
             Retry timer action
           </button>
         )}
         {focus.query.error && (
           <button
-            onClick={() => void focus.query.refetch()}
+            onClick={() =>
+              void actions.run("refresh", () => focus.query.refetch())
+            }
             className={cx("", true)}
           >
+            {actions.pending === "refresh" && focus.connected && (
+              <LoadingIndicator />
+            )}
             Refresh timer
           </button>
         )}
@@ -244,9 +268,12 @@ export function TimerPanel({
         {focus.permission === "default" && (
           <button
             className={cx("focus-free", true)}
-            onClick={() => void focus.enableNotifications()}
+            onClick={() =>
+              void actions.run("permission", focus.enableNotifications)
+            }
           >
-            Enable completion notifications
+            {actions.pending === "permission" && <LoadingIndicator />}Enable
+            completion notifications
           </button>
         )}
         {focus.permission === "denied" && (

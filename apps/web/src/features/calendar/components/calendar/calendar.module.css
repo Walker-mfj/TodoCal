@@ -111,7 +111,7 @@
   white-space: nowrap;
 }
 :where(.calendar-wrap) :global(.calendar-progress-placeholder) {
-  visibility: hidden;
+  display: inline-flex;
 }
 @media (max-width: 1000px) {
   .calendar-wrap {
@@ -221,7 +221,7 @@
 }
 .calendar-wrap :global(.fc) :global(.fc-timegrid-now-indicator-line) {
   left: 5px;
-  border-color: var(--color-calendar-border-color-23);
+  border-color: var(--color-calendar-now);
   border-top-width: 2px;
   pointer-events: none;
 }
@@ -235,7 +235,7 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--color-calendar-background-24);
+  background: var(--color-calendar-now);
 }
 :where(.calendar-wrap) :global(.fc) :global(.fc-timegrid-now-indicator-arrow) {
   display: none;

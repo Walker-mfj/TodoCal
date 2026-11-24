@@ -1,8 +1,21 @@
 # Global colors and loading skeletons — implementation plan
 
-Status: partially implemented on top of PR #57. Shared Skeleton, global colors, and UI source checks are included; the action indicator and full-page loading extension below is proposed and not yet implemented. No additional API or DB changes.
+Status: implemented on top of PR #57, including the action indicator and initial session-restoration page.
 
-Validation: frontend unit tests, typecheck, lint/UI fixtures, architecture checks and production build passed. Browser E2E could not run in this environment because Docker is unavailable; visual regression across browsers remains unverified. The source check is conservative: TypeScript AST checks literals and direct JSX placeholders, CSS declarations use a targeted matcher. Imported loading strings and computed control flow still require review. Skeletons are static, so reduced motion requires no animation override.
+Validation: 44 frontend test files / 176 tests, typecheck, lint (UI001–UI004 fixtures), and architecture checks pass. Browser E2E remains unverified: Docker is unavailable, and the installed Chromium cannot launch because this environment denies its socket operation. The source checker handles direct syntax; imported/computed strings and indirect request ownership still require review.
+
+## Review fixes and operation audit
+
+- Calendar now receives actual fetch state (`isFetching && !error`), renders visible noninteractive placeholders only for missing days while fetching, and retains loaded day content. Missing/failed resolved data has no perpetual skeleton.
+- Semantic color roles replace numbered aliases. Theme overrides for danger text, toast error text, and sidebar accents live in tokens.css; focus-scene values remain independent of workspace mode.
+- `lint:fix` invokes Oxlint with `--fix` directly. UI lint recognizes bare Loading, Fetching, logical expressions, exact hidden-class tokens, named CSS colors and gradient stops. UI003/UI004 check direct pending text and route fallbacks.
+- Shared LoadingRegion provides the busy visual subtree and one accessible status outside that subtree. Visually hidden styling is shared; Skeleton remains decorative.
+- All nine labelled operations use LoadingIndicator: auth submit, recurrence scope, both focus settlement displays, device enable, settings save, recovery Undo, task editor submit, and scheduling toast. Recurrence scope tracks the chosen action.
+- Additional visible ownership is tracked for group save/delete, task-row/detail completion, task deletion and completion time, notification revoke/retry, and focus start/pause/resume/end/retry/refresh/permission. `usePendingAction` tracks only returned promises and clears after settlement; synchronous callbacks do not manufacture pending work.
+- Shared disabled flags, synchronous navigation/draft updates, and actions without an observable local promise remain exceptions: no unrelated spinners are inferred. General workspace/background refresh keeps existing content and does not activate LoadingPage. Existing focus timing, command retry identity and uncertain-state semantics are preserved.
+- LoadingPage replaces only initial AuthScreen session restoration. It composes LoadingIndicator, responsive shared theme styles, a busy subtree and one status. No route loading boundary was added.
+- Focus settlement indicators run only while the reconciliation request is actually fetching; a failed request leaves the existing confirmation text/digits and manual retry, without an indefinite spinner.
+- LoadingIndicator uses currentColor and one shared animation; reduced motion disables rotation. Browser sizing/visual checks remain pending.
 
 ## Goals and boundaries
 
@@ -71,7 +84,7 @@ Keep the API small:
 - The primitive is decorative and aria-hidden. The owning loading region supplies aria-busy and one concise accessible status as appropriate.
 - All color, radius defaults and optional animation live in shared styles using global tokens. Respect prefers-reduced-motion. Use markup that works for both inline values and larger blocks, with no focusable elements.
 
-Illustrative usage (not implementation in this PR):
+Usage:
 
 ```tsx
 <Skeleton width="100%" height={16} />
@@ -108,7 +121,7 @@ Paths relative to `apps/web/src/`.
 
 15 transient content-loading sites in 12 distinct files (13 table entries, two refer to taskDetail.tsx); some entries contain more than one state. Preserve accessible labels even when no loading text is visible.
 
-### Shared LoadingIndicator — proposed extension
+### Shared LoadingIndicator — implemented extension
 
 Implement one reusable `LoadingIndicator` in `src/shared/components/loadingIndicator/` (component, CSS Module, unit tests). Keep it separate from Skeleton: the spinner indicates active work, not missing content. Do not introduce a dependency, a global request counter, or a feature-local spinner.
 
@@ -118,7 +131,7 @@ Implement one reusable `LoadingIndicator` in `src/shared/components/loadingIndic
 - Show it only for the actual in-flight action, not merely because a control is disabled or an uncertain command awaits retry. If a shared command busy flag locks multiple unrelated controls, track the initiating action locally or reuse existing action identity; do not show spinners on every disabled button. For timer settlement, show it only under the existing online, unpaused, zero-remaining confirmation condition and preserve timer digits.
 - Stop on success, error, cancellation, offline transition as appropriate, or uncertain state; do not spin indefinitely while waiting for manual retry. Background fetches with usable cached content must not trigger page loading or unrelated button indicators.
 
-Illustrative usage (proposed):
+Usage:
 
 ```tsx
 <button disabled={busy} aria-busy={busy || undefined}>
@@ -145,7 +158,7 @@ Confirmed against PR #58 head `e2e643ce08f111a35e96feb26d910b8b367b45d4`; paths 
 
 Also audit pending operations that currently expose only a disabled control: group create/edit/delete (groups.tsx:64–192), task completion/deletion (taskDetail.tsx:120–330, completionTimeForm.tsx:51–57, taskRow.tsx:66), calendar undo and recurrence scope selection, focus start/pause/resume/end (timerBar.tsx:43–51, timerPanel.tsx:181–211), notification revoke/test actions (notificationSettings.tsx:79–88,334–347), settings recovery and workspace retry actions. Inspect actual command/handler ownership first: add the indicator only to the initiating visible control or its existing status region if an active operation is observable. Do not invent pending state for synchronous actions; shared disabled flags alone are not evidence that a particular action is running. Record final file/line inventory and any exceptions in the implementation PR.
 
-### Full-page loading — proposed extension
+### Full-page loading — implemented extension
 
 Current route audit at the same head: `src/app/page.tsx:1–3` renders HomePage; `src/app/layout.tsx` wraps providers; `homePage.tsx:65–66` returns AuthScreen during session restoration or when signed out; `authScreen.tsx:21–45` currently renders two skeleton bars while restoring the session. There is no tracked Next App Router `loading.tsx`, other page route, or dedicated LoadingPage component. Calendar's dynamic fallback is local to the Calendar, not a full-page loading state.
 
@@ -191,4 +204,26 @@ These are discovery commands, not sufficient lint rules. Classify results rather
 - Verify screen-reader busy/status, keyboard focus/tab order, unchanged action-pending labels and no layout shifts in desktop/mobile. Update assertions that currently rely on visible loading strings; prefer semantic status/region or specific skeleton test IDs with delayed responses.
 - Extend existing tests in `app/providers.test.tsx`, `features/tasks/components/taskDetail/{historyDetail,taskDetail}.test.tsx`, `features/focus/components/timerPanel/timerTaskSelection.test.tsx`, `features/notifications/components/notificationSettings.test.tsx`, `features/settings/components/settingsForm/settingsForm.test.tsx` as applicable; add calendar lazy/progress and shared Skeleton, LoadingIndicator and LoadingPage tests. Browser regression: existing calendar, focus scene, task UX, settings/session and accessibility suites (Chrome, Firefox, WebKit).
 - Run `cd apps/web && npm run format:check && npm run lint`; from root `make check-web-architecture typecheck test-web build-web`, then `make test-e2e` with test DB only. Run new lint fixtures as part of CI.
-- No API/schema changes or production DB migration; no query policy/command idempotency changes. Implementation PR provides final audit summary and test evidence. Previous validation above covers the initial implementation only; rerun all checks after the proposed extension.
+- No API/schema changes or production DB migration; no query policy/command idempotency changes. Implementation PR provides final audit summary and test evidence. See current validation and remaining browser limitations above.
+
+## Implemented indicator inventory
+
+Paths relative to `apps/web/src`; lines identify render sites at this implementation.
+
+| File | Indicator lines |
+| --- | --- |
+| features/auth/components/authScreen/authScreen.tsx | 130 |
+| features/calendar/components/scheduleScopeDialog/scheduleScopeDialog.tsx | 49, 64 |
+| features/focus/components/timerBar/timerBar.tsx | 45, 62, 72 |
+| features/focus/components/timerPanel/timerClock.tsx | 45 |
+| features/focus/components/timerPanel/timerPanel.tsx | 203, 218, 232, 245, 275 |
+| features/notifications/components/notificationSettings.tsx | 114, 189, 355 |
+| features/settings/components/settingsForm/settingsForm.tsx | 468 |
+| features/tasks/components/groups/groups.tsx | 106, 206 |
+| features/tasks/components/recoveryToast/recoveryToast.tsx | 54 |
+| features/tasks/components/taskDetail/completionTimeForm.tsx | 62 |
+| features/tasks/components/taskDetail/taskDetail.tsx | 233, 284, 293 |
+| features/tasks/components/taskEditor/taskEditor.tsx | 292 |
+| features/tasks/components/taskRow/taskRow.tsx | 73 |
+| home/components/homePage/homePage.tsx | 317 |
+| shared/components/loadingPage/loadingPage.tsx | 11 |

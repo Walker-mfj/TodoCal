@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { ScheduleScopeDialog } from "./scheduleScopeDialog";
 
 beforeEach(() => {
@@ -69,4 +69,37 @@ it("blocks dismissal while saving and restores focus after unmount", () => {
   view.unmount();
   expect(trigger).toHaveFocus();
   trigger.remove();
+});
+
+import { useState } from "react";
+it("shows the indicator only on the selected scope until its request finishes", async () => {
+  let resolve!: () => void;
+  const response = new Promise<void>((r) => (resolve = r));
+  function Harness() {
+    const [busy, setBusy] = useState(false);
+    return (
+      <ScheduleScopeDialog
+        busy={busy}
+        error=""
+        allAvailable
+        onCancel={vi.fn()}
+        onChoose={async () => {
+          setBusy(true);
+          await response;
+          setBusy(false);
+        }}
+      />
+    );
+  }
+  render(<Harness />);
+  const following = screen.getByRole("button", { name: "This and following" });
+  fireEvent.click(screen.getByRole("button", { name: "This occurrence" }));
+  expect(
+    screen.getByRole("button", { name: "Saving…" }).querySelector("svg"),
+  ).not.toBeNull();
+  expect(following.querySelector("svg")).toBeNull();
+  expect(following).toBeDisabled();
+  await act(async () => resolve());
+  expect(screen.queryByRole("button", { name: "Saving…" })).toBeNull();
+  expect(screen.getByRole("button", { name: "This occurrence" })).toBeEnabled();
 });

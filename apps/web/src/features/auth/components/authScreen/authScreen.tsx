@@ -1,5 +1,8 @@
 "use client";
-import { Skeleton } from "../../../../shared/components/skeleton/skeleton";
+import { LoadingIndicator } from "../../../../shared/components/loadingIndicator/loadingIndicator";
+
+import { LoadingPage } from "../../../../shared/components/loadingPage/loadingPage";
+
 import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./authScreen.module.css";
 const cx = bindStyles(styles);
@@ -18,31 +21,7 @@ export function AuthScreen() {
     [password, setPassword] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  if (loading)
-    return (
-      <div className={cx("loading")} role="status">
-        <span
-          role="status"
-          aria-label="Opening your workspace…"
-          aria-live="polite"
-        >
-          <span
-            style={{
-              position: "absolute",
-              width: 1,
-              height: 1,
-              overflow: "hidden",
-              clipPath: "inset(50%)",
-            }}
-            className="sr-only"
-          >
-            Opening your workspace…
-          </span>
-          <Skeleton width="70%" height={20} />
-          <Skeleton width="95%" height={14} />
-        </span>
-      </div>
-    );
+  if (loading) return <LoadingPage />;
   return (
     <main className={cx("auth-page")}>
       <section className={cx("auth-intro")}>
@@ -146,7 +125,16 @@ export function AuthScreen() {
             </p>
           )}
           <button className={cx("primary wide", true)} disabled={busy}>
-            {busy ? "Please wait…" : register ? "Create account" : "Sign in"}
+            {busy ? (
+              <>
+                <LoadingIndicator />
+                Please wait…
+              </>
+            ) : register ? (
+              "Create account"
+            ) : (
+              "Sign in"
+            )}
           </button>
         </ValidatedForm>
         <button

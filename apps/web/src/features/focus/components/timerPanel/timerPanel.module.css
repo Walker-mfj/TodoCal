@@ -61,23 +61,23 @@
 .focus-scene {
   display: block;
   padding: 0;
-  color: var(--color-timer-panel-color-31);
+  color: var(--color-focus-text);
   background:
     radial-gradient(
       ellipse at 18% 0%,
-      var(--color-timer-panel-decoration-32),
+      var(--color-focus-glow-warm),
       transparent 55%
     ),
     radial-gradient(
       ellipse at 90% 75%,
-      var(--color-timer-panel-decoration-33),
+      var(--color-focus-glow-cool),
       transparent 60%
     ),
     linear-gradient(
       155deg,
-      var(--color-timer-panel-decoration-34),
-      var(--color-timer-panel-decoration-35) 65%,
-      var(--color-timer-panel-decoration-36)
+      var(--color-focus-gradient-start),
+      var(--color-focus-gradient-middle) 65%,
+      var(--color-focus-gradient-end)
     );
   isolation: isolate;
 }
@@ -91,17 +91,17 @@
   bottom: -24vh;
   height: 48vh;
   border-radius: 50% 60% 0 0;
-  background: var(--color-timer-panel-background-37);
+  background: var(--color-focus-decoration-surface);
   box-shadow:
-    0 -48px 0 12px var(--color-timer-panel-decoration-38),
-    0 -105px 0 30px var(--color-timer-panel-decoration-39);
+    0 -48px 0 12px var(--color-focus-decoration-near),
+    0 -105px 0 30px var(--color-focus-decoration-far);
 }
 .focus-scene-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 24px 40px;
-  border-bottom: 1px solid var(--color-timer-panel-border-bottom-40);
+  border-bottom: 1px solid var(--color-focus-subtle-border);
   gap: 16px;
 }
 .focus-scene-header strong {
@@ -113,15 +113,15 @@
 }
 .focus-scene button {
   background: transparent;
-  border-color: var(--color-timer-panel-border-color-42);
-  color: var(--color-timer-panel-color-43);
+  border-color: var(--color-focus-control-border);
+  color: var(--color-focus-control-text);
   min-height: 40px;
 }
 .focus-scene button:hover:not(:disabled) {
-  background: var(--color-timer-panel-border-bottom-40);
+  background: var(--color-focus-subtle-border);
 }
 .focus-scene :focus-visible {
-  outline: 2px solid var(--color-timer-panel-outline-45);
+  outline: 2px solid var(--color-focus-outline);
   outline-offset: 3px;
 }
 .focus-scene-body {
@@ -147,8 +147,8 @@
   display: flex;
   gap: 4px;
   padding: 4px;
-  background: var(--color-timer-panel-background-47);
-  border: 1px solid var(--color-timer-panel-border-bottom-40);
+  background: var(--color-focus-mode-surface);
+  border: 1px solid var(--color-focus-subtle-border);
   border-radius: 30px;
 }
 .focus-modes button {
@@ -157,8 +157,8 @@
   padding: 10px 18px;
 }
 .focus-modes button[aria-pressed="true"] {
-  background: var(--color-timer-panel-background-49);
-  color: var(--color-timer-panel-color-50);
+  background: var(--color-focus-mode-selected);
+  color: var(--color-focus-on-action);
 }
 .focus-duration {
   display: flex;
@@ -187,13 +187,13 @@
   border-radius: 10px;
 }
 .focus-actions .focus-start {
-  background: var(--color-timer-panel-background-55);
-  color: var(--color-timer-panel-color-50);
-  border-color: var(--color-timer-panel-background-55);
+  background: var(--color-focus-action);
+  color: var(--color-focus-on-action);
+  border-color: var(--color-focus-action);
   font-weight: 600;
 }
 .focus-actions .focus-start:hover:not(:disabled) {
-  background: var(--color-timer-panel-background-58);
+  background: var(--color-focus-action-hover);
 }
 .focus-hint {
   color: var(--color-focus-muted);

@@ -1,4 +1,6 @@
 "use client";
+import { LoadingRegion } from "../../../shared/components/loadingRegion/loadingRegion";
+
 import { Skeleton } from "../../../shared/components/skeleton/skeleton";
 import { bindStyles } from "../../../shared/utils/classNames";
 import styles from "./progressPanel.module.css";
@@ -106,22 +108,10 @@ export function ProgressPanel({
         <p className={cx("error")}>{errorMessage(report.error)}</p>
       ) : report.isPending ? (
         <div>
-          <span role="status" aria-label="Loading progress…" aria-live="polite">
-            <span
-              style={{
-                position: "absolute",
-                width: 1,
-                height: 1,
-                overflow: "hidden",
-                clipPath: "inset(50%)",
-              }}
-              className="sr-only"
-            >
-              Loading progress…
-            </span>
+          <LoadingRegion label="Loading progress…">
             <Skeleton width={80} height={80} variant="circle" />
             <Skeleton width="70%" height={24} />
-          </span>
+          </LoadingRegion>
         </div>
       ) : (
         <div className={cx(`report-days ${period}`)}>

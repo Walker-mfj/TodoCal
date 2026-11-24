@@ -1,4 +1,8 @@
 "use client";
+import { LoadingIndicator } from "../../../../shared/components/loadingIndicator/loadingIndicator";
+
+import { LoadingRegion } from "../../../../shared/components/loadingRegion/loadingRegion";
+
 import { Skeleton } from "../../../../shared/components/skeleton/skeleton";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { playTimerSound, timerSounds } from "../../../focus";
@@ -82,31 +86,15 @@ export function SettingsForm(props: Props) {
             </button>
           </>
         ) : (
-          <p role="status">
-            <span
-              role="status"
-              aria-label="Loading settings…"
-              aria-live="polite"
-            >
-              <span
-                style={{
-                  position: "absolute",
-                  width: 1,
-                  height: 1,
-                  overflow: "hidden",
-                  clipPath: "inset(50%)",
-                }}
-                className="sr-only"
-              >
-                Loading settings…
-              </span>
+          <p>
+            <LoadingRegion label="Loading settings…">
               {[0, 1, 2, 3].map((row) => (
                 <span key={row} style={{ display: "block", marginBlock: 16 }}>
                   <Skeleton width="40%" />
                   <Skeleton width="100%" height={40} />
                 </span>
               ))}
-            </span>
+            </LoadingRegion>
           </p>
         )}
       </ContentCard>
@@ -475,11 +463,16 @@ function SettingsEditor({
             !ready
           }
         >
-          {command.busy
-            ? "Saving…"
-            : command.uncertain
-              ? "Retry save"
-              : "Save changes"}
+          {command.busy ? (
+            <>
+              <LoadingIndicator />
+              Saving…
+            </>
+          ) : command.uncertain ? (
+            "Retry save"
+          ) : (
+            "Save changes"
+          )}
         </button>
       </ValidatedForm>
     </ContentCard>

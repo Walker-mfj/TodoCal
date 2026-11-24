@@ -8,7 +8,7 @@
   border-radius: 16px;
   background: var(--color-panel);
   color: var(--color-ink);
-  box-shadow: 0 20px 70px var(--color-dialog-box-shadow-12);
+  box-shadow: 0 20px 70px var(--color-shadow-elevated);
 }
 .app-dialog::backdrop {
   background: var(--color-overlay);
@@ -64,19 +64,19 @@
   flex: 1;
 }
 .app-dialog-actions :global(.dialog-danger) {
-  background: var(--color-dialog-background-13);
-  border-color: var(--color-dialog-border-color-14);
-  color: var(--color-dialog-color-15);
+  background: var(--color-danger-action);
+  border-color: var(--color-danger-action);
+  color: var(--color-on-danger-action);
 }
 .app-dialog-actions :global(.dialog-danger):hover:not(:disabled) {
-  background: var(--color-dialog-background-16);
-  border-color: var(--color-dialog-border-color-17);
-  color: var(--color-dialog-color-15);
+  background: var(--color-danger-action-hover);
+  border-color: var(--color-danger-action-hover);
+  color: var(--color-on-danger-action);
 }
 .app-dialog-actions :global(.dialog-danger):focus-visible {
-  background: var(--color-dialog-background-16);
-  border-color: var(--color-dialog-border-color-17);
-  color: var(--color-dialog-color-15);
+  background: var(--color-danger-action-hover);
+  border-color: var(--color-danger-action-hover);
+  color: var(--color-on-danger-action);
 }
 @media (max-width: 480px) {
   .app-dialog {

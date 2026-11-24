@@ -1,4 +1,6 @@
 "use client";
+import { LoadingIndicator } from "../../../shared/components/loadingIndicator/loadingIndicator";
+
 import { bindStyles } from "../../../shared/utils/classNames";
 const cx = bindStyles();
 
@@ -234,7 +236,7 @@ function AccountWorkspace() {
     updatePage(next);
   };
   const complete = async (task: Task) => {
-    void command.run(
+    return command.run(
       `/tasks/${task.id}/completion`,
       "POST",
       {
@@ -311,7 +313,10 @@ function AccountWorkspace() {
           />
         )}
         {scheduling.busy && (
-          <ToastNotice duration={0}>Saving calendar change…</ToastNotice>
+          <ToastNotice duration={0}>
+            <LoadingIndicator />
+            Saving calendar change…
+          </ToastNotice>
         )}
         {scheduling.error && (
           <ToastNotice tone="error" resetKey={scheduling.error}>
@@ -510,6 +515,7 @@ function AccountWorkspace() {
             }}
           >
             <Calendar
+              loading={calendar.isFetching && !calendar.error}
               focus={{
                 active: focus.active,
                 receivedAt: focus.receivedAt,

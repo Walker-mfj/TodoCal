@@ -1,4 +1,6 @@
 "use client";
+import { LoadingRegion } from "../../../../shared/components/loadingRegion/loadingRegion";
+
 import { Skeleton } from "../../../../shared/components/skeleton/skeleton";
 import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./progress.module.css";
@@ -25,27 +27,11 @@ export function DailyProgress({
     return <section role="alert">Unable to load today’s progress.</section>;
   if (!day)
     return (
-      <section className={cx("progress-hero")} aria-live="polite">
-        <span
-          role="status"
-          aria-label="Loading today’s progress…"
-          aria-live="polite"
-        >
-          <span
-            style={{
-              position: "absolute",
-              width: 1,
-              height: 1,
-              overflow: "hidden",
-              clipPath: "inset(50%)",
-            }}
-            className="sr-only"
-          >
-            Loading today’s progress…
-          </span>
+      <section className={cx("progress-hero")}>
+        <LoadingRegion label="Loading today’s progress…">
           <Skeleton width={80} height={80} variant="circle" />
           <Skeleton width="70%" height={24} />
-        </span>
+        </LoadingRegion>
       </section>
     );
   const title =

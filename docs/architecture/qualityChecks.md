@@ -54,13 +54,13 @@ These rules are mandatory for new or changed web code and AI-generated changes. 
 
 ### UI003 — Shared action loading indicator
 
-- Use the shared `LoadingIndicator` at `apps/web/src/shared/components/loadingIndicator/loadingIndicator.tsx` once implemented for active mutations, requests initiated by an action, pending toasts and authoritative settlement feedback. Do not create feature-local spinners or animation.
+- Use the shared `LoadingIndicator` at `apps/web/src/shared/components/loadingIndicator/loadingIndicator.tsx` for active mutations, requests initiated by an action, pending toasts and authoritative settlement feedback. Do not create feature-local spinners or animation.
 - Preserve existing pending labels, disabled/retry/error/uncertain/offline behavior and timer digits. Show an indicator only for the actual active operation, not every disabled control or a command waiting for manual retry. Track initiating action identity if necessary. Do not use Skeleton or full-page loading for an action.
 - Use semantic global colors or currentColor; keep geometry stable, respect reduced motion, and use one accessible status. Decorative indicators accompanying text are aria-hidden.
 - Extend the source check for direct, recognizable pending branches and duplicate spinner implementations where practical; review operation identity and indirect branches manually. Existing pending labels are allowed when accompanied by the shared indicator; retry/error text does not require one.
 
 ### UI004 — Shared full-page loading
 
-- Reuse `LoadingPage` at `apps/web/src/shared/components/loadingPage/loadingPage.tsx` once implemented for genuine full-page/app bootstrap loading, including session restoration. Compose the shared LoadingIndicator rather than creating a page-specific spinner; use global tokens and one accessible busy/status region.
+- Reuse `LoadingPage` at `apps/web/src/shared/components/loadingPage/loadingPage.tsx` for genuine full-page/app bootstrap loading, including session restoration. Compose the shared LoadingIndicator rather than creating a page-specific spinner; use global tokens and one accessible busy/status region.
 - Keep loaded workspace content visible during local navigation, data refetch and mutations. Use local Skeletons for missing content and LoadingIndicator for active actions. No global loading overlay or unnecessary route boundaries.
 - A Next App Router loading.tsx is only justified if an actual asynchronous route transition needs a fallback. If introduced, reuse LoadingPage. Verify resolved sign-in, signed-out, expired, offline and error states; do not flash another account's content. Check page fallback ownership in review.

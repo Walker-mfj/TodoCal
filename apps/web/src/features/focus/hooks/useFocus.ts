@@ -110,7 +110,7 @@ export function useFocus() {
     durationMinutes?: number,
   ) => {
     primeSound();
-    void command.run("/focus", "POST", {
+    return command.run("/focus", "POST", {
       kind,
       ...(durationMinutes === undefined ? {} : { durationMinutes }),
       taskId: kind === "focus" ? taskId || null : null,
@@ -119,7 +119,7 @@ export function useFocus() {
   const change = (action: "pause" | "resume" | "end") => {
     if (!active) return;
     if (action === "resume") primeSound();
-    void command.run(`/focus/${active.id}/${action}`, "POST", {
+    return command.run(`/focus/${active.id}/${action}`, "POST", {
       expectedRevision: active.revision,
     });
   };
@@ -139,7 +139,7 @@ export function useFocus() {
       !!query.error ||
       command.busy ||
       command.uncertain,
-    retry: () => void command.run("", "POST", {}),
+    retry: () => command.run("", "POST", {}),
     enableNotifications: async () => {
       try {
         setPermission(await Notification.requestPermission());

@@ -1,3 +1,4 @@
+import { LoadingRegion } from "../../../../shared/components/loadingRegion/loadingRegion";
 import { Skeleton } from "../../../../shared/components/skeleton/skeleton";
 import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./timerTaskPicker.module.css";
@@ -49,22 +50,10 @@ export function TimerTaskPicker({
       </small>
       {choices.isPending && (
         <small>
-          <span role="status" aria-label="Loading tasks…" aria-live="polite">
-            <span
-              style={{
-                position: "absolute",
-                width: 1,
-                height: 1,
-                overflow: "hidden",
-                clipPath: "inset(50%)",
-              }}
-              className="sr-only"
-            >
-              Loading tasks…
-            </span>
+          <LoadingRegion label="Loading tasks…">
             <Skeleton width="70%" height={20} />
             <Skeleton width="95%" height={14} />
-          </span>
+          </LoadingRegion>
         </small>
       )}
       {choices.error && (

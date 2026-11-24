@@ -1,4 +1,10 @@
 "use client";
+import { LoadingIndicator } from "../../../../shared/components/loadingIndicator/loadingIndicator";
+
+import { usePendingAction } from "../../../../shared/hooks/usePendingAction";
+
+import { LoadingRegion } from "../../../../shared/components/loadingRegion/loadingRegion";
+
 import { Skeleton } from "../../../../shared/components/skeleton/skeleton";
 import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./taskDetail.module.css";
@@ -91,21 +97,9 @@ export function TaskDetail({
   const schedule = taskSchedule(task, scheduleZone);
   const groupName = historical ? (
     historicalDay.isPending ? (
-      <span role="status" aria-label="Loading…" aria-live="polite">
-        <span
-          style={{
-            position: "absolute",
-            width: 1,
-            height: 1,
-            overflow: "hidden",
-            clipPath: "inset(50%)",
-          }}
-          className="sr-only"
-        >
-          Loading…
-        </span>
+      <LoadingRegion label="Loading…">
         <Skeleton width={80} />
-      </span>
+      </LoadingRegion>
     ) : historicalDay.error ? (
       "Unable to load historical group"
     ) : (
@@ -115,6 +109,10 @@ export function TaskDetail({
     groups.find((group) => group.id === task.groupId)?.name || "No group"
   );
   const command = useCommand(execute);
+  const actions = usePendingAction();
+  const runCommand = (...args: Parameters<typeof command.run>) =>
+    actions.run(`${args[1]}:${args[0]}`, () => command.run(...args));
+
   const [stopped, setStopped] = useState(false);
   const [confirmCompleted, setConfirmCompleted] = useState(false);
   const locked = disabled || command.busy || command.uncertain;
@@ -124,7 +122,7 @@ export function TaskDetail({
     DateTime.fromISO(value).setZone(zone).toFormat("MMM d, yyyy HH:mm");
   const remove = () => {
     setDeleteChoice(false);
-    void command.run(
+    void runCommand(
       `/tasks/${task.id}`,
       "DELETE",
       { expectedRevision: task.revision },
@@ -142,7 +140,7 @@ export function TaskDetail({
     const seriesId = task.seriesId,
       revision = deletionPreview.data.seriesRevision;
     setDeleteChoice(false);
-    void command.run(
+    void runCommand(
       `/tasks/${task.id}`,
       "DELETE",
       {
@@ -207,21 +205,9 @@ export function TaskDetail({
         <dt>Actual Focus Time</dt>
         <dd>
           {focus.isPending ? (
-            <span role="status" aria-label="Loading…" aria-live="polite">
-              <span
-                style={{
-                  position: "absolute",
-                  width: 1,
-                  height: 1,
-                  overflow: "hidden",
-                  clipPath: "inset(50%)",
-                }}
-                className="sr-only"
-              >
-                Loading…
-              </span>
+            <LoadingRegion label="Loading…">
               <Skeleton width={80} />
-            </span>
+            </LoadingRegion>
           ) : focus.error ? (
             "Unable to load focus time"
           ) : (
@@ -242,8 +228,9 @@ export function TaskDetail({
         <button
           className={cx("primary", true)}
           disabled={locked}
-          onClick={() => onComplete(task)}
+          onClick={() => void actions.run("complete", () => onComplete(task))}
         >
+          {actions.pending === "complete" && <LoadingIndicator />}
           {task.status === "complete" ? "Mark incomplete" : "Mark complete"}
         </button>
         <button disabled={locked} onClick={onEdit} className={cx("", true)}>
@@ -260,8 +247,9 @@ export function TaskDetail({
           task={task}
           zone={zone}
           locked={locked}
+          saving={actions.pending === `POST:/tasks/${task.id}/completion`}
           onSave={(completedAt) =>
-            void command.run(
+            void runCommand(
               `/tasks/${task.id}/completion`,
               "POST",
               { complete: true, completedAt, expectedRevision: task.revision },
@@ -293,15 +281,16 @@ export function TaskDetail({
           else remove();
         }}
       >
-        Delete task
+        {actions.pending?.startsWith("DELETE:") && <LoadingIndicator />}Delete
+        task
       </button>
       {command.uncertain && (
         <button
           disabled={command.busy}
-          onClick={() => void command.run("", "", null)}
+          onClick={() => void runCommand("", "", null)}
           className={cx("", true)}
         >
-          Retry request
+          {actions.pending === ":" && <LoadingIndicator />}Retry request
         </button>
       )}
       {deleteChoice && (
@@ -352,27 +341,11 @@ export function TaskDetail({
             ({seriesZone}). Earlier repetitions stay unchanged.
           </p>
           {deletionPreview.isFetching && (
-            <p role="status">
-              <span
-                role="status"
-                aria-label="Checking affected occurrences…"
-                aria-live="polite"
-              >
-                <span
-                  style={{
-                    position: "absolute",
-                    width: 1,
-                    height: 1,
-                    overflow: "hidden",
-                    clipPath: "inset(50%)",
-                  }}
-                  className="sr-only"
-                >
-                  Checking affected occurrences…
-                </span>
+            <p>
+              <LoadingRegion label="Checking affected occurrences…">
                 <Skeleton width="70%" height={20} />
                 <Skeleton width="95%" height={14} />
-              </span>
+              </LoadingRegion>
             </p>
           )}
           {deletionPreview.error && (

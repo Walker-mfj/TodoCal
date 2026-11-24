@@ -1,4 +1,6 @@
 "use client";
+import { LoadingIndicator } from "../../../../shared/components/loadingIndicator/loadingIndicator";
+
 import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./taskEditor.module.css";
 const cx = bindStyles(styles);
@@ -285,13 +287,18 @@ export function TaskEditor({
           className={cx("primary wide", true)}
           disabled={busy || disabled || conflict || !ready}
         >
-          {busy
-            ? "Saving…"
-            : pending
-              ? "Retry save"
-              : task
-                ? "Save changes"
-                : "Create task"}
+          {busy ? (
+            <>
+              <LoadingIndicator />
+              Saving…
+            </>
+          ) : pending ? (
+            "Retry save"
+          ) : task ? (
+            "Save changes"
+          ) : (
+            "Create task"
+          )}
         </button>
       </ValidatedForm>
       {scopePrompt && (

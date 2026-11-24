@@ -1,3 +1,4 @@
+import { LoadingRegion } from "../../../../shared/components/loadingRegion/loadingRegion";
 import { Skeleton } from "../../../../shared/components/skeleton/skeleton";
 import { DateTime } from "luxon";
 import { bindStyles } from "../../../../shared/utils/classNames";
@@ -27,23 +28,7 @@ export function TaskRecurrenceDetails({
       <h3>Repeating task</h3>
       {series.isPending ? (
         <div>
-          <span
-            role="status"
-            aria-label="Loading repeat details…"
-            aria-live="polite"
-          >
-            <span
-              style={{
-                position: "absolute",
-                width: 1,
-                height: 1,
-                overflow: "hidden",
-                clipPath: "inset(50%)",
-              }}
-              className="sr-only"
-            >
-              Loading repeat details…
-            </span>
+          <LoadingRegion label="Loading repeat details…">
             {[0, 1, 2].map((row) => (
               <span
                 key={row}
@@ -53,7 +38,7 @@ export function TaskRecurrenceDetails({
                 <Skeleton width="70%" height={28} />
               </span>
             ))}
-          </span>
+          </LoadingRegion>
         </div>
       ) : series.error ? (
         <p className={cx("error")}>Unable to load repeat details.</p>
@@ -109,19 +94,7 @@ export function TaskFocusHistory({
       <h3>Focus sessions</h3>
       {focus.isPending ? (
         <div>
-          <span role="status" aria-label="Loading sessions…" aria-live="polite">
-            <span
-              style={{
-                position: "absolute",
-                width: 1,
-                height: 1,
-                overflow: "hidden",
-                clipPath: "inset(50%)",
-              }}
-              className="sr-only"
-            >
-              Loading sessions…
-            </span>
+          <LoadingRegion label="Loading sessions…">
             {[0, 1, 2].map((row) => (
               <span
                 key={row}
@@ -131,7 +104,7 @@ export function TaskFocusHistory({
                 <Skeleton width="70%" height={28} />
               </span>
             ))}
-          </span>
+          </LoadingRegion>
         </div>
       ) : focus.error ? (
         <p role="alert">Unable to load sessions.</p>

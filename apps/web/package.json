@@ -13,7 +13,7 @@
     "format": "oxfmt --write src tests scripts *.ts package.json tsconfig.json .oxfmtrc.json .oxlintrc.json",
     "format:check": "oxfmt --check src tests scripts *.ts package.json tsconfig.json .oxfmtrc.json .oxlintrc.json",
     "lint": "oxlint --deny-warnings src tests scripts *.ts && npm run check:ui",
-    "lint:fix": "npm run lint -- --fix",
+    "lint:fix": "oxlint --fix --deny-warnings src tests scripts *.ts && npm run check:ui",
     "check:architecture": "node scripts/checkArchitecture.mjs && node --test scripts/checkArchitecture.test.mjs",
     "test:quality-tools": "node scripts/checkQualityTools.mjs",
     "check:ui": "node scripts/checkUi.mjs && node --test scripts/checkUi.test.mjs"

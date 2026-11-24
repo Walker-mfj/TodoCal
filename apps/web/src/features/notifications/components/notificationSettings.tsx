@@ -1,4 +1,10 @@
 "use client";
+import { usePendingAction } from "../../../shared/hooks/usePendingAction";
+
+import { LoadingIndicator } from "../../../shared/components/loadingIndicator/loadingIndicator";
+
+import { LoadingRegion } from "../../../shared/components/loadingRegion/loadingRegion";
+
 import { Skeleton } from "../../../shared/components/skeleton/skeleton";
 import { useEffect, useRef, useState } from "react";
 import { useCommand } from "../../../shared/hooks/useCommand";
@@ -45,6 +51,10 @@ export function NotificationSettings({
     execute,
     `focus:command:${owner}:notification-devices`,
   );
+  const actions = usePendingAction();
+  const runCommand = (...args: Parameters<typeof command.run>) =>
+    actions.run(`${args[1]}:${args[0]}`, () => command.run(...args));
+
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -88,7 +98,7 @@ export function NotificationSettings({
         disabled={busy}
         aria-label={`Revoke notifications for ${device.deviceName || "browser"}`}
         onClick={() =>
-          void command.run(
+          void runCommand(
             `/notifications/subscriptions/${device.id}`,
             "DELETE",
             {},
@@ -99,6 +109,10 @@ export function NotificationSettings({
           )
         }
       >
+        {actions.pending ===
+          `DELETE:/notifications/subscriptions/${device.id}` && (
+          <LoadingIndicator />
+        )}
         Revoke
       </button>
     );
@@ -110,7 +124,7 @@ export function NotificationSettings({
     try {
       const subscription = await subscribeBrowserPush(state.publicKey || "");
       if (!alive.current) return;
-      await command.run(
+      await runCommand(
         "/notifications/subscriptions",
         "POST",
         subscription,
@@ -138,27 +152,11 @@ export function NotificationSettings({
         </p>
         <div className={cx("device-status")}>
           {checking ? (
-            <p role="status" style={{ flex: 1, minWidth: 0 }}>
-              <span
-                role="status"
-                aria-label="Checking this device…"
-                aria-live="polite"
-              >
-                <span
-                  style={{
-                    position: "absolute",
-                    width: 1,
-                    height: 1,
-                    overflow: "hidden",
-                    clipPath: "inset(50%)",
-                  }}
-                  className="sr-only"
-                >
-                  Checking this device…
-                </span>
+            <p style={{ flex: 1, minWidth: 0 }}>
+              <LoadingRegion label="Checking this device…">
                 <Skeleton width="70%" height={20} />
                 <Skeleton width="95%" height={14} />
-              </span>
+              </LoadingRegion>
             </p>
           ) : currentDevice ? (
             <div>
@@ -186,7 +184,14 @@ export function NotificationSettings({
                 disabled={busy}
                 onClick={() => void enable()}
               >
-                {preparing ? "Enabling…" : "Enable on this device"}
+                {preparing ? (
+                  <>
+                    <LoadingIndicator />
+                    Enabling…
+                  </>
+                ) : (
+                  "Enable on this device"
+                )}
               </button>
             )}
         </div>
@@ -345,9 +350,10 @@ export function NotificationSettings({
             type="button"
             className={cx("", true)}
             disabled={disabled || command.busy}
-            onClick={() => void command.run("", "", {}, () => void reload())}
+            onClick={() => void runCommand("", "", {}, () => void reload())}
           >
-            Retry unconfirmed device change
+            {actions.pending === ":" && <LoadingIndicator />}Retry unconfirmed
+            device change
           </button>
         )}
       </section>

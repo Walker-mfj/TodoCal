@@ -33,3 +33,21 @@ COMPOSE_PROJECT_NAME=todocal-refactor POSTGRES_HOST_PORT=55439 make test-e2e
 ```
 
 The default database port remains 55432. Browser suites still share local web/API ports 3002/18080; run them sequentially. These commands never need a production database URL.
+
+## UI color and loading rules
+
+These rules are mandatory for new or changed web code and AI-generated changes. Existing violations are tracked in the [global colors and loading skeletons plan](globalColorsLoadingPlan.md); do not introduce new violations while migrating them. Mechanical checks are planned there, not enabled by this documentation update.
+
+### UI001 — Global color ownership
+
+- Define application-owned fixed colors only in `apps/web/src/shared/styles/tokens.css` (semantic CSS tokens, with appropriate light/dark overrides) or the designated shared concrete color registry for values that cannot use CSS variables (manifest, serialized palette, incompatible library APIs).
+- Reuse semantic tokens before adding new ones. Consume tokens via `var(--color-…)`, existing priority tokens, `currentColor`, or derived expressions. No raw fixed hex, rgb/rgba, hsl, oklch or named color literals in component CSS, JSX style props, SVG fill/stroke, JS options, gradients, shadows or local custom properties. Do not duplicate registry values in CSS; use one source of truth.
+- Allowed: transparent/inherit/currentColor, non-color strings, arbitrary validated user/API color data, test fixtures deliberately representing that data, generated files and documented standalone branding assets. Do not change hex persistence or wire validation just to satisfy this rule. Document any other exception with its file, reason and narrow scope.
+
+### UI002 — Structured loading states
+
+- Render a shape-matched skeleton for first-load data, lazy components and Suspense fallbacks; never use visible text alone (e.g. Loading…, Checking…, Opening your workspace…). Reuse the shared skeleton primitive once available. Keep the shell and dimensions stable; placeholders are not interactive.
+- Keep existing content visible during background refetch if safe; distinguish loading, empty, error, offline, disabled and uncertain states.
+- For mutation or authoritative settlement pending, use a compact progress indicator, retain the action label and existing disabled/retry/confirmation behavior, and preserve focus/timer information. Do not replace a populated form or active timer with a full skeleton.
+- Skeleton decorations are aria-hidden; mark the loading region aria-busy and provide a concise accessible status when needed. Hidden loading status text, error/retry and persistent domain state text are allowed. Respect reduced motion.
+- Review the initial, cached refetch, empty, failed and slow-action branches. Use existing test/lint commands above. Before submitting, search changed files for raw color literals and loading text; classify rather than mechanically replacing legitimate data, labels, or status strings.

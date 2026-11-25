@@ -43,3 +43,7 @@ The workspace's generic Retry request button is disabled while busy but does not
 ## Validation
 
 At the reviewed commit, all five GitHub Actions jobs passed ([run #45564725387](https://github.com/Walker-mfj/TodoCal/actions/runs/45564725387)), including Chromium E2E. These findings are based on source/diff inspection; physical layout measurements and Firefox/WebKit visual checks were not independently performed.
+
+## Resolution
+
+All three fixes are included in the follow-up implementation: scoped timer-ring CSS, disabled group Cancel during saves, and persistent workspace retry feedback with the original command payload/key. Added browser CSS regression coverage and delayed-promise unit tests for success/failure. Follow-up CI must validate these changes; the earlier successful run above is for the reviewed commit only.

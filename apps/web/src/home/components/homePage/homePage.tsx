@@ -42,6 +42,7 @@ import { ScheduleScopeDialog } from "../../../features/calendar";
 import { UndoToast } from "../../../features/calendar";
 import { useCommand } from "../../../shared/hooks/useCommand";
 import { WorkspaceSidebar } from "../workspaceSidebar/workspaceSidebar";
+import { WorkspaceCommandNotice } from "./workspaceCommandNotice";
 import {
   WorkspaceLayout,
   WorkspaceMain,
@@ -423,34 +424,16 @@ function AccountWorkspace() {
             {saveNotice}
           </ToastNotice>
         )}
-        {(message || command.error) && (
-          <ToastNotice
-            tone={
-              !command.error && message.startsWith("Confirm the pending save")
-                ? "warning"
-                : "error"
-            }
-            duration={command.uncertain ? 0 : undefined}
-            resetKey={message || command.error}
-            onDismiss={() => {
-              setMessage("");
-              command.dismissError();
-            }}
-          >
-            {message || command.error}
-            {command.uncertain && (
-              <button
-                disabled={!connected || command.busy}
-                onClick={() =>
-                  void command.run("", "", null, () => setPanel(null))
-                }
-                className={cx("", true)}
-              >
-                Retry request
-              </button>
-            )}
-          </ToastNotice>
-        )}
+        <WorkspaceCommandNotice
+          message={message}
+          command={command}
+          connected={connected}
+          onRetry={() => command.run("", "", null, () => setPanel(null))}
+          onDismiss={() => {
+            setMessage("");
+            command.dismissError();
+          }}
+        />
         {restoredDrafts.length > 0 && !panel && (
           <ToastNotice duration={0}>
             You have a saved task draft.

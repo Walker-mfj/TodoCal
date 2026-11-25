@@ -236,7 +236,12 @@ export function Groups({
           </span>
         </button>
         {editing && !command.uncertain && (
-          <button type="button" onClick={clear} className={cx("", true)}>
+          <button
+            type="button"
+            disabled={command.busy}
+            onClick={clear}
+            className={cx("", true)}
+          >
             Cancel
           </button>
         )}

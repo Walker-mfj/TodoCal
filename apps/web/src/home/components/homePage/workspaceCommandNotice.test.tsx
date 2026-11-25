@@ -16,9 +16,7 @@ it.each([true, false])(
         () =>
           new Promise((resolve, reject) => {
             settle = () =>
-              success
-                ? resolve({})
-                : reject(new ApiError(500, "Retry failed"));
+              success ? resolve({}) : reject(new ApiError(500, "Retry failed"));
           }),
       );
     const onSuccess = vi.fn();
@@ -63,7 +61,9 @@ it.each([true, false])(
     expect(screen.queryByRole("status")).toBeNull();
     if (success) {
       expect(onSuccess).toHaveBeenCalledOnce();
-      expect(screen.queryByRole("button", { name: "Retry request" })).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "Retry request" }),
+      ).toBeNull();
     } else {
       expect(screen.getByRole("alert")).toHaveTextContent("Retry failed");
       const retryAgain = screen.getByRole("button", { name: "Retry request" });
@@ -74,3 +74,64 @@ it.each([true, false])(
     }
   },
 );
+
+it("shows each retry after an earlier pending toast was dismissed", async () => {
+  let settle!: (success: boolean) => void;
+  const execute = vi
+    .fn()
+    .mockRejectedValueOnce(new ApiError(500, "Failure"))
+    .mockImplementation(
+      () =>
+        new Promise((resolve, reject) => {
+          settle = (success) =>
+            success ? resolve({}) : reject(new ApiError(500, "Failure"));
+        }),
+    );
+  function Harness() {
+    const command = useCommand(execute);
+    return (
+      <ToastProvider>
+        <button
+          onClick={() =>
+            void command.run("/tasks/a/completion", "POST", { complete: true })
+          }
+        >
+          Complete task
+        </button>
+        <WorkspaceCommandNotice
+          message=""
+          command={command}
+          connected
+          onRetry={() => command.run("", "", null)}
+          onDismiss={command.dismissError}
+        />
+      </ToastProvider>
+    );
+  }
+  render(<Harness />);
+  fireEvent.click(screen.getByRole("button", { name: "Complete task" }));
+  await screen.findByText("Failure");
+  for (let attempt = 0; attempt < 3; attempt++) {
+    fireEvent.click(screen.getByRole("button", { name: "Retry request" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Confirming the previous request…",
+    );
+    const retry = screen.getByRole("button", { name: "Retry request" });
+    expect(retry).toBeDisabled();
+    expect(retry).toHaveAttribute("aria-busy", "true");
+    expect(retry.querySelector("svg")).not.toBeNull();
+    expect(execute.mock.calls[attempt + 1]).toEqual(execute.mock.calls[0]);
+    if (attempt < 2) {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Dismiss notification" }),
+      );
+      expect(screen.queryByRole("status")).toBeNull();
+      await act(async () => settle(false));
+      expect(screen.getByRole("alert")).toHaveTextContent("Failure");
+    } else {
+      await act(async () => settle(true));
+      expect(screen.queryByRole("status")).toBeNull();
+      expect(screen.queryByRole("alert")).toBeNull();
+    }
+  }
+});

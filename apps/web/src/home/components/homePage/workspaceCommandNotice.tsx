@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { LoadingIndicator } from "../../../shared/components/loadingIndicator/loadingIndicator";
 import { ToastNotice } from "../../../shared/components/toast/toast";
 import type { useCommand } from "../../../shared/hooks/useCommand";
@@ -20,6 +21,7 @@ export function WorkspaceCommandNotice({
   onDismiss: () => void;
 }) {
   const actions = usePendingAction();
+  const [attempt, setAttempt] = useState(0);
   const retrying = actions.isPending("retry");
   if (!retrying && !message && !command.error) return null;
   return (
@@ -32,14 +34,19 @@ export function WorkspaceCommandNotice({
             : "error"
       }
       duration={retrying || command.uncertain ? 0 : undefined}
-      resetKey={retrying ? "command-retry-pending" : message || command.error}
+      resetKey={
+        retrying ? `command-retry-pending:${attempt}` : message || command.error
+      }
       onDismiss={onDismiss}
     >
       {retrying ? "Confirming the previous request…" : message || command.error}
       {(retrying || command.uncertain) && (
         <button
           disabled={!connected || command.busy || retrying}
-          onClick={() => void actions.run("retry", onRetry)}
+          onClick={() => {
+            setAttempt((previous) => previous + 1);
+            void actions.run("retry", onRetry);
+          }}
           className={cx("", true)}
           data-pending-control="true"
           aria-busy={retrying}

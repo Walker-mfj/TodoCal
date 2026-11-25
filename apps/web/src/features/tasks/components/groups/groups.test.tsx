@@ -1,5 +1,11 @@
 import { it, expect, vi } from "vitest";
-import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
+import {
+  act,
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+} from "@testing-library/react";
 import { Groups } from "./groups";
 import { ApiError } from "../../../../shared/api/apiClient";
 it("preserves group draft and retry key only for its owner after expiration", async () => {
@@ -68,7 +74,9 @@ it.each([true, false])(
     expect(save).toHaveAttribute("aria-busy", "false");
     expect(save.querySelector("svg")).toBeNull();
     if (success) {
-      expect(screen.getByRole("button", { name: "Create group" })).toBeEnabled();
+      expect(
+        screen.getByRole("button", { name: "Create group" }),
+      ).toBeEnabled();
       expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
     } else {
       expect(screen.getByRole("alert")).toHaveTextContent("Save failed");

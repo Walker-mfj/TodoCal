@@ -12,9 +12,11 @@ test("focus settlement spinner stays inline and the progress ring stays absolute
     <TimerClock
       seconds={0}
       ratio={1}
-      active={{ status: "running" } as NonNullable<
-        Parameters<typeof TimerClock>[0]["active"]
-      >}
+      active={
+        { status: "running" } as NonNullable<
+          Parameters<typeof TimerClock>[0]["active"]
+        >
+      }
       connected
       settlementPending
     />,

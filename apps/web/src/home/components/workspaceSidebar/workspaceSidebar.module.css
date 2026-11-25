@@ -452,15 +452,15 @@
   line-height: 1.2;
 }
 .sidebar-brand-accent {
-  color: #0861ce;
-  background: linear-gradient(115deg, #087b91, #1456d9);
+  color: var(--color-brand-accent);
+  background: linear-gradient(
+    115deg,
+    var(--color-brand-gradient-start),
+    var(--color-brand-gradient-end)
+  );
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-}
-[data-mode="dark"] .sidebar-brand-accent {
-  color: #70c4ff;
-  background-image: linear-gradient(115deg, #61e4d3, #7eb5ff);
 }
 @media (forced-colors: active) {
   .sidebar-brand-accent {

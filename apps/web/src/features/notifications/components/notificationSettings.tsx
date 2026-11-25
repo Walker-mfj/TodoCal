@@ -1,4 +1,11 @@
 "use client";
+import { usePendingAction } from "../../../shared/hooks/usePendingAction";
+
+import { LoadingIndicator } from "../../../shared/components/loadingIndicator/loadingIndicator";
+
+import { LoadingRegion } from "../../../shared/components/loadingRegion/loadingRegion";
+
+import { Skeleton } from "../../../shared/components/skeleton/skeleton";
 import { useEffect, useRef, useState } from "react";
 import { useCommand } from "../../../shared/hooks/useCommand";
 import { errorMessage, type Execute } from "../../../shared/api/apiClient";
@@ -44,6 +51,10 @@ export function NotificationSettings({
     execute,
     `focus:command:${owner}:notification-devices`,
   );
+  const actions = usePendingAction();
+  const runCommand = (...args: Parameters<typeof command.run>) =>
+    actions.run(`${args[1]}:${args[0]}`, () => command.run(...args));
+
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -87,7 +98,7 @@ export function NotificationSettings({
         disabled={busy}
         aria-label={`Revoke notifications for ${device.deviceName || "browser"}`}
         onClick={() =>
-          void command.run(
+          void runCommand(
             `/notifications/subscriptions/${device.id}`,
             "DELETE",
             {},
@@ -97,8 +108,20 @@ export function NotificationSettings({
             },
           )
         }
+        data-pending-control="true"
+        aria-busy={Boolean(
+          actions.isPending(`DELETE:/notifications/subscriptions/${device.id}`),
+        )}
       >
-        Revoke
+        <span data-button-content="true">
+          {actions.isPending(
+            `DELETE:/notifications/subscriptions/${device.id}`,
+          ) && <LoadingIndicator />}
+          Revoke
+        </span>
+        <span aria-hidden="true" data-button-reserve="true">
+          Revoke
+        </span>
       </button>
     );
   }
@@ -109,7 +132,7 @@ export function NotificationSettings({
     try {
       const subscription = await subscribeBrowserPush(state.publicKey || "");
       if (!alive.current) return;
-      await command.run(
+      await runCommand(
         "/notifications/subscriptions",
         "POST",
         subscription,
@@ -137,7 +160,12 @@ export function NotificationSettings({
         </p>
         <div className={cx("device-status")}>
           {checking ? (
-            <p role="status">Checking this device…</p>
+            <p style={{ flex: 1, minWidth: 0 }}>
+              <LoadingRegion label="Checking this device…">
+                <Skeleton width="70%" height={20} />
+                <Skeleton width="95%" height={14} />
+              </LoadingRegion>
+            </p>
           ) : currentDevice ? (
             <div>
               <strong>Notifications enabled on this device</strong>
@@ -163,8 +191,25 @@ export function NotificationSettings({
                 className={cx("", true)}
                 disabled={busy}
                 onClick={() => void enable()}
+                data-pending-control="true"
+                aria-busy={Boolean(preparing)}
               >
-                {preparing ? "Enabling…" : "Enable on this device"}
+                <span data-button-content="true">
+                  {preparing ? (
+                    <>
+                      <LoadingIndicator />
+                      Enabling…
+                    </>
+                  ) : (
+                    "Enable on this device"
+                  )}
+                </span>
+                <span aria-hidden="true" data-button-reserve="true">
+                  Enabling…
+                </span>
+                <span aria-hidden="true" data-button-reserve="true">
+                  Enable on this device
+                </span>
               </button>
             )}
         </div>
@@ -191,7 +236,11 @@ export function NotificationSettings({
             {error || command.error}
           </p>
         )}
-        {notice && <p role="status">{notice}</p>}
+        {notice && (
+          <p role="status" style={{ flex: 1, minWidth: 0 }}>
+            {notice}
+          </p>
+        )}
         <fieldset className={cx("", true)} disabled={disabled || pending}>
           <legend className={cx("sr-only")}>Reminder types</legend>
           <div className={cx("reminders")}>
@@ -306,12 +355,22 @@ export function NotificationSettings({
             type="button"
             className={cx("", true)}
             disabled={busy}
-            onClick={async () => {
-              await reload();
-              command.dismissError();
-            }}
+            onClick={() =>
+              void actions.run("refresh-devices", async () => {
+                await reload();
+                command.dismissError();
+              })
+            }
+            data-pending-control="true"
+            aria-busy={Boolean(actions.isPending("refresh-devices"))}
           >
-            Refresh devices
+            <span data-button-content="true">
+              {actions.isPending("refresh-devices") && <LoadingIndicator />}
+              Refresh devices
+            </span>
+            <span aria-hidden="true" data-button-reserve="true">
+              Refresh devices
+            </span>
           </button>
         )}
         {command.uncertain && (
@@ -319,9 +378,17 @@ export function NotificationSettings({
             type="button"
             className={cx("", true)}
             disabled={disabled || command.busy}
-            onClick={() => void command.run("", "", {}, () => void reload())}
+            onClick={() => void runCommand("", "", {}, () => void reload())}
+            data-pending-control="true"
+            aria-busy={Boolean(actions.isPending(":"))}
           >
-            Retry unconfirmed device change
+            <span data-button-content="true">
+              {actions.isPending(":") && <LoadingIndicator />}Retry unconfirmed
+              device change
+            </span>
+            <span aria-hidden="true" data-button-reserve="true">
+              Retry unconfirmed device change
+            </span>
           </button>
         )}
       </section>

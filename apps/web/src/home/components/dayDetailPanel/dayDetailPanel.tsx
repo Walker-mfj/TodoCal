@@ -1,4 +1,7 @@
 "use client";
+import { LoadingRegion } from "../../../shared/components/loadingRegion/loadingRegion";
+
+import { Skeleton } from "../../../shared/components/skeleton/skeleton";
 import { bindStyles } from "../../../shared/utils/classNames";
 import styles from "./dayDetailPanel.module.css";
 const cx = bindStyles(styles);
@@ -36,7 +39,19 @@ export function DayDetailPanel({
       onClose={onClose}
     >
       {day.isPending ? (
-        <p>Loading day…</p>
+        <div>
+          <LoadingRegion label="Loading day…">
+            {[0, 1, 2].map((row) => (
+              <span
+                key={row}
+                style={{ display: "flex", gap: 12, marginBlock: 12 }}
+              >
+                <Skeleton width={32} height={32} variant="circle" />
+                <Skeleton width="70%" height={28} />
+              </span>
+            ))}
+          </LoadingRegion>
+        </div>
       ) : day.error ? (
         <p className={cx("error")}>{errorMessage(day.error)}</p>
       ) : (
@@ -81,7 +96,9 @@ export function DayDetailPanel({
                           {
                             id: e.task.groupId,
                             name: e.groupName,
-                            color: e.groupColor || "#999",
+                            color:
+                              e.groupColor ||
+                              "var(--color-history-group-fallback)",
                             revision: 1,
                           },
                         ]

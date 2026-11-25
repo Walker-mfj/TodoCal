@@ -1,4 +1,7 @@
 "use client";
+import { LoadingRegion } from "../../../shared/components/loadingRegion/loadingRegion";
+
+import { Skeleton } from "../../../shared/components/skeleton/skeleton";
 import { bindStyles } from "../../../shared/utils/classNames";
 import styles from "./progressPanel.module.css";
 const cx = bindStyles(styles);
@@ -87,15 +90,17 @@ export function ProgressPanel({
           >
             →
           </button>
-          <select
-            aria-label="Progress period"
-            value={period}
-            onChange={(e) => setPeriod(e.target.value as "week" | "month")}
-            className={cx("", true)}
-          >
-            <option value="week">Weekly</option>
-            <option value="month">Monthly</option>
-          </select>
+          <span className={cx("select-wrap")}>
+            <select
+              aria-label="Progress period"
+              value={period}
+              onChange={(e) => setPeriod(e.target.value as "week" | "month")}
+              className={cx("", true)}
+            >
+              <option value="week">Weekly</option>
+              <option value="month">Monthly</option>
+            </select>
+          </span>
         </div>
       </div>
       {report.data && (
@@ -104,7 +109,12 @@ export function ProgressPanel({
       {report.error ? (
         <p className={cx("error")}>{errorMessage(report.error)}</p>
       ) : report.isPending ? (
-        <p>Loading progress…</p>
+        <div>
+          <LoadingRegion label="Loading progress…">
+            <Skeleton width={80} height={80} variant="circle" />
+            <Skeleton width="70%" height={24} />
+          </LoadingRegion>
+        </div>
       ) : (
         <div className={cx(`report-days ${period}`)}>
           <DayStrip

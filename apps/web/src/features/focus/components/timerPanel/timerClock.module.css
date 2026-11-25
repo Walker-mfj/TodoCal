@@ -7,20 +7,20 @@
   justify-content: center;
   margin: 28px 0 20px;
 }
-.focus-clock svg {
+.focus-clock > svg {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   transform: rotate(-90deg);
 }
-.focus-clock circle {
+.focus-clock > svg > circle {
   fill: none;
-  stroke: #ffffff16;
+  stroke: var(--color-focus-track);
   stroke-width: 3;
 }
-.focus-clock .focus-arc {
-  stroke: #a8caff;
+.focus-clock > svg > .focus-arc {
+  stroke: var(--color-focus-ring);
   stroke-linecap: round;
   stroke-dasharray: 1068;
 }
@@ -28,10 +28,10 @@
   font-size: clamp(64px, 12vw, 88px);
   letter-spacing: -5px;
   font-variant-numeric: tabular-nums;
-  color: #f3f7f8;
+  color: var(--color-focus-digits);
 }
 .focus-clock small {
-  color: #b5c6d0;
+  color: var(--color-focus-muted);
   margin-top: 12px;
 }
 @media (max-width: 600px) {

@@ -1,4 +1,8 @@
 "use client";
+import { LoadingIndicator } from "../../../../shared/components/loadingIndicator/loadingIndicator";
+
+import { LoadingPage } from "../../../../shared/components/loadingPage/loadingPage";
+
 import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./authScreen.module.css";
 const cx = bindStyles(styles);
@@ -17,12 +21,7 @@ export function AuthScreen() {
     [password, setPassword] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  if (loading)
-    return (
-      <div className={cx("loading")} role="status">
-        Opening your workspace…
-      </div>
-    );
+  if (loading) return <LoadingPage />;
   return (
     <main className={cx("auth-page")}>
       <section className={cx("auth-intro")}>
@@ -125,8 +124,33 @@ export function AuthScreen() {
               {error}
             </p>
           )}
-          <button className={cx("primary wide", true)} disabled={busy}>
-            {busy ? "Please wait…" : register ? "Create account" : "Sign in"}
+          <button
+            className={cx("primary wide", true)}
+            disabled={busy}
+            data-pending-control="true"
+            aria-busy={Boolean(busy)}
+          >
+            <span data-button-content="true">
+              {busy ? (
+                <>
+                  <LoadingIndicator />
+                  Please wait…
+                </>
+              ) : register ? (
+                "Create account"
+              ) : (
+                "Sign in"
+              )}
+            </span>
+            <span aria-hidden="true" data-button-reserve="true">
+              Please wait…
+            </span>
+            <span aria-hidden="true" data-button-reserve="true">
+              Create account
+            </span>
+            <span aria-hidden="true" data-button-reserve="true">
+              Sign in
+            </span>
           </button>
         </ValidatedForm>
         <button

@@ -1,4 +1,7 @@
 "use client";
+import { usePendingAction } from "../../../shared/hooks/usePendingAction";
+import { LoadingIndicator } from "../../../shared/components/loadingIndicator/loadingIndicator";
+
 import { bindStyles } from "../../../shared/utils/classNames";
 const cx = bindStyles();
 
@@ -39,6 +42,7 @@ import { ScheduleScopeDialog } from "../../../features/calendar";
 import { UndoToast } from "../../../features/calendar";
 import { useCommand } from "../../../shared/hooks/useCommand";
 import { WorkspaceSidebar } from "../workspaceSidebar/workspaceSidebar";
+import { WorkspaceCommandNotice } from "./workspaceCommandNotice";
 import {
   WorkspaceLayout,
   WorkspaceMain,
@@ -71,6 +75,7 @@ export default function HomePage() {
   );
 }
 function AccountWorkspace() {
+  const actions = usePendingAction();
   const confirm = useConfirm();
   const [draftPreview, setDraftPreview] = useState<CalendarDraft | null>(null);
   const [editorState, setEditorState] = useState({
@@ -234,7 +239,7 @@ function AccountWorkspace() {
     updatePage(next);
   };
   const complete = async (task: Task) => {
-    void command.run(
+    return command.run(
       `/tasks/${task.id}/completion`,
       "POST",
       {
@@ -311,7 +316,10 @@ function AccountWorkspace() {
           />
         )}
         {scheduling.busy && (
-          <ToastNotice duration={0}>Saving calendar change…</ToastNotice>
+          <ToastNotice duration={0}>
+            <LoadingIndicator />
+            Saving calendar change…
+          </ToastNotice>
         )}
         {scheduling.error && (
           <ToastNotice tone="error" resetKey={scheduling.error}>
@@ -381,10 +389,20 @@ function AccountWorkspace() {
             A timer action is unconfirmed.{" "}
             <button
               disabled={!connected || focus.command.busy}
-              onClick={focus.retry}
+              onClick={() => void actions.run("timer-retry", focus.retry)}
               className={cx("", true)}
+              data-pending-control="true"
+              aria-busy={Boolean(actions.isPending("timer-retry") && connected)}
             >
-              Retry timer action
+              <span data-button-content="true">
+                {actions.isPending("timer-retry") && connected && (
+                  <LoadingIndicator />
+                )}
+                Retry timer action
+              </span>
+              <span aria-hidden="true" data-button-reserve="true">
+                Retry timer action
+              </span>
             </button>
           </ToastNotice>
         )}
@@ -406,34 +424,16 @@ function AccountWorkspace() {
             {saveNotice}
           </ToastNotice>
         )}
-        {(message || command.error) && (
-          <ToastNotice
-            tone={
-              !command.error && message.startsWith("Confirm the pending save")
-                ? "warning"
-                : "error"
-            }
-            duration={command.uncertain ? 0 : undefined}
-            resetKey={message || command.error}
-            onDismiss={() => {
-              setMessage("");
-              command.dismissError();
-            }}
-          >
-            {message || command.error}
-            {command.uncertain && (
-              <button
-                disabled={!connected || command.busy}
-                onClick={() =>
-                  void command.run("", "", null, () => setPanel(null))
-                }
-                className={cx("", true)}
-              >
-                Retry request
-              </button>
-            )}
-          </ToastNotice>
-        )}
+        <WorkspaceCommandNotice
+          message={message}
+          command={command}
+          connected={connected}
+          onRetry={() => command.run("", "", null, () => setPanel(null))}
+          onDismiss={() => {
+            setMessage("");
+            command.dismissError();
+          }}
+        />
         {restoredDrafts.length > 0 && !panel && (
           <ToastNotice duration={0}>
             You have a saved task draft.
@@ -471,6 +471,7 @@ function AccountWorkspace() {
           <>
             <DailyProgress
               day={todayReport.data}
+              error={todayReport.error}
               onOpen={(date) => open({ type: "day", date })}
             />
             <TaskFilters
@@ -509,6 +510,7 @@ function AccountWorkspace() {
             }}
           >
             <Calendar
+              loading={calendar.isFetching && !calendar.error}
               focus={{
                 active: focus.active,
                 receivedAt: focus.receivedAt,

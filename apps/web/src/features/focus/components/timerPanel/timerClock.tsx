@@ -1,3 +1,4 @@
+import { LoadingIndicator } from "../../../../shared/components/loadingIndicator/loadingIndicator";
 import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./timerClock.module.css";
 import { timerLabel } from "../../utils/clock";
@@ -8,11 +9,13 @@ export function TimerClock({
   ratio,
   active,
   connected,
+  settlementPending = false,
 }: {
   seconds: number;
   ratio: number;
   active: FocusState["active"] | undefined;
   connected: boolean;
+  settlementPending?: boolean;
 }) {
   return (
     <div className={cx("focus-clock")}>
@@ -32,15 +35,22 @@ export function TimerClock({
         {timerLabel(seconds)}
       </span>
       <small>
-        {active
-          ? active.status === "paused"
-            ? "Paused"
-            : !connected
-              ? "Offline · estimated"
-              : seconds === 0
-                ? "Confirming completion…"
-                : "Time to focus"
-          : "Ready when you are"}
+        {active ? (
+          active.status === "paused" ? (
+            "Paused"
+          ) : !connected ? (
+            "Offline · estimated"
+          ) : seconds === 0 ? (
+            <>
+              {settlementPending && <LoadingIndicator />}
+              Confirming completion…
+            </>
+          ) : (
+            "Time to focus"
+          )
+        ) : (
+          "Ready when you are"
+        )}
       </small>
     </div>
   );

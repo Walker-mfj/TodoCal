@@ -37,41 +37,47 @@ export function TaskFilters({
           className={cx("", true)}
         />
       </label>
-      <select
-        aria-label="Filter group"
-        value={group}
-        onChange={(e) => setGroup(e.target.value)}
-        className={cx("", true)}
-      >
-        <option value="">All groups</option>
-        <option value="none">No group</option>
-        {allGroups.map((g) => (
-          <option key={g.id} value={g.id}>
-            {g.name}
-          </option>
-        ))}
-      </select>
-      <select
-        aria-label="Filter priority"
-        value={priority}
-        onChange={(e) => setPriority(e.target.value)}
-        className={cx("", true)}
-      >
-        <option value="">All priorities</option>
-        {["low", "medium", "high"].map((p) => (
-          <option key={p}>{p}</option>
-        ))}
-      </select>
-      <select
-        aria-label="Filter status"
-        value={status}
-        onChange={(e) => setStatus(e.target.value)}
-        className={cx("", true)}
-      >
-        <option value="">All statuses</option>
-        <option value="incomplete">To do</option>
-        <option value="complete">Complete</option>
-      </select>
+      <span className={cx("select-wrap")}>
+        <select
+          aria-label="Filter group"
+          value={group}
+          onChange={(e) => setGroup(e.target.value)}
+          className={cx("", true)}
+        >
+          <option value="">All groups</option>
+          <option value="none">No group</option>
+          {allGroups.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.name}
+            </option>
+          ))}
+        </select>
+      </span>
+      <span className={cx("select-wrap")}>
+        <select
+          aria-label="Filter priority"
+          value={priority}
+          onChange={(e) => setPriority(e.target.value)}
+          className={cx("", true)}
+        >
+          <option value="">All priorities</option>
+          {["low", "medium", "high"].map((p) => (
+            <option key={p}>{p}</option>
+          ))}
+        </select>
+      </span>
+      <span className={cx("select-wrap")}>
+        <select
+          aria-label="Filter status"
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+          className={cx("", true)}
+        >
+          <option value="">All statuses</option>
+          <option value="incomplete">To do</option>
+          <option value="complete">Complete</option>
+        </select>
+      </span>
     </div>
   );
 }

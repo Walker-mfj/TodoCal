@@ -1,3 +1,5 @@
+import { LoadingRegion } from "../../../../shared/components/loadingRegion/loadingRegion";
+import { Skeleton } from "../../../../shared/components/skeleton/skeleton";
 import { DateTime } from "luxon";
 import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./taskDetailSections.module.css";
@@ -25,7 +27,19 @@ export function TaskRecurrenceDetails({
     <section className={cx("series-summary")}>
       <h3>Repeating task</h3>
       {series.isPending ? (
-        <p>Loading repeat details…</p>
+        <div>
+          <LoadingRegion label="Loading repeat details…">
+            {[0, 1, 2].map((row) => (
+              <span
+                key={row}
+                style={{ display: "flex", gap: 12, marginBlock: 12 }}
+              >
+                <Skeleton width={32} height={32} variant="circle" />
+                <Skeleton width="70%" height={28} />
+              </span>
+            ))}
+          </LoadingRegion>
+        </div>
       ) : series.error ? (
         <p className={cx("error")}>Unable to load repeat details.</p>
       ) : (
@@ -79,7 +93,19 @@ export function TaskFocusHistory({
     <section className={cx("series-summary")}>
       <h3>Focus sessions</h3>
       {focus.isPending ? (
-        <p>Loading sessions…</p>
+        <div>
+          <LoadingRegion label="Loading sessions…">
+            {[0, 1, 2].map((row) => (
+              <span
+                key={row}
+                style={{ display: "flex", gap: 12, marginBlock: 12 }}
+              >
+                <Skeleton width={32} height={32} variant="circle" />
+                <Skeleton width="70%" height={28} />
+              </span>
+            ))}
+          </LoadingRegion>
+        </div>
       ) : focus.error ? (
         <p role="alert">Unable to load sessions.</p>
       ) : !focus.data?.sessions.length ? (

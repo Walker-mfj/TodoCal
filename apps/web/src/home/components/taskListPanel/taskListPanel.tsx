@@ -1,4 +1,7 @@
 "use client";
+import { LoadingRegion } from "../../../shared/components/loadingRegion/loadingRegion";
+
+import { Skeleton } from "../../../shared/components/skeleton/skeleton";
 import { bindStyles } from "../../../shared/utils/classNames";
 import styles from "./taskListPanel.module.css";
 const cx = bindStyles(styles);
@@ -39,28 +42,42 @@ export function TaskListPanel({
     <section className={cx("task-list-card")}>
       <div className={cx("list-heading")}>
         <h2>Your tasks</h2>
-        <select
-          aria-label="Task view"
-          value={view}
-          onChange={(e) => setView(e.target.value)}
-          className={cx("", true)}
-        >
-          {[
-            ["all", "All tasks"],
-            ["today", "Today"],
-            ["upcoming", "Upcoming"],
-            ["overdue", "Overdue"],
-            ["unscheduled", "Unscheduled"],
-            ["previously-unfinished", "Previously unfinished"],
-          ].map(([v, l]) => (
-            <option key={v} value={v}>
-              {l}
-            </option>
-          ))}
-        </select>
+        <span className={cx("select-wrap")}>
+          <select
+            aria-label="Task view"
+            value={view}
+            onChange={(e) => setView(e.target.value)}
+            className={cx("", true)}
+          >
+            {[
+              ["all", "All tasks"],
+              ["today", "Today"],
+              ["upcoming", "Upcoming"],
+              ["overdue", "Overdue"],
+              ["unscheduled", "Unscheduled"],
+              ["previously-unfinished", "Previously unfinished"],
+            ].map(([v, l]) => (
+              <option key={v} value={v}>
+                {l}
+              </option>
+            ))}
+          </select>
+        </span>
       </div>
       {tasks.isPending ? (
-        <p>Loading tasks…</p>
+        <div>
+          <LoadingRegion label="Loading tasks…">
+            {[0, 1, 2].map((row) => (
+              <span
+                key={row}
+                style={{ display: "flex", gap: 12, marginBlock: 12 }}
+              >
+                <Skeleton width={32} height={32} variant="circle" />
+                <Skeleton width="70%" height={28} />
+              </span>
+            ))}
+          </LoadingRegion>
+        </div>
       ) : tasks.error ? (
         <p className={cx("error")}>{errorMessage(tasks.error)}</p>
       ) : tasks.data?.items.length ? (

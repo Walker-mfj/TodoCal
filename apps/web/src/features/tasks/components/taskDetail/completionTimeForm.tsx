@@ -1,4 +1,6 @@
 "use client";
+import { LoadingIndicator } from "../../../../shared/components/loadingIndicator/loadingIndicator";
+
 import { useEffect, useState } from "react";
 import { DateTime } from "luxon";
 import { bindStyles } from "../../../../shared/utils/classNames";
@@ -8,11 +10,13 @@ export function CompletionTimeForm({
   task,
   zone,
   locked,
+  saving = false,
   onSave,
 }: {
   task: Task;
   zone: string;
   locked: boolean;
+  saving?: boolean;
   onSave: (completedAt: string) => void;
 }) {
   const [completionError, setCompletionError] = useState("");
@@ -54,8 +58,18 @@ export function CompletionTimeForm({
         />
       </label>
       <small>Time uses {zone}; the scheduled date stays unchanged.</small>
-      <button disabled={locked} className={cx("", true)}>
-        Save completion time
+      <button
+        disabled={locked}
+        className={cx("", true)}
+        data-pending-control="true"
+        aria-busy={Boolean(saving)}
+      >
+        <span data-button-content="true">
+          {saving && <LoadingIndicator />}Save completion time
+        </span>
+        <span aria-hidden="true" data-button-reserve="true">
+          Save completion time
+        </span>
       </button>
       {completionError && <p role="alert">{completionError}</p>}
     </form>

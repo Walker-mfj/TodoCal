@@ -18,7 +18,7 @@
   color: var(--color-ink);
   border: 1px solid var(--color-border);
   border-radius: 12px;
-  box-shadow: 0 8px 32px #0002;
+  box-shadow: 0 8px 32px var(--color-shadow-soft);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -34,10 +34,7 @@
   color: var(--color-level-start);
 }
 .toast-error .toast-icon {
-  color: #b42332;
-}
-[data-mode="dark"] .toast-error .toast-icon {
-  color: #ffb5b5;
+  color: var(--color-error-icon);
 }
 .toast-content {
   min-width: 0;

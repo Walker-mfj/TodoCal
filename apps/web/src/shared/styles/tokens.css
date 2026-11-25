@@ -86,3 +86,61 @@
   --priority-low-ink: #c1cbd8;
   --priority-low-bg: #343e4b;
 }
+
+/* Preserved component colors; roles remain independent for future theming. */
+:root {
+  --color-danger-text: #b34545;
+  --color-danger-surface-accent: #ba4747;
+  --color-danger-action: #b42332;
+  --color-invalid: #c74949;
+  --color-shadow-soft: #0002;
+  --color-error-icon: #b42332;
+  --color-shadow-elevated: #0003;
+  --color-on-danger-action: #fff;
+  --color-danger-action-hover: #8f1827;
+  --color-calendar-now: #e3342f;
+  --color-event-focus-accent: #b65145;
+  --color-event-preview-surface: #fffaf3;
+  --color-event-preview-border: #d8cbbb;
+  --color-event-preview-text: #40352d;
+  --color-focus-text: #edf3f5;
+  --color-focus-glow-warm: #38606b88;
+  --color-focus-glow-cool: #314c6555;
+  --color-focus-gradient-start: #172d38;
+  --color-focus-gradient-middle: #101c2b;
+  --color-focus-gradient-end: #192e3c;
+  --color-focus-decoration-surface: #0a172380;
+  --color-focus-decoration-near: #52717b0a;
+  --color-focus-decoration-far: #52717b08;
+  --color-focus-subtle-border: #ffffff12;
+  --color-focus-muted: #b5c6d0;
+  --color-focus-control-border: #ffffff30;
+  --color-focus-control-text: #d5e2e7;
+  --color-focus-outline: #b0ceff;
+  --color-focus-mode-surface: #0c192680;
+  --color-focus-mode-selected: #d6e5ff;
+  --color-focus-on-action: #17365f;
+  --color-focus-select-bg: #122737;
+  --color-focus-select-text: #e9f1f4;
+  --color-focus-select-border: #48616f;
+  --color-focus-action: #c5dbff;
+  --color-focus-action-hover: #e0ebff;
+  --color-focus-track: #ffffff16;
+  --color-focus-ring: #a8caff;
+  --color-focus-digits: #f3f7f8;
+  --color-shadow-raised: #0004;
+  --color-brand-accent: #0861ce;
+  --color-brand-gradient-start: #087b91;
+  --color-brand-gradient-end: #1456d9;
+  --color-skeleton: var(--color-border);
+  --color-event-clock-hand: #fff;
+  --color-calendar-ungrouped-border: #7391ba;
+  --color-history-group-fallback: #999;
+}
+[data-mode="dark"] {
+  --color-danger-text: #f0a0a0;
+  --color-error-icon: #ffb5b5;
+  --color-brand-accent: #70c4ff;
+  --color-brand-gradient-start: #61e4d3;
+  --color-brand-gradient-end: #7eb5ff;
+}

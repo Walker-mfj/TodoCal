@@ -1,4 +1,12 @@
 "use client";
+import { LoadingIndicator } from "../../../../shared/components/loadingIndicator/loadingIndicator";
+
+import { usePendingAction } from "../../../../shared/hooks/usePendingAction";
+
+import {
+  groupPalette,
+  defaultGroupColor,
+} from "../../../../shared/constants/colorValues";
 import { ContentCard } from "../../../../shared/components/contentCard/contentCard";
 import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./groups.module.css";
@@ -11,16 +19,7 @@ import { useAccountDraft } from "../../../../shared/hooks/useAccountDraft";
 import { useCommand } from "../../../../shared/hooks/useCommand";
 import type { Execute } from "../../../../shared/api/apiClient";
 import type { Group } from "../../../../shared/api/domainTypes";
-const palette = [
-  ["Blue", "#4169b1"],
-  ["Orange", "#ed7d31"],
-  ["Green", "#278765"],
-  ["Purple", "#8056b3"],
-  ["Rose", "#c84e75"],
-  ["Teal", "#16838c"],
-  ["Gold", "#b58a23"],
-  ["Slate", "#64748b"],
-];
+const palette = groupPalette;
 export function Groups({
   owner,
   groups,
@@ -41,7 +40,7 @@ export function Groups({
   }>(`focus:form:${owner}:groups`, {
     editing: null,
     name: "",
-    color: "#4169b1",
+    color: defaultGroupColor,
   });
   const { editing, name, color } = draft;
   const setEditing = (editing: Group | null) =>
@@ -49,6 +48,10 @@ export function Groups({
   const setName = (name: string) => setDraft((d) => ({ ...d, name }));
   const setColor = (color: string) => setDraft((d) => ({ ...d, color }));
   const command = useCommand(execute, `focus:command:${owner}:groups`);
+  const actions = usePendingAction();
+  const runCommand = (...args: Parameters<typeof command.run>) =>
+    actions.run(`${args[1]}:${args[0]}`, () => command.run(...args));
+
   const clear = () => {
     setEditing(null);
     setName("");
@@ -91,15 +94,25 @@ export function Groups({
                     },
                   )
                 )
-                  void command.run(
+                  void runCommand(
                     `/groups/${g.id}`,
                     "DELETE",
                     { expectedRevision: g.revision },
                     clear,
                   );
               }}
+              data-pending-control="true"
+              aria-busy={Boolean(actions.isPending(`DELETE:/groups/${g.id}`))}
             >
-              Delete
+              <span data-button-content="true">
+                {actions.isPending(`DELETE:/groups/${g.id}`) && (
+                  <LoadingIndicator />
+                )}
+                Delete
+              </span>
+              <span aria-hidden="true" data-button-reserve="true">
+                Delete
+              </span>
             </button>
           </div>
         ))}
@@ -108,7 +121,7 @@ export function Groups({
       <ValidatedForm
         onSubmit={(e) => {
           e.preventDefault();
-          void command.run(
+          void runCommand(
             editing ? `/groups/${editing.id}` : "/groups",
             editing ? "PATCH" : "POST",
             {
@@ -195,15 +208,40 @@ export function Groups({
         <button
           className={cx("primary", true)}
           disabled={disabled || command.busy || !ready}
+          data-pending-control="true"
+          aria-busy={Boolean(
+            actions.isPending("POST:/groups") ||
+            actions.isPending(`PATCH:/groups/${editing?.id}`),
+          )}
         >
-          {command.uncertain
-            ? "Retry request"
-            : editing
-              ? "Save group"
-              : "Create group"}
+          <span data-button-content="true">
+            {(actions.isPending("POST:/groups") ||
+              actions.isPending(`PATCH:/groups/${editing?.id}`)) && (
+              <LoadingIndicator />
+            )}
+            {command.uncertain
+              ? "Retry request"
+              : editing
+                ? "Save group"
+                : "Create group"}
+          </span>
+          <span aria-hidden="true" data-button-reserve="true">
+            Retry request
+          </span>
+          <span aria-hidden="true" data-button-reserve="true">
+            Save group
+          </span>
+          <span aria-hidden="true" data-button-reserve="true">
+            Create group
+          </span>
         </button>
         {editing && !command.uncertain && (
-          <button type="button" onClick={clear} className={cx("", true)}>
+          <button
+            type="button"
+            disabled={command.busy}
+            onClick={clear}
+            className={cx("", true)}
+          >
             Cancel
           </button>
         )}

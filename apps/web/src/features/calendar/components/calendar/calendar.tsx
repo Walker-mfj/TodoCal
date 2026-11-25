@@ -1,4 +1,5 @@
 "use client";
+import { Skeleton } from "../../../../shared/components/skeleton/skeleton";
 import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./calendar.module.css";
 const cx = bindStyles(styles);
@@ -30,6 +31,7 @@ import type { CalendarSlot } from "../../types/calendarTypes";
 export default function Calendar({
   draftPreview,
   draftDisabled = false,
+  loading = false,
   days,
   tasks,
   groups,
@@ -52,6 +54,7 @@ export default function Calendar({
   onOpenFocus: () => void;
   draftPreview?: CalendarDraft | null;
   draftDisabled?: boolean;
+  loading?: boolean;
   days: Day[];
   tasks?: Task[];
   groups: Group[];
@@ -107,18 +110,17 @@ export default function Calendar({
   const progress = (date: string) => {
     const day = days.find((d) => d.date === date);
     if (!day) {
+      if (!loading) return null;
       return (
-        <button
+        <span
           className={cx(
             "calendar-progress calendar-progress-placeholder",
             true,
           )}
           aria-hidden="true"
-          tabIndex={-1}
-          disabled
         >
-          Loading
-        </button>
+          <Skeleton width={90} height={16} />
+        </span>
       );
     }
     const label =
@@ -148,7 +150,11 @@ export default function Calendar({
     );
   };
   return (
-    <div className={cx("calendar-wrap")} ref={containerRef}>
+    <div
+      className={cx("calendar-wrap")}
+      ref={containerRef}
+      aria-busy={loading || undefined}
+    >
       <FullCalendar
         ref={calendarRef}
         plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}

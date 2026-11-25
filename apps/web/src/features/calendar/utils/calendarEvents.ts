@@ -79,7 +79,7 @@ export function calendarEvents({
           borderColor:
             groupColor ||
             groups.find((g) => g.id === task.groupId)?.color ||
-            "#7391ba",
+            "var(--color-calendar-ungrouped-border)",
           extendedProps: { task, historical, zone: eventZone },
         },
         task,

@@ -1,4 +1,11 @@
 "use client";
+import { LoadingIndicator } from "../../../../shared/components/loadingIndicator/loadingIndicator";
+
+import { usePendingAction } from "../../../../shared/hooks/usePendingAction";
+
+import { LoadingRegion } from "../../../../shared/components/loadingRegion/loadingRegion";
+
+import { Skeleton } from "../../../../shared/components/skeleton/skeleton";
 import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./taskDetail.module.css";
 const cx = bindStyles(styles);
@@ -88,14 +95,24 @@ export function TaskDetail({
     ? (historicalEntry?.timezone ?? historicalDay.data?.timezone)
     : zone;
   const schedule = taskSchedule(task, scheduleZone);
-  const groupName = historical
-    ? historicalDay.isPending
-      ? "Loading…"
-      : historicalDay.error
-        ? "Unable to load historical group"
-        : historicalEntry?.groupName || "No group"
-    : groups.find((group) => group.id === task.groupId)?.name || "No group";
+  const groupName = historical ? (
+    historicalDay.isPending ? (
+      <LoadingRegion label="Loading…">
+        <Skeleton width={80} />
+      </LoadingRegion>
+    ) : historicalDay.error ? (
+      "Unable to load historical group"
+    ) : (
+      historicalEntry?.groupName || "No group"
+    )
+  ) : (
+    groups.find((group) => group.id === task.groupId)?.name || "No group"
+  );
   const command = useCommand(execute);
+  const actions = usePendingAction();
+  const runCommand = (...args: Parameters<typeof command.run>) =>
+    actions.run(`${args[1]}:${args[0]}`, () => command.run(...args));
+
   const [stopped, setStopped] = useState(false);
   const [confirmCompleted, setConfirmCompleted] = useState(false);
   const locked = disabled || command.busy || command.uncertain;
@@ -105,7 +122,7 @@ export function TaskDetail({
     DateTime.fromISO(value).setZone(zone).toFormat("MMM d, yyyy HH:mm");
   const remove = () => {
     setDeleteChoice(false);
-    void command.run(
+    void runCommand(
       `/tasks/${task.id}`,
       "DELETE",
       { expectedRevision: task.revision },
@@ -123,7 +140,7 @@ export function TaskDetail({
     const seriesId = task.seriesId,
       revision = deletionPreview.data.seriesRevision;
     setDeleteChoice(false);
-    void command.run(
+    void runCommand(
       `/tasks/${task.id}`,
       "DELETE",
       {
@@ -187,11 +204,15 @@ export function TaskDetail({
         </dd>
         <dt>Actual Focus Time</dt>
         <dd>
-          {focus.isPending
-            ? "Loading…"
-            : focus.error
-              ? "Unable to load focus time"
-              : `${Math.round(((focus.data?.actualFocusSeconds ?? task.actualFocusSeconds ?? 0) / 60) * 10) / 10} min`}
+          {focus.isPending ? (
+            <LoadingRegion label="Loading…">
+              <Skeleton width={80} />
+            </LoadingRegion>
+          ) : focus.error ? (
+            "Unable to load focus time"
+          ) : (
+            `${Math.round(((focus.data?.actualFocusSeconds ?? task.actualFocusSeconds ?? 0) / 60) * 10) / 10} min`
+          )}
         </dd>
       </dl>
       <small>
@@ -207,9 +228,20 @@ export function TaskDetail({
         <button
           className={cx("primary", true)}
           disabled={locked}
-          onClick={() => onComplete(task)}
+          onClick={() => void actions.run("complete", () => onComplete(task))}
+          data-pending-control="true"
+          aria-busy={Boolean(actions.isPending("complete"))}
         >
-          {task.status === "complete" ? "Mark incomplete" : "Mark complete"}
+          <span data-button-content="true">
+            {actions.isPending("complete") && <LoadingIndicator />}
+            {task.status === "complete" ? "Mark incomplete" : "Mark complete"}
+          </span>
+          <span aria-hidden="true" data-button-reserve="true">
+            Mark incomplete
+          </span>
+          <span aria-hidden="true" data-button-reserve="true">
+            Mark complete
+          </span>
         </button>
         <button disabled={locked} onClick={onEdit} className={cx("", true)}>
           Edit task
@@ -225,8 +257,9 @@ export function TaskDetail({
           task={task}
           zone={zone}
           locked={locked}
+          saving={actions.isPending(`POST:/tasks/${task.id}/completion`)}
           onSave={(completedAt) =>
-            void command.run(
+            void runCommand(
               `/tasks/${task.id}/completion`,
               "POST",
               { complete: true, completedAt, expectedRevision: task.revision },
@@ -257,16 +290,33 @@ export function TaskDetail({
           if (task.seriesId) setDeleteChoice(true);
           else remove();
         }}
+        data-pending-control="true"
+        aria-busy={Boolean(actions.isPending(`DELETE:/tasks/${task.id}`))}
       >
-        Delete task
+        <span data-button-content="true">
+          {actions.isPending(`DELETE:/tasks/${task.id}`) && (
+            <LoadingIndicator />
+          )}
+          Delete task
+        </span>
+        <span aria-hidden="true" data-button-reserve="true">
+          Delete task
+        </span>
       </button>
       {command.uncertain && (
         <button
           disabled={command.busy}
-          onClick={() => void command.run("", "", null)}
+          onClick={() => void runCommand("", "", null)}
           className={cx("", true)}
+          data-pending-control="true"
+          aria-busy={Boolean(actions.isPending(":"))}
         >
-          Retry request
+          <span data-button-content="true">
+            {actions.isPending(":") && <LoadingIndicator />}Retry request
+          </span>
+          <span aria-hidden="true" data-button-reserve="true">
+            Retry request
+          </span>
         </button>
       )}
       {deleteChoice && (
@@ -317,7 +367,12 @@ export function TaskDetail({
             ({seriesZone}). Earlier repetitions stay unchanged.
           </p>
           {deletionPreview.isFetching && (
-            <p role="status">Checking affected occurrences…</p>
+            <p>
+              <LoadingRegion label="Checking affected occurrences…">
+                <Skeleton width="70%" height={20} />
+                <Skeleton width="95%" height={14} />
+              </LoadingRegion>
+            </p>
           )}
           {deletionPreview.error && (
             <p role="alert">

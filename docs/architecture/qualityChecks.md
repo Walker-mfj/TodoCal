@@ -33,3 +33,43 @@ COMPOSE_PROJECT_NAME=todocal-refactor POSTGRES_HOST_PORT=55439 make test-e2e
 ```
 
 The default database port remains 55432. Browser suites still share local web/API ports 3002/18080; run them sequentially. These commands never need a production database URL.
+
+## UI color and loading rules
+
+These rules are mandatory for new or changed web code and AI-generated changes. Existing violations are tracked in the [global colors and loading skeletons plan](globalColorsLoadingPlan.md); do not introduce new violations while migrating them. `npm run lint` runs `check:ui` and its regression fixtures. The check currently covers fixed literals and direct loading JSX; computed/imported placeholder strings and unusual CSS syntax still require review. UI003/UI004 also check direct pending text and route fallbacks. UI005 below is a new documentation rule; its automated enforcement is planned in the next implementation pass.
+
+### UI001 — Global color ownership
+
+- Define application-owned fixed colors only in `apps/web/src/shared/styles/tokens.css` (semantic CSS tokens, with appropriate light/dark overrides) or the designated shared concrete color registry for values that cannot use CSS variables (manifest, serialized palette, incompatible library APIs).
+- Reuse semantic tokens before adding new ones. Consume tokens via `var(--color-…)`, existing priority tokens, `currentColor`, or derived expressions. No raw fixed hex, rgb/rgba, hsl, oklch or named color literals in component CSS, JSX style props, SVG fill/stroke, JS options, gradients, shadows or local custom properties. Do not duplicate registry values in CSS; use one source of truth.
+- Allowed: transparent/inherit/currentColor, non-color strings, arbitrary validated user/API color data, test fixtures deliberately representing that data, generated files, intrinsic colors of documented branding/illustration assets, and opaque stencil paint used only as a CSS mask (the visible color must be a global token or currentColor). See UI005. Do not change hex persistence or wire validation just to satisfy this rule. Document any other exception with its file, reason and narrow scope.
+
+### UI002 — Shared skeleton placeholders
+
+- For initial content loading, lazy component imports, Suspense fallbacks and inline values awaiting data, use the shared `Skeleton` at `apps/web/src/shared/components/skeleton/skeleton.tsx`, not visible placeholder text (e.g. Loading…, Opening your workspace…). Compose rectangle/circle instances with appropriate dimensions in the owning layout. Do not define feature-local skeleton primitives, shimmer styles or animations.
+- Keep the shell and dimensions stable; placeholders are decorative, aria-hidden and noninteractive. Mark the actual content region aria-busy and provide one accessible status as appropriate. Respect reduced motion.
+- Keep loaded content visible during background refetch where safe. Distinguish initial loading from empty, error, offline, disabled and uncertain states; preserve deletion-preview confirmation guards.
+- Action-pending and settlement text, pending toasts, error/retry labels and accessible status strings are not content placeholders. Do not use Skeleton for these states; follow UI003 for active operations.
+- Review initial, cached refetch, empty and failed states, plus regression checks for existing pending actions. Use existing test/lint commands above. Search changed files for raw colors and loading placeholders; classify matches rather than blindly replacing legitimate data or status text.
+
+### UI003 — Shared action loading indicator
+
+- Use the shared `LoadingIndicator` at `apps/web/src/shared/components/loadingIndicator/loadingIndicator.tsx` for active mutations, requests initiated by an action, pending toasts and authoritative settlement feedback. Do not create feature-local spinners or animation.
+- Preserve existing pending labels, disabled/retry/error/uncertain/offline behavior and timer digits. Show an indicator only for the actual active operation, not every disabled control or a command waiting for manual retry. Track initiating action identity if necessary. Do not use Skeleton or full-page loading for an action.
+- Use semantic global colors or currentColor; keep geometry stable, respect reduced motion, and use one accessible status. Decorative indicators accompanying text are aria-hidden.
+- Extend the source check for direct, recognizable pending branches and duplicate spinner implementations where practical; review operation identity and indirect branches manually. Existing pending labels are allowed when accompanied by the shared indicator; retry/error text does not require one.
+
+### UI004 — Shared full-page loading
+
+- Reuse `LoadingPage` at `apps/web/src/shared/components/loadingPage/loadingPage.tsx` for genuine full-page/app bootstrap loading, including session restoration. Compose the shared LoadingIndicator rather than creating a page-specific spinner; use global tokens and one accessible busy/status region.
+- Keep loaded workspace content visible during local navigation, data refetch and mutations. Use local Skeletons for missing content and LoadingIndicator for active actions. No global loading overlay or unnecessary route boundaries.
+- A Next App Router loading.tsx is only justified if an actual asynchronous route transition needs a fallback. If introduced, reuse LoadingPage. Verify resolved sign-in, signed-out, expired, offline and error states; do not flash another account's content. Check page fallback ownership in review.
+
+### UI005 — Asset ownership
+
+- Default to `apps/web/assets/` for application-owned static images and custom static SVGs. Organize by purpose: `brand/`, `icons/`, `illustrations/`. Import or reference these files through the component, CSS Module or manifest build pipeline. Prefer existing `lucide-react` icons over creating duplicate SVG files.
+- Reserve `apps/web/public/` for resources that genuinely require a stable root-relative URL independent of bundler imports (e.g. `/sw.js`, a fixed external integration URL, or a runtime-selected static filename). A file does not need to be in public just because it is rendered in a component, used by CSS, referenced by a PWA manifest, or downloadable via a build-generated URL. Public files are not private; never store secrets or user uploads there. Do not duplicate assets across directories; document stable URL consumers and cache/versioning requirements in assets/README.md. Use `/path`, never `/public/path`, to reference public files.
+- Keep Next.js App Router metadata conventions such as `src/app/favicon.ico`, `apple-icon.png`, and future `icon.svg` or Open Graph image files in their prescribed route locations. Existing manifest imports and metadata conventions remain valid. Keep test-only fixtures and framework/generated outputs in their owning locations.
+- Static custom SVGs and images belong in files, not embedded SVG data URIs, Base64 strings, or copied literal SVG markup in JSX/CSS/TS. Dynamic SVG whose internal geometry, progress or interactive elements depend on component state/props may be rendered inline by the owning React component; reusable dynamic visuals belong in shared components. Size, color, visibility, CSS rotation/animation or className alone do not make a static glyph dynamic: use Lucide for a standard icon (including the loading spinner) or a custom static asset. Assets contain static files, not React logic. Do not introduce SVGR merely to enforce this rule.
+- For theme-aware UI icons and dynamic SVG visuals, follow UI001: use currentColor or semantic global color tokens. An externally loaded SVG does not inherit the parent element's currentColor or custom properties; use Lucide/inline dynamic SVG or an external SVG mask with a token-driven visible color. Logo/branding and illustrations may keep their intrinsic palette; fixed stencil paint in a mask is allowed only when it does not determine the visible color. These exceptions do not apply to arbitrary UI icon colors. A standalone static SVG loaded as an image cannot be assumed theme-aware.
+- Prohibit application-authored `data:image/…` and embedded Base64/SVG image literals in production JSX, TS, CSS and other source, including encoded SVG colors. Narrow, documented exceptions may cover framework-generated data, runtime/user-provided image data or a proven technical requirement; do not ban ordinary URLs, fragments or non-image data. Extend check:ui with direct literal checks and regression fixtures; use review for static-vs-dynamic SVG classification, asset location, and legitimate public URL requirements.

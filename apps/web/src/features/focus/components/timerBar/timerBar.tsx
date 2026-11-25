@@ -1,4 +1,8 @@
 "use client";
+import { usePendingAction } from "../../../../shared/hooks/usePendingAction";
+
+import { LoadingIndicator } from "../../../../shared/components/loadingIndicator/loadingIndicator";
+
 import { bindStyles } from "../../../../shared/utils/classNames";
 import styles from "./timerBar.module.css";
 const cx = bindStyles(styles);
@@ -14,6 +18,7 @@ export function TimerBar({
   focus: FocusController;
   onOpen: () => void;
 }) {
+  const actions = usePendingAction();
   const a = focus.active;
   const remaining = useRemaining(a, focus.receivedAt);
   if (!a) return null;
@@ -31,28 +36,58 @@ export function TimerBar({
         {timerLabel(remaining)}
       </span>
       <span className={cx("timer-state")}>
-        {a.status === "paused"
-          ? "Paused"
-          : !focus.connected
-            ? "Offline · estimated"
-            : remaining === 0
-              ? "Confirming completion…"
-              : kindLabel[a.kind]}
+        {a.status === "paused" ? (
+          "Paused"
+        ) : !focus.connected ? (
+          "Offline · estimated"
+        ) : remaining === 0 ? (
+          <>
+            {focus.query.isFetching && <LoadingIndicator />}
+            Confirming completion…
+          </>
+        ) : (
+          kindLabel[a.kind]
+        )}
       </span>
       <button
         disabled={focus.blocked || remaining === 0}
-        onClick={() => focus.change(a.status === "paused" ? "resume" : "pause")}
+        onClick={() =>
+          void actions.run("primary", () =>
+            focus.change(a.status === "paused" ? "resume" : "pause"),
+          )
+        }
         className={cx("", true)}
+        data-pending-control="true"
+        aria-busy={Boolean(actions.isPending("primary") && focus.connected)}
       >
-        {a.status === "paused" ? <Play size={14} /> : <Pause size={14} />}{" "}
-        {a.status === "paused" ? "Resume" : "Pause"}
+        <span data-button-content="true">
+          {actions.isPending("primary") && focus.connected && (
+            <LoadingIndicator />
+          )}
+          {a.status === "paused" ? <Play size={14} /> : <Pause size={14} />}{" "}
+          {a.status === "paused" ? "Resume" : "Pause"}
+        </span>
+        <span aria-hidden="true" data-button-reserve="true">
+          Resume
+        </span>
+        <span aria-hidden="true" data-button-reserve="true">
+          Pause
+        </span>
       </button>
       <button
         disabled={focus.blocked}
-        onClick={() => focus.change("end")}
+        onClick={() => void actions.run("end", () => focus.change("end"))}
         className={cx("", true)}
+        data-pending-control="true"
+        aria-busy={Boolean(actions.isPending("end") && focus.connected)}
       >
-        End session
+        <span data-button-content="true">
+          {actions.isPending("end") && focus.connected && <LoadingIndicator />}
+          End session
+        </span>
+        <span aria-hidden="true" data-button-reserve="true">
+          End session
+        </span>
       </button>
     </section>
   );

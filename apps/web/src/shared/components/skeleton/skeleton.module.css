@@ -1,0 +1,11 @@
+.rect,
+.circle {
+  display: inline-block;
+  flex-shrink: 0;
+  vertical-align: middle;
+  background: var(--color-skeleton);
+  border-radius: var(--radius);
+}
+.circle {
+  border-radius: 50%;
+}

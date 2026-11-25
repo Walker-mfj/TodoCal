@@ -58,8 +58,18 @@ export function CompletionTimeForm({
         />
       </label>
       <small>Time uses {zone}; the scheduled date stays unchanged.</small>
-      <button disabled={locked} className={cx("", true)}>
-        {saving && <LoadingIndicator />}Save completion time
+      <button
+        disabled={locked}
+        className={cx("", true)}
+        data-pending-control="true"
+        aria-busy={Boolean(saving)}
+      >
+        <span data-button-content="true">
+          {saving && <LoadingIndicator />}Save completion time
+        </span>
+        <span aria-hidden="true" data-button-reserve="true">
+          Save completion time
+        </span>
       </button>
       {completionError && <p role="alert">{completionError}</p>}
     </form>

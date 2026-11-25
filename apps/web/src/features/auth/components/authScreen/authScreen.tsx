@@ -124,17 +124,33 @@ export function AuthScreen() {
               {error}
             </p>
           )}
-          <button className={cx("primary wide", true)} disabled={busy}>
-            {busy ? (
-              <>
-                <LoadingIndicator />
-                Please wait…
-              </>
-            ) : register ? (
-              "Create account"
-            ) : (
-              "Sign in"
-            )}
+          <button
+            className={cx("primary wide", true)}
+            disabled={busy}
+            data-pending-control="true"
+            aria-busy={Boolean(busy)}
+          >
+            <span data-button-content="true">
+              {busy ? (
+                <>
+                  <LoadingIndicator />
+                  Please wait…
+                </>
+              ) : register ? (
+                "Create account"
+              ) : (
+                "Sign in"
+              )}
+            </span>
+            <span aria-hidden="true" data-button-reserve="true">
+              Please wait…
+            </span>
+            <span aria-hidden="true" data-button-reserve="true">
+              Create account
+            </span>
+            <span aria-hidden="true" data-button-reserve="true">
+              Sign in
+            </span>
           </button>
         </ValidatedForm>
         <button

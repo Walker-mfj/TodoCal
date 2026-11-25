@@ -1,4 +1,5 @@
 "use client";
+import { usePendingAction } from "../../../shared/hooks/usePendingAction";
 import { LoadingIndicator } from "../../../shared/components/loadingIndicator/loadingIndicator";
 
 import { bindStyles } from "../../../shared/utils/classNames";
@@ -73,6 +74,7 @@ export default function HomePage() {
   );
 }
 function AccountWorkspace() {
+  const actions = usePendingAction();
   const confirm = useConfirm();
   const [draftPreview, setDraftPreview] = useState<CalendarDraft | null>(null);
   const [editorState, setEditorState] = useState({
@@ -386,10 +388,20 @@ function AccountWorkspace() {
             A timer action is unconfirmed.{" "}
             <button
               disabled={!connected || focus.command.busy}
-              onClick={focus.retry}
+              onClick={() => void actions.run("timer-retry", focus.retry)}
               className={cx("", true)}
+              data-pending-control="true"
+              aria-busy={Boolean(actions.isPending("timer-retry") && connected)}
             >
-              Retry timer action
+              <span data-button-content="true">
+                {actions.isPending("timer-retry") && connected && (
+                  <LoadingIndicator />
+                )}
+                Retry timer action
+              </span>
+              <span aria-hidden="true" data-button-reserve="true">
+                Retry timer action
+              </span>
             </button>
           </ToastNotice>
         )}

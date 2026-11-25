@@ -446,3 +446,46 @@ it("searches timezones, selects by keyboard, and uses the device timezone", asyn
   fireEvent.keyDown(input, { key: "Escape" });
   expect(input).toHaveValue(Intl.DateTimeFormat().resolvedOptions().timeZone);
 });
+it.each([
+  "Reapply draft to latest settings",
+  "Discard draft and reload settings",
+])("marks only %s busy until both recovery reads finish", async (label) => {
+  const { ApiError } = await import("../../../../shared/api/apiClient");
+  let finish!: (value: unknown) => void;
+  const delayed = new Promise((r) => {
+    finish = r;
+  });
+  const localRead = vi.fn(async (path: string) =>
+    path === "/settings" ? delayed : notifications,
+  );
+  render(
+    <SettingsForm
+      read={localRead as any}
+      owner={`recovery-${label}`}
+      settings={settings}
+      execute={vi
+        .fn()
+        .mockRejectedValue(new ApiError(409, "Changed elsewhere"))}
+      refresh={vi.fn()}
+      disabled={false}
+    />,
+  );
+  const save = await screen.findByRole("button", { name: "Save changes" });
+  await waitFor(() => expect(save).toBeEnabled());
+  fireEvent.click(save);
+  const selected = await screen.findByRole("button", { name: label });
+  const other = screen.getByRole("button", {
+    name: label.startsWith("Reapply")
+      ? "Discard draft and reload settings"
+      : "Reapply draft to latest settings",
+  });
+  fireEvent.click(selected);
+  expect(selected).toHaveAttribute("aria-busy", "true");
+  expect(other).toHaveAttribute("aria-busy", "false");
+  finish({ ...settings, revision: 6 });
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", { name: label }),
+    ).not.toBeInTheDocument(),
+  );
+});

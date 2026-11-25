@@ -1,5 +1,6 @@
+import { sessionStore } from "../../../shared/utils/sessionStorage";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import { NotificationSettings } from "./notificationSettings";
 import {
   currentBrowserPushHash,
@@ -10,6 +11,7 @@ vi.mock("../utils/browserPush", () => ({
   subscribeBrowserPush: vi.fn(),
   supportsBrowserPush: () => true,
 }));
+beforeEach(() => sessionStore.clearOwner("a"));
 afterEach(() => vi.unstubAllGlobals());
 const preferences = {
   taskStart: false,
@@ -99,4 +101,33 @@ it("disables device actions while a revoke is pending", async () => {
   expect(
     screen.getByRole("button", { name: /Revoke notifications/ }),
   ).toBeDisabled();
+});
+it("shows refresh-device pending independently until reload resolves", async () => {
+  const { ApiError } = await import("../../../shared/api/apiClient");
+  const { execute, reload } = setup();
+  execute.mockRejectedValueOnce(new ApiError(409, "Changed elsewhere"));
+  await screen.findByText("Notifications enabled on this device");
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: "Revoke notifications for Chrome · macOS",
+    }),
+  );
+  const refresh = await screen.findByRole("button", {
+    name: "Refresh devices",
+  });
+  let finish!: () => void;
+  reload.mockImplementationOnce(
+    () =>
+      new Promise<void>((r) => {
+        finish = r;
+      }),
+  );
+  fireEvent.click(refresh);
+  expect(refresh).toHaveAttribute("aria-busy", "true");
+  finish();
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", { name: "Refresh devices" }),
+    ).not.toBeInTheDocument(),
+  );
 });

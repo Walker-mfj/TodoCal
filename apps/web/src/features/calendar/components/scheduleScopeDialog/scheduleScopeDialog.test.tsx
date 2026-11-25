@@ -93,7 +93,25 @@ it("shows the indicator only on the selected scope until its request finishes", 
   }
   render(<Harness />);
   const following = screen.getByRole("button", { name: "This and following" });
-  fireEvent.click(screen.getByRole("button", { name: "This occurrence" }));
+  const occurrence = screen.getByRole("button", { name: "This occurrence" });
+  const reservation = [
+    ...occurrence.querySelectorAll("[data-button-reserve]"),
+  ].map((el) => el.textContent?.trim());
+  expect(reservation).toEqual(
+    expect.arrayContaining(["Saving…", "This occurrence"]),
+  );
+  expect(
+    [...following.querySelectorAll("[data-button-reserve]")].map((el) =>
+      el.textContent?.trim(),
+    ),
+  ).toEqual(expect.arrayContaining(["Saving…", "This and following"]));
+  fireEvent.click(occurrence);
+  expect(occurrence).toHaveAttribute("aria-busy", "true");
+  expect(
+    [...occurrence.querySelectorAll("[data-button-reserve]")].map((el) =>
+      el.textContent?.trim(),
+    ),
+  ).toEqual(reservation);
   expect(
     screen.getByRole("button", { name: "Saving…" }).querySelector("svg"),
   ).not.toBeNull();
@@ -102,4 +120,10 @@ it("shows the indicator only on the selected scope until its request finishes", 
   await act(async () => resolve());
   expect(screen.queryByRole("button", { name: "Saving…" })).toBeNull();
   expect(screen.getByRole("button", { name: "This occurrence" })).toBeEnabled();
+  expect(occurrence).toHaveAttribute("aria-busy", "false");
+  expect(
+    [...occurrence.querySelectorAll("[data-button-reserve]")].map((el) =>
+      el.textContent?.trim(),
+    ),
+  ).toEqual(reservation);
 });

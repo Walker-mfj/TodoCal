@@ -19,8 +19,10 @@ export function checkSource(file, source) {
   const errors = [];
   const report = (rule, position) =>
     errors.push(
-      `${file}:${source.slice(0, position).split("\n").length}: ${rule}: use global colors (UI001), Skeleton (UI002), LoadingIndicator (UI003) or LoadingPage (UI004)`,
+      `${file}:${source.slice(0, position).split("\n").length}: ${rule}: use global colors (UI001), Skeleton (UI002), LoadingIndicator (UI003) LoadingPage (UI004), or owned assets/Lucide (UI005)`,
     );
+  for (const match of source.matchAll(/data\s*:\s*image\//gi))
+    report("UI005", match.index);
   if (/(?:^|\/)loading\.tsx$/.test(file) && !/<LoadingPage\b/.test(source))
     report("UI004", 0);
   if (file.endsWith(".css")) {
@@ -40,25 +42,107 @@ export function checkSource(file, source) {
       true,
       ts.ScriptKind.TSX,
     );
+    function literalAttribute(element, name, value) {
+      return element.attributes.properties.some(
+        (a) =>
+          ts.isJsxAttribute(a) &&
+          a.name.getText(ast) === name &&
+          a.initializer &&
+          ts.isStringLiteral(a.initializer) &&
+          a.initializer.text === value,
+      );
+    }
     function hidden(node) {
       for (let parent = node.parent; parent; parent = parent.parent) {
+        if (!ts.isJsxElement(parent)) continue;
+        const element = parent.openingElement;
         if (
-          ts.isJsxElement(parent) &&
-          parent.openingElement.attributes.properties.some(
+          element.attributes.properties.some(
             (a) =>
               ts.isJsxAttribute(a) &&
               a.name.getText(ast) === "className" &&
               a.initializer &&
-              /(?:^|[\s"'])sr-only(?:$|[\s"'])/.test(
-                a.initializer.getText(ast),
-              ),
+              ts.isStringLiteral(a.initializer) &&
+              a.initializer.text.split(/\s+/).includes("sr-only"),
           )
+        )
+          return true;
+        const owner = parent.parent;
+        if (
+          literalAttribute(element, "data-button-reserve", "true") &&
+          literalAttribute(element, "aria-hidden", "true") &&
+          owner &&
+          ts.isJsxElement(owner) &&
+          owner.openingElement.tagName.getText(ast) === "button" &&
+          literalAttribute(owner.openingElement, "data-pending-control", "true")
         )
           return true;
       }
       return false;
     }
+    function nonLiteral(expression) {
+      if (!expression) return false;
+      if (
+        ts.isParenthesizedExpression(expression) ||
+        ts.isPrefixUnaryExpression(expression)
+      )
+        return nonLiteral(expression.expression || expression.operand);
+      return !ts.isLiteralExpression(expression);
+    }
+    function dynamicSvg(node) {
+      let dynamic = false;
+      function inspect(child) {
+        if (
+          child !== node &&
+          (ts.isJsxElement(child) || ts.isJsxSelfClosingElement(child))
+        ) {
+          const element = ts.isJsxElement(child) ? child.openingElement : child;
+          for (const attr of element.attributes.properties) {
+            if (!ts.isJsxAttribute(attr) || !attr.initializer) continue;
+            const name = attr.name.getText(ast);
+            if (
+              /^(d|points|x|y|x1|x2|y1|y2|cx|cy|r|rx|ry|strokeDasharray|strokeDashoffset)$/.test(
+                name,
+              ) &&
+              ts.isJsxExpression(attr.initializer) &&
+              nonLiteral(attr.initializer.expression)
+            )
+              dynamic = true;
+            if (
+              name === "style" &&
+              ts.isJsxExpression(attr.initializer) &&
+              attr.initializer.expression &&
+              ts.isObjectLiteralExpression(attr.initializer.expression) &&
+              attr.initializer.expression.properties.some(
+                (prop) =>
+                  ts.isPropertyAssignment(prop) &&
+                  /^(strokeDashoffset|strokeDasharray)$/.test(
+                    prop.name.getText(ast),
+                  ) &&
+                  nonLiteral(prop.initializer),
+              )
+            )
+              dynamic = true;
+          }
+        }
+        ts.forEachChild(child, inspect);
+      }
+      inspect(node);
+      return dynamic;
+    }
     function visit(node) {
+      if (
+        ts.isJsxElement(node) &&
+        node.openingElement.tagName.getText(ast) === "svg" &&
+        !dynamicSvg(node)
+      )
+        report("UI005", node.pos);
+      if (
+        ts.isJsxSelfClosingElement(node) &&
+        node.tagName.getText(ast) === "svg"
+      )
+        report("UI005", node.pos);
+
       const string =
         ts.isStringLiteralLike(node) ||
         ts.isNoSubstitutionTemplateLiteral(node);

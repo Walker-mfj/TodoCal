@@ -1,3 +1,4 @@
+import { LoaderCircle } from "lucide-react";
 import styles from "./loadingIndicator.module.css";
 import a11y from "../../styles/uiPrimitives.module.css";
 export function LoadingIndicator({
@@ -8,23 +9,13 @@ export function LoadingIndicator({
   label?: string;
 }) {
   const glyph = (
-    <svg
+    <LoaderCircle
       className={styles.indicator}
       style={{ width: size, height: size }}
-      viewBox="0 0 24 24"
-      fill="none"
+      size={size}
       aria-hidden="true"
       focusable="false"
-    >
-      <circle
-        cx="12"
-        cy="12"
-        r="9"
-        stroke="currentColor"
-        strokeWidth="3"
-        strokeDasharray="42 15"
-      />
-    </svg>
+    />
   );
   return label ? (
     <span role="status">

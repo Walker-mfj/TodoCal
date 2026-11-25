@@ -108,12 +108,20 @@ export function NotificationSettings({
             },
           )
         }
-      >
-        {actions.pending ===
-          `DELETE:/notifications/subscriptions/${device.id}` && (
-          <LoadingIndicator />
+        data-pending-control="true"
+        aria-busy={Boolean(
+          actions.isPending(`DELETE:/notifications/subscriptions/${device.id}`),
         )}
-        Revoke
+      >
+        <span data-button-content="true">
+          {actions.isPending(
+            `DELETE:/notifications/subscriptions/${device.id}`,
+          ) && <LoadingIndicator />}
+          Revoke
+        </span>
+        <span aria-hidden="true" data-button-reserve="true">
+          Revoke
+        </span>
       </button>
     );
   }
@@ -183,15 +191,25 @@ export function NotificationSettings({
                 className={cx("", true)}
                 disabled={busy}
                 onClick={() => void enable()}
+                data-pending-control="true"
+                aria-busy={Boolean(preparing)}
               >
-                {preparing ? (
-                  <>
-                    <LoadingIndicator />
-                    Enabling…
-                  </>
-                ) : (
-                  "Enable on this device"
-                )}
+                <span data-button-content="true">
+                  {preparing ? (
+                    <>
+                      <LoadingIndicator />
+                      Enabling…
+                    </>
+                  ) : (
+                    "Enable on this device"
+                  )}
+                </span>
+                <span aria-hidden="true" data-button-reserve="true">
+                  Enabling…
+                </span>
+                <span aria-hidden="true" data-button-reserve="true">
+                  Enable on this device
+                </span>
               </button>
             )}
         </div>
@@ -337,12 +355,22 @@ export function NotificationSettings({
             type="button"
             className={cx("", true)}
             disabled={busy}
-            onClick={async () => {
-              await reload();
-              command.dismissError();
-            }}
+            onClick={() =>
+              void actions.run("refresh-devices", async () => {
+                await reload();
+                command.dismissError();
+              })
+            }
+            data-pending-control="true"
+            aria-busy={Boolean(actions.isPending("refresh-devices"))}
           >
-            Refresh devices
+            <span data-button-content="true">
+              {actions.isPending("refresh-devices") && <LoadingIndicator />}
+              Refresh devices
+            </span>
+            <span aria-hidden="true" data-button-reserve="true">
+              Refresh devices
+            </span>
           </button>
         )}
         {command.uncertain && (
@@ -351,9 +379,16 @@ export function NotificationSettings({
             className={cx("", true)}
             disabled={disabled || command.busy}
             onClick={() => void runCommand("", "", {}, () => void reload())}
+            data-pending-control="true"
+            aria-busy={Boolean(actions.isPending(":"))}
           >
-            {actions.pending === ":" && <LoadingIndicator />}Retry unconfirmed
-            device change
+            <span data-button-content="true">
+              {actions.isPending(":") && <LoadingIndicator />}Retry unconfirmed
+              device change
+            </span>
+            <span aria-hidden="true" data-button-reserve="true">
+              Retry unconfirmed device change
+            </span>
           </button>
         )}
       </section>

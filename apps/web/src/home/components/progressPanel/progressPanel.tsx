@@ -90,15 +90,17 @@ export function ProgressPanel({
           >
             →
           </button>
-          <select
-            aria-label="Progress period"
-            value={period}
-            onChange={(e) => setPeriod(e.target.value as "week" | "month")}
-            className={cx("", true)}
-          >
-            <option value="week">Weekly</option>
-            <option value="month">Monthly</option>
-          </select>
+          <span className={cx("select-wrap")}>
+            <select
+              aria-label="Progress period"
+              value={period}
+              onChange={(e) => setPeriod(e.target.value as "week" | "month")}
+              className={cx("", true)}
+            >
+              <option value="week">Weekly</option>
+              <option value="month">Monthly</option>
+            </select>
+          </span>
         </div>
       </div>
       {report.data && (

@@ -82,3 +82,42 @@ test("requires shared indicators in direct pending UI and shared route loading p
     0,
   );
 });
+test("UI005 rejects authored encoded/base64 images and fixed SVG, but accepts real dynamic geometry and assets", () => {
+  for (const source of [
+    'a { background: url("data:image/svg+xml,%3Csvg%3E;%3C/svg%3E"); }',
+    'const icon="data:image/png;base64,AAAA";',
+    'const icon=<svg width={size} className={styles.spin}><circle cx="12" cy="12" r="9" /></svg>',
+  ])
+    assert.ok(
+      checkSource(source.startsWith("a ") ? "a.css" : "a.tsx", source).some(
+        (e) => e.includes("UI005"),
+      ),
+    );
+  for (const source of [
+    "const a=<LoaderCircle size={size}/>;",
+    "const a=<svg><circle style={{strokeDashoffset: 100 * ratio}} /></svg>;",
+    'const a="data:application/json;base64,e30=";',
+    'import icon from "../assets/icon.svg";',
+  ])
+    assert.equal(checkSource("a.tsx", source).length, 0);
+  assert.equal(
+    checkSource(
+      "a.css",
+      'a {mask: url("../assets/icons/chevronDown.svg"); background: var(--color-muted);}',
+    ).length,
+    0,
+  );
+});
+test("does not mistake reservation attributes or literal geometry for exceptions", () => {
+  assert.ok(
+    checkSource(
+      "a.tsx",
+      '<p data-button-reserve="true">Loading tasks…</p>',
+    ).some((x) => x.includes("UI002")),
+  );
+  assert.ok(
+    checkSource("a.tsx", "<svg><circle r={9}/></svg>").some((x) =>
+      x.includes("UI005"),
+    ),
+  );
+});

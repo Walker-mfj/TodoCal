@@ -286,19 +286,35 @@ export function TaskEditor({
         <button
           className={cx("primary wide", true)}
           disabled={busy || disabled || conflict || !ready}
+          data-pending-control="true"
+          aria-busy={Boolean(busy)}
         >
-          {busy ? (
-            <>
-              <LoadingIndicator />
-              Saving…
-            </>
-          ) : pending ? (
-            "Retry save"
-          ) : task ? (
-            "Save changes"
-          ) : (
-            "Create task"
-          )}
+          <span data-button-content="true">
+            {busy ? (
+              <>
+                <LoadingIndicator />
+                Saving…
+              </>
+            ) : pending ? (
+              "Retry save"
+            ) : task ? (
+              "Save changes"
+            ) : (
+              "Create task"
+            )}
+          </span>
+          <span aria-hidden="true" data-button-reserve="true">
+            Saving…
+          </span>
+          <span aria-hidden="true" data-button-reserve="true">
+            Retry save
+          </span>
+          <span aria-hidden="true" data-button-reserve="true">
+            Save changes
+          </span>
+          <span aria-hidden="true" data-button-reserve="true">
+            Create task
+          </span>
         </button>
       </ValidatedForm>
       {scopePrompt && (

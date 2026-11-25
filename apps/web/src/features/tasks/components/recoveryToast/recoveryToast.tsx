@@ -48,17 +48,30 @@ export function RecoveryToast({
         disabled={!connected || command.busy}
         onClick={restore}
         className={cx("", true)}
+        data-pending-control="true"
+        aria-busy={Boolean(command.busy)}
       >
-        {command.busy ? (
-          <>
-            <LoadingIndicator />
-            Restoring…
-          </>
-        ) : command.uncertain ? (
-          "Retry restore"
-        ) : (
-          "Undo"
-        )}
+        <span data-button-content="true">
+          {command.busy ? (
+            <>
+              <LoadingIndicator />
+              Restoring…
+            </>
+          ) : command.uncertain ? (
+            "Retry restore"
+          ) : (
+            "Undo"
+          )}
+        </span>
+        <span aria-hidden="true" data-button-reserve="true">
+          Restoring…
+        </span>
+        <span aria-hidden="true" data-button-reserve="true">
+          Retry restore
+        </span>
+        <span aria-hidden="true" data-button-reserve="true">
+          Undo
+        </span>
       </button>
       {command.error && <p>{command.error}</p>}
     </ToastNotice>

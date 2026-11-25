@@ -1,4 +1,5 @@
 "use client";
+import { usePendingAction } from "../../../../shared/hooks/usePendingAction";
 import { LoadingIndicator } from "../../../../shared/components/loadingIndicator/loadingIndicator";
 
 import { LoadingRegion } from "../../../../shared/components/loadingRegion/loadingRegion";
@@ -136,6 +137,7 @@ function SettingsEditor({
     setCombined((old) => ({ ...old, notifications }));
   const [devicePending, setDevicePending] = useState(false);
   const [notice, setNotice] = useState("");
+  const actions = usePendingAction();
   const [recovering, setRecovering] = useState(false);
   const [recoveryError, setRecoveryError] = useState("");
   const [playing, setPlaying] = useState(false);
@@ -279,14 +281,16 @@ function SettingsEditor({
             <h3>Workspace</h3>
             <label className={cx("", true)}>
               Appearance
-              <select
-                value={draft.appearance}
-                onChange={(e) => field("appearance", e.target.value)}
-                className={cx("", true)}
-              >
-                <option value="light">Light</option>
-                <option value="dark">Dark</option>
-              </select>
+              <span className={cx("select-wrap")}>
+                <select
+                  value={draft.appearance}
+                  onChange={(e) => field("appearance", e.target.value)}
+                  className={cx("", true)}
+                >
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
+                </select>
+              </span>
             </label>
             <TimezonePicker
               value={draft.timezone}
@@ -353,18 +357,20 @@ function SettingsEditor({
             </label>
             <label className={cx("", true)}>
               Completion sound
-              <select
-                value={draft.timerSound ?? "classic"}
-                disabled={!draft.sound}
-                onChange={(e) => field("timerSound", e.target.value)}
-                className={cx("", true)}
-              >
-                {timerSounds.map((sound) => (
-                  <option key={sound.value} value={sound.value}>
-                    {sound.label}
-                  </option>
-                ))}
-              </select>
+              <span className={cx("select-wrap")}>
+                <select
+                  value={draft.timerSound ?? "classic"}
+                  disabled={!draft.sound}
+                  onChange={(e) => field("timerSound", e.target.value)}
+                  className={cx("", true)}
+                >
+                  {timerSounds.map((sound) => (
+                    <option key={sound.value} value={sound.value}>
+                      {sound.label}
+                    </option>
+                  ))}
+                </select>
+              </span>
             </label>
             <label className={cx("", true)}>
               Sound volume
@@ -436,18 +442,38 @@ function SettingsEditor({
             <button
               type="button"
               disabled={recovering || disabled}
-              onClick={() => void recoverDraft(true)}
+              onClick={() =>
+                void actions.run("reapply", () => recoverDraft(true))
+              }
               className={cx("", true)}
+              data-pending-control="true"
+              aria-busy={Boolean(actions.isPending("reapply"))}
             >
-              Reapply draft to latest settings
+              <span data-button-content="true">
+                {actions.isPending("reapply") && <LoadingIndicator />}Reapply
+                draft to latest settings
+              </span>
+              <span aria-hidden="true" data-button-reserve="true">
+                Reapply draft to latest settings
+              </span>
             </button>
             <button
               type="button"
               disabled={recovering || disabled}
-              onClick={() => void recoverDraft(false)}
+              onClick={() =>
+                void actions.run("discard", () => recoverDraft(false))
+              }
               className={cx("", true)}
+              data-pending-control="true"
+              aria-busy={Boolean(actions.isPending("discard"))}
             >
-              Discard draft and reload settings
+              <span data-button-content="true">
+                {actions.isPending("discard") && <LoadingIndicator />}Discard
+                draft and reload settings
+              </span>
+              <span aria-hidden="true" data-button-reserve="true">
+                Discard draft and reload settings
+              </span>
             </button>
           </div>
         )}
@@ -462,17 +488,30 @@ function SettingsEditor({
             command.conflict ||
             !ready
           }
+          data-pending-control="true"
+          aria-busy={Boolean(command.busy)}
         >
-          {command.busy ? (
-            <>
-              <LoadingIndicator />
-              Saving…
-            </>
-          ) : command.uncertain ? (
-            "Retry save"
-          ) : (
-            "Save changes"
-          )}
+          <span data-button-content="true">
+            {command.busy ? (
+              <>
+                <LoadingIndicator />
+                Saving…
+              </>
+            ) : command.uncertain ? (
+              "Retry save"
+            ) : (
+              "Save changes"
+            )}
+          </span>
+          <span aria-hidden="true" data-button-reserve="true">
+            Saving…
+          </span>
+          <span aria-hidden="true" data-button-reserve="true">
+            Retry save
+          </span>
+          <span aria-hidden="true" data-button-reserve="true">
+            Save changes
+          </span>
         </button>
       </ValidatedForm>
     </ContentCard>

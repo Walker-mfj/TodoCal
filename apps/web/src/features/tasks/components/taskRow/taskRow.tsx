@@ -68,8 +68,9 @@ export function TaskRow({
           aria-label={`${task.status === "complete" ? "Reopen" : "Complete"} ${task.title}`}
           disabled={disabled}
           onClick={() => void actions.run("complete", () => onComplete(task))}
+          aria-busy={Boolean(actions.isPending("complete"))}
         >
-          {actions.pending === "complete" ? (
+          {actions.isPending("complete") ? (
             <LoadingIndicator size={14} />
           ) : (
             task.status === "complete" && <Check size={14} />

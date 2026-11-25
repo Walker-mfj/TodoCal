@@ -23,27 +23,31 @@ export function TimerTaskPicker({
   return (
     <label className={cx("focus-task-picker", true)}>
       Task
-      <select
-        aria-label="Task"
-        value={selectedTask?.id || ""}
-        disabled={blocked || choices.isPending}
-        onChange={(event) => {
-          const next = choices.data?.find((t) => t.id === event.target.value);
-          onChoose(event.target.value, next);
-        }}
-        className={cx("", true)}
-      >
-        <option value="">Free focus · no task</option>
-        {(task && !choices.data?.some((t) => t.id === task.id)
-          ? [task, ...(choices.data || [])]
-          : choices.data || []
-        ).map((t) => (
-          <option key={t.id} value={t.id}>
-            {t.title}
-            {t.estimatedPomodoros ? ` · ${t.estimatedPomodoros} Pomodoros` : ""}
-          </option>
-        ))}
-      </select>
+      <span className={cx("select-wrap")}>
+        <select
+          aria-label="Task"
+          value={selectedTask?.id || ""}
+          disabled={blocked || choices.isPending}
+          onChange={(event) => {
+            const next = choices.data?.find((t) => t.id === event.target.value);
+            onChoose(event.target.value, next);
+          }}
+          className={cx("", true)}
+        >
+          <option value="">Free focus · no task</option>
+          {(task && !choices.data?.some((t) => t.id === task.id)
+            ? [task, ...(choices.data || [])]
+            : choices.data || []
+          ).map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.title}
+              {t.estimatedPomodoros
+                ? ` · ${t.estimatedPomodoros} Pomodoros`
+                : ""}
+            </option>
+          ))}
+        </select>
+      </span>
       <small>
         Today’s tasks · {focusDate}. Open another day’s task from Calendar to
         focus on it.

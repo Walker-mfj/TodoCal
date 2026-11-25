@@ -57,20 +57,37 @@ export function TimerBar({
           )
         }
         className={cx("", true)}
+        data-pending-control="true"
+        aria-busy={Boolean(actions.isPending("primary") && focus.connected)}
       >
-        {actions.pending === "primary" && focus.connected && (
-          <LoadingIndicator />
-        )}
-        {a.status === "paused" ? <Play size={14} /> : <Pause size={14} />}{" "}
-        {a.status === "paused" ? "Resume" : "Pause"}
+        <span data-button-content="true">
+          {actions.isPending("primary") && focus.connected && (
+            <LoadingIndicator />
+          )}
+          {a.status === "paused" ? <Play size={14} /> : <Pause size={14} />}{" "}
+          {a.status === "paused" ? "Resume" : "Pause"}
+        </span>
+        <span aria-hidden="true" data-button-reserve="true">
+          Resume
+        </span>
+        <span aria-hidden="true" data-button-reserve="true">
+          Pause
+        </span>
       </button>
       <button
         disabled={focus.blocked}
         onClick={() => void actions.run("end", () => focus.change("end"))}
         className={cx("", true)}
+        data-pending-control="true"
+        aria-busy={Boolean(actions.isPending("end") && focus.connected)}
       >
-        {actions.pending === "end" && focus.connected && <LoadingIndicator />}
-        End session
+        <span data-button-content="true">
+          {actions.isPending("end") && focus.connected && <LoadingIndicator />}
+          End session
+        </span>
+        <span aria-hidden="true" data-button-reserve="true">
+          End session
+        </span>
       </button>
     </section>
   );

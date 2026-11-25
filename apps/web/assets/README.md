@@ -25,3 +25,9 @@ See [UI005 — Asset ownership](../../../docs/architecture/qualityChecks.md#ui00
 `apps/web/public/` is only for files that require a stable root-relative URL independently of build-generated imports. Currently `public/sw.js` is served as `/sw.js` for browser service worker registration and scope; preserve this contract. Examples of future justified uses are an externally referenced fixed image URL or a runtime-selected static filename that cannot use an import mapping. Do not copy existing imported PWA icons to public; the manifest already emits valid URLs. Keep framework metadata files in `src/app/`. Public files are directly accessible and must not contain secrets or private user data. Document any new stable path and its consumers/cache policy here; do not duplicate assets.
 
 References: [Next.js public folder](https://nextjs.org/docs/app/api-reference/file-conventions/public-folder), [App Router icon metadata](https://nextjs.org/docs/app/api-reference/file-conventions/metadata/app-icons).
+
+## UI005 migration
+
+- `icons/chevronDown.svg` is a fixed monochrome stencil. Its black stroke defines mask opacity only; shared select wrappers supply the visible semantic color and preserve pointer/keyboard handling. Forced-colors uses ButtonText. The CSS bundler emits the asset URL for normal and static builds.
+- LoadingIndicator uses Lucide LoaderCircle; there is no custom spinner SVG asset or copied geometry.
+- TimerClock remains inline because its ring stroke offset changes with progress. No image files were added to public; existing service worker and metadata URLs are unchanged.

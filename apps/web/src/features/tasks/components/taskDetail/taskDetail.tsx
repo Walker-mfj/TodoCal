@@ -229,9 +229,19 @@ export function TaskDetail({
           className={cx("primary", true)}
           disabled={locked}
           onClick={() => void actions.run("complete", () => onComplete(task))}
+          data-pending-control="true"
+          aria-busy={Boolean(actions.isPending("complete"))}
         >
-          {actions.pending === "complete" && <LoadingIndicator />}
-          {task.status === "complete" ? "Mark incomplete" : "Mark complete"}
+          <span data-button-content="true">
+            {actions.isPending("complete") && <LoadingIndicator />}
+            {task.status === "complete" ? "Mark incomplete" : "Mark complete"}
+          </span>
+          <span aria-hidden="true" data-button-reserve="true">
+            Mark incomplete
+          </span>
+          <span aria-hidden="true" data-button-reserve="true">
+            Mark complete
+          </span>
         </button>
         <button disabled={locked} onClick={onEdit} className={cx("", true)}>
           Edit task
@@ -247,7 +257,7 @@ export function TaskDetail({
           task={task}
           zone={zone}
           locked={locked}
-          saving={actions.pending === `POST:/tasks/${task.id}/completion`}
+          saving={actions.isPending(`POST:/tasks/${task.id}/completion`)}
           onSave={(completedAt) =>
             void runCommand(
               `/tasks/${task.id}/completion`,
@@ -280,17 +290,33 @@ export function TaskDetail({
           if (task.seriesId) setDeleteChoice(true);
           else remove();
         }}
+        data-pending-control="true"
+        aria-busy={Boolean(actions.isPending(`DELETE:/tasks/${task.id}`))}
       >
-        {actions.pending?.startsWith("DELETE:") && <LoadingIndicator />}Delete
-        task
+        <span data-button-content="true">
+          {actions.isPending(`DELETE:/tasks/${task.id}`) && (
+            <LoadingIndicator />
+          )}
+          Delete task
+        </span>
+        <span aria-hidden="true" data-button-reserve="true">
+          Delete task
+        </span>
       </button>
       {command.uncertain && (
         <button
           disabled={command.busy}
           onClick={() => void runCommand("", "", null)}
           className={cx("", true)}
+          data-pending-control="true"
+          aria-busy={Boolean(actions.isPending(":"))}
         >
-          {actions.pending === ":" && <LoadingIndicator />}Retry request
+          <span data-button-content="true">
+            {actions.isPending(":") && <LoadingIndicator />}Retry request
+          </span>
+          <span aria-hidden="true" data-button-reserve="true">
+            Retry request
+          </span>
         </button>
       )}
       {deleteChoice && (

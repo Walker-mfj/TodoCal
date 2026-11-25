@@ -49,34 +49,38 @@ export function TaskContentFields({
       <div className={cx("form-row")}>
         <label className={cx("", true)}>
           Group
-          <select
-            name="groupId"
-            value={draft.groupId || ""}
-            onChange={(e) => change("groupId", e.target.value)}
-            className={cx("", true)}
-          >
-            <option value="">No group</option>
-            {groups.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name}
-              </option>
-            ))}
-          </select>
+          <span className={cx("select-wrap")}>
+            <select
+              name="groupId"
+              value={draft.groupId || ""}
+              onChange={(e) => change("groupId", e.target.value)}
+              className={cx("", true)}
+            >
+              <option value="">No group</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          </span>
         </label>
         <label className={cx("", true)}>
           Priority
-          <select
-            name="priority"
-            value={draft.priority || "medium"}
-            onChange={(e) => change("priority", e.target.value)}
-            className={cx("", true)}
-          >
-            {(["low", "medium", "high"] as const).map((p) => (
-              <option key={p} value={p}>
-                {priorityLabels[p]}
-              </option>
-            ))}
-          </select>
+          <span className={cx("select-wrap")}>
+            <select
+              name="priority"
+              value={draft.priority || "medium"}
+              onChange={(e) => change("priority", e.target.value)}
+              className={cx("", true)}
+            >
+              {(["low", "medium", "high"] as const).map((p) => (
+                <option key={p} value={p}>
+                  {priorityLabels[p]}
+                </option>
+              ))}
+            </select>
+          </span>
         </label>
       </div>
     </>
@@ -161,17 +165,19 @@ export function TaskRecurrenceFields({
         <>
           <label className={cx("", true)}>
             Repeat
-            <select
-              name="cadence"
-              value={draft.cadence || seriesRule?.cadence || "none"}
-              onChange={(e) => change("cadence", e.target.value)}
-              className={cx("", true)}
-            >
-              {!task && <option value="none">Does not repeat</option>}
-              <option value="daily">Daily</option>
-              <option value="interval">Every N days</option>
-              <option value="weekly">Weekly</option>
-            </select>
+            <span className={cx("select-wrap")}>
+              <select
+                name="cadence"
+                value={draft.cadence || seriesRule?.cadence || "none"}
+                onChange={(e) => change("cadence", e.target.value)}
+                className={cx("", true)}
+              >
+                {!task && <option value="none">Does not repeat</option>}
+                <option value="daily">Daily</option>
+                <option value="interval">Every N days</option>
+                <option value="weekly">Weekly</option>
+              </select>
+            </span>
           </label>
           {(draft.cadence || seriesRule?.cadence) &&
             draft.cadence !== "none" && (

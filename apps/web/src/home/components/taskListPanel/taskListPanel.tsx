@@ -42,25 +42,27 @@ export function TaskListPanel({
     <section className={cx("task-list-card")}>
       <div className={cx("list-heading")}>
         <h2>Your tasks</h2>
-        <select
-          aria-label="Task view"
-          value={view}
-          onChange={(e) => setView(e.target.value)}
-          className={cx("", true)}
-        >
-          {[
-            ["all", "All tasks"],
-            ["today", "Today"],
-            ["upcoming", "Upcoming"],
-            ["overdue", "Overdue"],
-            ["unscheduled", "Unscheduled"],
-            ["previously-unfinished", "Previously unfinished"],
-          ].map(([v, l]) => (
-            <option key={v} value={v}>
-              {l}
-            </option>
-          ))}
-        </select>
+        <span className={cx("select-wrap")}>
+          <select
+            aria-label="Task view"
+            value={view}
+            onChange={(e) => setView(e.target.value)}
+            className={cx("", true)}
+          >
+            {[
+              ["all", "All tasks"],
+              ["today", "Today"],
+              ["upcoming", "Upcoming"],
+              ["overdue", "Overdue"],
+              ["unscheduled", "Unscheduled"],
+              ["previously-unfinished", "Previously unfinished"],
+            ].map(([v, l]) => (
+              <option key={v} value={v}>
+                {l}
+              </option>
+            ))}
+          </select>
+        </span>
       </div>
       {tasks.isPending ? (
         <div>

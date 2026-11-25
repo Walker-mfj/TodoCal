@@ -198,26 +198,46 @@ export function TimerPanel({
                   : focus.start(kind, selectedTask?.id, minutes),
               )
             }
+            data-pending-control="true"
+            aria-busy={Boolean(actions.isPending("primary") && focus.connected)}
           >
-            {actions.pending === "primary" && focus.connected && (
-              <LoadingIndicator />
-            )}
-            {active
-              ? active.status === "paused"
-                ? "Resume"
-                : "Pause"
-              : "Start session"}
+            <span data-button-content="true">
+              {actions.isPending("primary") && focus.connected && (
+                <LoadingIndicator />
+              )}
+              {active
+                ? active.status === "paused"
+                  ? "Resume"
+                  : "Pause"
+                : "Start session"}
+            </span>
+            <span aria-hidden="true" data-button-reserve="true">
+              Resume
+            </span>
+            <span aria-hidden="true" data-button-reserve="true">
+              Pause
+            </span>
+            <span aria-hidden="true" data-button-reserve="true">
+              Start session
+            </span>
           </button>
           {active && (
             <button
               disabled={focus.blocked}
               onClick={() => void actions.run("end", () => focus.change("end"))}
               className={cx("", true)}
+              data-pending-control="true"
+              aria-busy={Boolean(actions.isPending("end") && focus.connected)}
             >
-              {actions.pending === "end" && focus.connected && (
-                <LoadingIndicator />
-              )}
-              End session
+              <span data-button-content="true">
+                {actions.isPending("end") && focus.connected && (
+                  <LoadingIndicator />
+                )}
+                End session
+              </span>
+              <span aria-hidden="true" data-button-reserve="true">
+                End session
+              </span>
             </button>
           )}
         </div>
@@ -227,11 +247,18 @@ export function TimerPanel({
             disabled={!focus.connected || focus.command.busy}
             onClick={() => void actions.run("retry", focus.retry)}
             className={cx("", true)}
+            data-pending-control="true"
+            aria-busy={Boolean(actions.isPending("retry") && focus.connected)}
           >
-            {actions.pending === "retry" && focus.connected && (
-              <LoadingIndicator />
-            )}
-            Retry timer action
+            <span data-button-content="true">
+              {actions.isPending("retry") && focus.connected && (
+                <LoadingIndicator />
+              )}
+              Retry timer action
+            </span>
+            <span aria-hidden="true" data-button-reserve="true">
+              Retry timer action
+            </span>
           </button>
         )}
         {focus.query.error && (
@@ -240,11 +267,18 @@ export function TimerPanel({
               void actions.run("refresh", () => focus.query.refetch())
             }
             className={cx("", true)}
+            data-pending-control="true"
+            aria-busy={Boolean(actions.isPending("refresh") && focus.connected)}
           >
-            {actions.pending === "refresh" && focus.connected && (
-              <LoadingIndicator />
-            )}
-            Refresh timer
+            <span data-button-content="true">
+              {actions.isPending("refresh") && focus.connected && (
+                <LoadingIndicator />
+              )}
+              Refresh timer
+            </span>
+            <span aria-hidden="true" data-button-reserve="true">
+              Refresh timer
+            </span>
           </button>
         )}
         {!active && focus.state?.last && (
@@ -271,9 +305,16 @@ export function TimerPanel({
             onClick={() =>
               void actions.run("permission", focus.enableNotifications)
             }
+            data-pending-control="true"
+            aria-busy={Boolean(actions.isPending("permission"))}
           >
-            {actions.pending === "permission" && <LoadingIndicator />}Enable
-            completion notifications
+            <span data-button-content="true">
+              {actions.isPending("permission") && <LoadingIndicator />}Enable
+              completion notifications
+            </span>
+            <span aria-hidden="true" data-button-reserve="true">
+              Enable completion notifications
+            </span>
           </button>
         )}
         {focus.permission === "denied" && (

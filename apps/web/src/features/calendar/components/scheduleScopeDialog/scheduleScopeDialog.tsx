@@ -43,30 +43,50 @@ export function ScheduleScopeDialog({
             disabled={busy}
             onClick={() => void choose("one")}
             className={cx("", true)}
+            data-pending-control="true"
+            aria-busy={Boolean(busy && selected === "one")}
           >
-            {busy && selected === "one" ? (
-              <>
-                <LoadingIndicator />
-                Saving…
-              </>
-            ) : (
-              "This occurrence"
-            )}
+            <span data-button-content="true">
+              {busy && selected === "one" ? (
+                <>
+                  <LoadingIndicator />
+                  Saving…
+                </>
+              ) : (
+                "This occurrence"
+              )}
+            </span>
+            <span aria-hidden="true" data-button-reserve="true">
+              Saving…
+            </span>
+            <span aria-hidden="true" data-button-reserve="true">
+              This occurrence
+            </span>
           </button>
           <button
             type="button"
             className={cx("primary", true)}
             disabled={busy || !allAvailable}
             onClick={() => void choose("following")}
+            data-pending-control="true"
+            aria-busy={Boolean(busy && selected === "following")}
           >
-            {busy && selected === "following" ? (
-              <>
-                <LoadingIndicator />
-                Saving…
-              </>
-            ) : (
-              "This and following"
-            )}
+            <span data-button-content="true">
+              {busy && selected === "following" ? (
+                <>
+                  <LoadingIndicator />
+                  Saving…
+                </>
+              ) : (
+                "This and following"
+              )}
+            </span>
+            <span aria-hidden="true" data-button-reserve="true">
+              Saving…
+            </span>
+            <span aria-hidden="true" data-button-reserve="true">
+              This and following
+            </span>
           </button>
         </>
       }

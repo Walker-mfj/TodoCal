@@ -228,7 +228,7 @@ Paths relative to `apps/web/src`; lines identify render sites at this implementa
 | home/components/homePage/homePage.tsx | 317 |
 | shared/components/loadingPage/loadingPage.tsx | 11 |
 
-## UI005 follow-up — asset ownership (planned)
+## UI005 — asset ownership (implemented)
 
 Normative rules: [UI005](qualityChecks.md#ui005--asset-ownership), `apps/web/AGENTS.md`, and `apps/web/assets/README.md`.
 
@@ -261,3 +261,15 @@ Implementation and enforcement:
 4. Update UI001 exceptions to permit intrinsic brand/illustration colors and stencil-only mask paint, not fixed theme-aware icon colors. Check all affected build modes and CI, and verify generated asset URLs, service worker registration, manifest/icon requests, select rendering and the same spinner across buttons, toasts and LoadingPage. Report any remaining documented exception.
 
 No backend, database or service worker behavior changes are required. Previous validation applies to the earlier implementation; rerun lint fixtures, format, typecheck, architecture, unit tests and normal/static frontend builds after the UI005 implementation.
+
+## Concurrent actions and UI005 implementation validation
+
+- `usePendingAction` exposes `isPending(key)` and reference-counts overlapping promises per key. Independent and same-key requests completing out of order are covered; synchronous actions remain unmarked.
+- Settings reapply/discard recovery, Refresh devices and workspace timer retry now expose initiating indicators. Pending buttons expose aria-busy; icon-only task completion preserves its accessible name and 18px control with a 14px glyph.
+- LoadingIndicator has no intrinsic margin. Shared button styles reserve an icon position and overlay hidden idle/pending labels in one grid cell, keeping both label widths present before, during and after requests. Hidden reservations are aria-hidden and noninteractive. No new button component was introduced.
+- The eleven select sites now use a shared wrapper and external chevron SVG mask. Visible colors come from semantic tokens (focus uses its scene token); forced colors uses ButtonText. Existing labels, native selects and their handlers remain.
+- Source audit found no remaining authored image data URI in runtime src/public; TimerClock is the sole remaining literal SVG and has dynamic progress geometry. Standard spinner geometry comes from Lucide LoaderCircle. Existing branding, manifest icons, App Router metadata and service worker stay with their current owners.
+- UI005 rejects direct encoded/Base64 image literals and static SVG markup, including literal JSX geometry. Dynamic geometry, imported assets, masks, Lucide and non-image data have positive fixtures. The check remains conservative for indirect expressions.
+- Regression coverage includes concurrent promises, recovery/device refresh, compact completion accessibility, persistent scope-button label reservations and UI005 bypass patterns. Physical before/during/after pixel measurements and browser visual regression remain unverified because Chromium launch is blocked by this environment.
+
+Current validation: 45 test files / 181 tests; six UI lint fixtures; typecheck, architecture checks, format check, normal build and STATIC_EXPORT=true build passed. Export inspection confirmed the hashed chevron asset is referenced by CSS, manifest icon files exist, and sw.js remains present.

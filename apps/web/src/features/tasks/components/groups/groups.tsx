@@ -101,11 +101,18 @@ export function Groups({
                     clear,
                   );
               }}
+              data-pending-control="true"
+              aria-busy={Boolean(actions.isPending(`DELETE:/groups/${g.id}`))}
             >
-              {actions.pending === `DELETE:/groups/${g.id}` && (
-                <LoadingIndicator />
-              )}
-              Delete
+              <span data-button-content="true">
+                {actions.isPending(`DELETE:/groups/${g.id}`) && (
+                  <LoadingIndicator />
+                )}
+                Delete
+              </span>
+              <span aria-hidden="true" data-button-reserve="true">
+                Delete
+              </span>
             </button>
           </div>
         ))}
@@ -201,15 +208,32 @@ export function Groups({
         <button
           className={cx("primary", true)}
           disabled={disabled || command.busy || !ready}
-        >
-          {actions.pending && !actions.pending.startsWith("DELETE:") && (
-            <LoadingIndicator />
+          data-pending-control="true"
+          aria-busy={Boolean(
+            actions.isPending("POST:/groups") ||
+            actions.isPending(`PATCH:/groups/${editing?.id}`),
           )}
-          {command.uncertain
-            ? "Retry request"
-            : editing
-              ? "Save group"
-              : "Create group"}
+        >
+          <span data-button-content="true">
+            {(actions.isPending("POST:/groups") ||
+              actions.isPending(`PATCH:/groups/${editing?.id}`)) && (
+              <LoadingIndicator />
+            )}
+            {command.uncertain
+              ? "Retry request"
+              : editing
+                ? "Save group"
+                : "Create group"}
+          </span>
+          <span aria-hidden="true" data-button-reserve="true">
+            Retry request
+          </span>
+          <span aria-hidden="true" data-button-reserve="true">
+            Save group
+          </span>
+          <span aria-hidden="true" data-button-reserve="true">
+            Create group
+          </span>
         </button>
         {editing && !command.uncertain && (
           <button type="button" onClick={clear} className={cx("", true)}>
